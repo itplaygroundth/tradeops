@@ -7,7 +7,9 @@
 
 ## Overview
 
-แทนที่ genetic evolution แบบสุ่ม ระบบนี้ให้ AssetLeader แต่ละ symbol สร้าง Sub-agents 8 ตัวที่มี strategy config ต่างกัน แข่งกันหา best strategy ผ่าน backtest → Hermes เลือก winner → forward-test ยืนยัน → Hermes approve → apply สู่ production agent
+แทนที่ genetic evolution แบบสุ่ม ระบบนี้ให้ AssetLeader แต่ละ symbol สร้าง Sub-agents 12 ตัวที่มี strategy config ต่างกัน แข่งกันหา best strategy ผ่าน backtest → Hermes เลือก winner → forward-test ยืนยัน → Hermes approve → apply สู่ production agent
+
+**Strategies (8 ตัว):** momentum, mean_reversion, grid_scalp, llm_sentiment, order_flow, breakout_atr, session_open, market_structure
 
 ---
 
@@ -20,14 +22,14 @@ CompetitionScheduler (ทุก 1 ชั่วโมง)
 AssetLeader.run_competition(symbol)
   │
   ├─ [Phase 1: Backtest — parallel]
-  │   8 SubAgents, แต่ละตัว strategy_weights ต่างกัน
+  │   12 SubAgents, แต่ละตัว strategy_weights ต่างกัน
   │   fetch OHLCV 200 bars จาก MT5 bridge
   │   simulate trades → calc Sharpe ratio + PnL + win_rate
   │   asyncio.gather() — รันพร้อมกัน
   │
   ├─ [Phase 2: Hermes selects winner]
   │   POST http://127.0.0.1:20128/v1/chat/completions
-  │   payload: scores[8] + market regime + session + account_state
+  │   payload: scores[12] + market regime + session + account_state + strategy descriptions
   │   response: {winner_idx, reasoning, confidence}
   │
   ├─ [Phase 3: Forward-test top-3]
@@ -63,20 +65,38 @@ class SubAgent:
     # return: {pnl, max_drawdown, trade_count, pnl_pct}
 ```
 
-**Strategy configs (8 variants):**
-| idx | ชื่อ | momentum | mean_rev | grid | llm |
-|-----|------|----------|----------|------|-----|
-| 0 | momentum-heavy | 0.70 | 0.10 | 0.10 | 0.10 |
-| 1 | mean-rev-heavy | 0.10 | 0.70 | 0.10 | 0.10 |
-| 2 | grid-heavy | 0.10 | 0.10 | 0.70 | 0.10 |
-| 3 | balanced | 0.25 | 0.25 | 0.25 | 0.25 |
-| 4 | momentum+mean | 0.40 | 0.40 | 0.10 | 0.10 |
-| 5 | grid+sentiment | 0.10 | 0.10 | 0.45 | 0.35 |
-| 6 | random-A | random seed 42 | | | |
-| 7 | random-B | random seed 99 | | | |
+**Strategy configs (12 variants):**
+| idx | ชื่อ | momentum | mean_rev | grid | llm | order_flow | breakout | session | structure |
+|-----|------|----------|----------|------|-----|------------|----------|---------|-----------|
+| 0 | momentum-heavy | 0.60 | 0.10 | 0.10 | 0.05 | 0.05 | 0.05 | 0.05 | 0.00 |
+| 1 | mean-rev-heavy | 0.10 | 0.60 | 0.10 | 0.05 | 0.05 | 0.05 | 0.05 | 0.00 |
+| 2 | grid-heavy | 0.10 | 0.10 | 0.60 | 0.05 | 0.05 | 0.05 | 0.05 | 0.00 |
+| 3 | order-flow-heavy | 0.10 | 0.10 | 0.05 | 0.05 | 0.60 | 0.05 | 0.05 | 0.00 |
+| 4 | breakout-heavy | 0.10 | 0.05 | 0.05 | 0.05 | 0.10 | 0.55 | 0.10 | 0.00 |
+| 5 | session-heavy | 0.10 | 0.05 | 0.05 | 0.05 | 0.10 | 0.10 | 0.55 | 0.00 |
+| 6 | structure-heavy | 0.05 | 0.10 | 0.05 | 0.05 | 0.15 | 0.10 | 0.10 | 0.40 |
+| 7 | balanced-8 | 0.125 | 0.125 | 0.125 | 0.125 | 0.125 | 0.125 | 0.125 | 0.125 |
+| 8 | flow+breakout | 0.05 | 0.05 | 0.05 | 0.05 | 0.35 | 0.35 | 0.05 | 0.05 |
+| 9 | session+structure | 0.05 | 0.10 | 0.05 | 0.05 | 0.10 | 0.10 | 0.35 | 0.20 |
+| 10 | random-A | random seed 42 (สุ่ม 8 weights, sum=1) | | | | | | | |
+| 11 | random-B | random seed 99 (สุ่ม 8 weights, sum=1) | | | | | | | |
+
+**8 Strategies — signal logic:**
+
+| Strategy | Signal logic | Data ที่ใช้ |
+|----------|-------------|-----------|
+| `momentum` | SMA cross + RSI direction (มีอยู่แล้ว) | OHLCV |
+| `mean_reversion` | invert momentum, mean-revert to VWAP (มีอยู่แล้ว) | OHLCV |
+| `grid_scalp` | price deviation from VWAP ± 0.08% (มีอยู่แล้ว) | OHLCV |
+| `llm_sentiment` | LLM market sentiment score (มีอยู่แล้ว) | LLM API |
+| `order_flow` | CVD = ∑(close>open ? vol : -vol); signal ถ้า CVD diverge จาก price | OHLCV volume |
+| `breakout_atr` | price หลุด high/low ของ 20 bars + ATR filter กรอง false break | OHLCV |
+| `session_open` | long/short ทิศทาง London open (08:00 UTC) หรือ NY open (13:00 UTC) ใน 30 นาทีแรก | OHLCV + timestamp |
+| `market_structure` | Break of Structure (BoS): higher high = bullish, lower low = bearish; Fair Value Gap fill | OHLCV swing highs/lows |
 
 **Backtest simulation logic:**
-- ใช้ signal จาก `ForexSignalEngine` ที่มีอยู่แล้ว (reuse)
+- ใช้ signal จาก `ForexSignalEngine` ที่มีอยู่แล้ว (reuse) สำหรับ 4 strategies เดิม
+- 4 strategies ใหม่ implement ใน `sub_agent.py` เป็น pure functions รับ candles list
 - ป้อน candles ทีละ bar → generate signal → simulate entry/exit ตาม SL/TP pips จาก DNA
 - คำนวณ Sharpe: `mean(daily_returns) / std(daily_returns) * sqrt(252)`
 
@@ -156,6 +176,7 @@ Respond in JSON: {"approved": bool, "apply_config": {strategy_weights dict}, "re
 | `src/engine/hermes_client.py` | New |
 | `src/engine/competition_scheduler.py` | New |
 | `src/engine/agent_manager.py` | Modify — wire scheduler |
+| `src/engine/signals.py` | Modify — add order_flow, breakout_atr, session_open, market_structure signals |
 
 ---
 
