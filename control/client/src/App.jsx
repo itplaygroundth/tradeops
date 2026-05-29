@@ -598,7 +598,18 @@ export default function App() {
 
   return (
     <div className="app-container">
-      
+      {mt5Status === 'offline' && (
+        <div style={{
+          background: '#7f1d1d', color: '#fca5a5',
+          padding: '8px 16px', textAlign: 'center', fontSize: '13px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+        }}>
+          <AlertCircle size={14} />
+          MT5 Offline — showing stale data
+          {mt5CachedAt && ` (last updated: ${new Date(mt5CachedAt).toLocaleTimeString()})`}
+        </div>
+      )}
+
       {/* SIDEBAR NAVIGATION */}
       <aside className="sidebar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2.5rem', paddingLeft: '0.5rem' }}>
