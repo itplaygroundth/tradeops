@@ -986,14 +986,14 @@ app.get('/api/mt5/price/:symbol', async (req, res) => {
 app.post('/api/mt5/order', async (req, res) => {
   const { symbol, action, volume, sl = 0, tp = 0 } = req.body;
   const vol = parseFloat(volume);
-  const validActions = ['buy', 'sell', 'BUY', 'SELL'];
-  if (!symbol || !action || !validActions.includes(action) || !isFinite(vol) || vol <= 0) {
+  const normalizedAction = typeof action === 'string' ? action.toUpperCase() : '';
+  if (!symbol || !/^[A-Z0-9]{2,12}$/.test(symbol) || !['BUY', 'SELL'].includes(normalizedAction) || !isFinite(vol) || vol <= 0) {
     return res.status(400).json({ error: 'symbol required; action must be buy/sell; volume must be positive number' });
   }
   const data = await fetchMT5('/order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbol, action, volume: vol, sl, tp, comment: 'dashboard', magic: 20260528 })
+    body: JSON.stringify({ symbol, action: normalizedAction, volume: vol, sl, tp, comment: 'dashboard', magic: 20260528 })
   });
   if (data.mt5_status === 'offline') return res.status(503).json(data);
   res.json(data);
