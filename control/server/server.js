@@ -953,6 +953,44 @@ app.post('/api/telegram/test', async (req, res) => {
   }
 });
 
+// --- MT5 PROXY ENDPOINTS ---
+
+app.get('/api/mt5/status', async (req, res) => {
+  const data = await fetchMT5('/health');
+  res.json(data);
+});
+
+app.get('/api/mt5/account', async (req, res) => {
+  const data = await fetchMT5('/account');
+  res.json(data);
+});
+
+app.get('/api/mt5/positions', async (req, res) => {
+  const raw = await fetchMT5('/positions');
+  // MT5 bridge returns { positions: [...] } when online
+  const positions = raw.positions ?? (raw.mt5_status === 'offline' ? (mt5Cache['/positions']?.data?.positions ?? []) : []);
+  res.json({ positions, mt5_status: raw.mt5_status, cached_at: raw.cached_at });
+});
+
+app.get('/api/mt5/price/:symbol', async (req, res) => {
+  const data = await fetchMT5(`/price/${req.params.symbol}`);
+  res.json(data);
+});
+
+app.post('/api/mt5/order', async (req, res) => {
+  const { symbol, action, volume, sl = 0, tp = 0 } = req.body;
+  if (!symbol || !action || !volume) {
+    return res.status(400).json({ error: 'symbol, action, volume required' });
+  }
+  const data = await fetchMT5('/order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol, action, volume, sl, tp, comment: 'dashboard', magic: 20260528 })
+  });
+  if (data.mt5_status === 'offline') return res.status(503).json(data);
+  res.json(data);
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 AI Hedgefund API Server running on http://localhost:${PORT}`);
 });
