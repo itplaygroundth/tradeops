@@ -1,0 +1,149 @@
+import pytest
+import sys
+import os
+import json
+import time
+from pathlib import Path
+
+# Add src to python path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from engine.dna import create_population, random_dna, FOREX_SYMBOLS
+from engine.agent import ForexAgent
+from engine.agent_manager import ForexAgentManager, STATE_FILE
+from engine.evolution import evolve
+from mt5_bridge.client import MT5Client
+
+def test_population_creation():
+    pop = create_population(25)
+    assert len(pop) == 25
+    
+    # Verify that agents are distributed across all symbols
+    symbols_in_pop = {dna.symbol for dna in pop}
+    for sym in FOREX_SYMBOLS:
+        assert sym in symbols_in_pop
+
+def test_agent_signal_generation():
+    pop = create_population(5)
+    from engine.signals import ForexSignalEngine
+    from engine.risk_guardian import ForexRiskGuardian
+    
+    se = ForexSignalEngine()
+    rg = ForexRiskGuardian()
+    
+    # Add some dummy prices to signal history so technical signals work
+    for sym in FOREX_SYMBOLS:
+        for i in range(50):
+            se.record_tick(sym, 1.0850 + (i % 10 - 5) * 0.0001, timestamp=time.time() + i)
+            
+    for dna in pop:
+        agent = ForexAgent(dna, se, rg, paper_mode=True)
+        sig = agent.generate_signal(1.0850)
+        assert "action" in sig
+        assert "confidence" in sig
+        assert sig["action"] in ("LONG", "SHORT", "HOLD")
+
+def test_evolution_uniqueness_and_coverage():
+    pop_dnas = create_population(25)
+    
+    # Mock stats
+    agent_stats = []
+    for dna in pop_dnas:
+        # Give them 35 trades so they are judged and not just protected
+        agent_stats.append({
+            "id": dna.id,
+            "name": dna.name,
+            "symbol": dna.symbol,
+            "trades": 35,
+            "win_rate": 60.0,
+            "total_pnl": 150.0,
+            "total_pnl_pct": 15.0,
+            "strategy_weights": dna.strategy_weights
+        })
+        
+    new_dnas, next_id = evolve(pop_dnas, agent_stats, 25)
+    
+    assert len(new_dnas) == 25
+    
+    # ID uniqueness check
+    ids = [dna.id for dna in new_dnas]
+    assert len(ids) == len(set(ids))
+    
+    # Symbol coverage check
+    symbols_in_pop = {dna.symbol for dna in new_dnas}
+    for sym in FOREX_SYMBOLS:
+        assert sym in symbols_in_pop
+
+def test_paper_trading_execution_and_sl_tp():
+    import asyncio
+    asyncio.run(_async_paper_trading_test())
+
+async def _async_paper_trading_test():
+    # Remove state file if exists
+    if STATE_FILE.exists():
+        STATE_FILE.unlink()
+        
+    client = MT5Client()
+    manager = ForexAgentManager(client, paper_mode=True, agent_count=8)
+    
+    # Seed prices for all symbols
+    for sym in FOREX_SYMBOLS:
+        for i in range(50):
+            manager.signal_engine.record_tick(sym, 1.0000, timestamp=time.time() + i)
+            
+    # Force one agent to trigger a LONG signal with guaranteed R:R >= 2.0
+    target_agent = manager.agents[0]
+    target_symbol = target_agent.dna.symbol
+    target_agent.dna.strategy_weights = {"momentum": 1.0, "mean_reversion": 0.0, "grid_scalp": 0.0, "llm_sentiment": 0.0}
+    # Force sl/tp so R:R = 35/15 = 2.33 > MIN_RR_RATIO (2.0) — random DNA can give 1.5 which fails
+    target_agent.dna.sl_pips = 15.0
+    target_agent.dna.tp_pips = 35.0
+    
+    # Mock technical_signal to return LONG
+    import engine.signals
+    old_tech_signal = manager.signal_engine.technical_signal
+    manager.signal_engine.technical_signal = lambda sym: {"action": "LONG", "confidence": 90, "reason": "test"}
+    
+    # Mock is_good_session to return True so session block is bypassed
+    old_is_good = engine.signals.is_good_session
+    engine.signals.is_good_session = lambda sym: True
+
+    try:
+        # Trigger agents processing
+        # Tick count mod 10 triggers processing
+        manager._tick_count = 9  # next tick makes it 10
+        await manager.on_tick({"symbol": target_symbol, "price": 1.0000, "volume": 1.0})
+        
+        # Verify position is opened
+        assert target_agent.is_in_trade is True
+        assert target_agent._open_side == "BUY"
+        assert target_agent._open_entry == 1.0000
+        assert target_agent._open_sl < 1.0000
+        assert target_agent._open_tp > 1.0000
+        
+        # Now trigger SL hit by feeding a very low price
+        low_price = target_agent._open_sl - 0.0001
+        await manager.on_tick({"symbol": target_symbol, "price": low_price, "volume": 1.0})
+        
+        # Verify position is closed
+        assert target_agent.is_in_trade is False
+        assert target_agent.trades_count == 1
+        assert target_agent.losses == 1
+        assert target_agent.total_pnl < 0
+        
+        # Force state write (normally triggered at tick % 30; skip that in 2-tick test)
+        manager._write_state()
+        
+        # Verify state file was written with correct data
+        assert STATE_FILE.exists()
+        with open(STATE_FILE, "r") as f:
+            state_data = json.load(f)
+            assert state_data["paper_mode"] is True
+            assert state_data["account"]["balance"] < 1000.0
+            
+    finally:
+        # Restore mocks
+        manager.signal_engine.technical_signal = old_tech_signal
+        engine.signals.is_good_session = old_is_good
+        if STATE_FILE.exists():
+            STATE_FILE.unlink()

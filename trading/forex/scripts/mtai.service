@@ -1,0 +1,18 @@
+[Unit]
+Description=MTAI Forex AI Trading System
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alfred
+WorkingDirectory=/home/alfred/mtai/src
+ExecStart=/usr/bin/python3 /home/alfred/mtai/src/run.py --mode paper
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
