@@ -848,6 +848,30 @@ export default function App() {
                 )}
               </div>
             </section>
+
+            {mt5Account && mt5Status !== 'unknown' && (
+              <div style={{ marginTop: '24px' }}>
+                <h3 style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  MT5 Account
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+                  {[
+                    { label: 'Balance', value: mt5Account.balance },
+                    { label: 'Equity', value: mt5Account.equity },
+                    { label: 'Margin', value: mt5Account.margin },
+                    { label: 'Free Margin', value: mt5Account.margin_free },
+                    { label: 'Profit', value: mt5Account.profit },
+                  ].map(({ label, value }) => (
+                    <div key={label} style={{ background: '#1f2937', borderRadius: '8px', padding: '12px 16px' }}>
+                      <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '4px' }}>{label}</div>
+                      <div style={{ fontSize: '18px', fontWeight: '600', color: value >= 0 ? '#34d399' : '#f87171' }}>
+                        {value != null ? value.toFixed(2) : '—'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
