@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+
+const API_BASE = import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.hostname}:5001`;
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -73,6 +75,12 @@ export default function App() {
   const [newAlertCondition, setNewAlertCondition] = useState('above');
   const [newAlertValue, setNewAlertValue] = useState('');
 
+  // MT5 State
+  const [mt5Account, setMt5Account] = useState(null);
+  const [mt5Positions, setMt5Positions] = useState([]);
+  const [mt5Status, setMt5Status] = useState('unknown'); // 'online' | 'offline' | 'unknown'
+  const [mt5CachedAt, setMt5CachedAt] = useState(null);
+
   // 1. Fetch initial configuration & data
   useEffect(() => {
     fetchPortfolio();
@@ -104,9 +112,31 @@ export default function App() {
     }
   }, [chatMessages, aiTyping]);
 
+  useEffect(() => {
+    const pollMT5 = async () => {
+      try {
+        const [acctRes, posRes] = await Promise.all([
+          fetch(`${API_BASE}/api/mt5/account`),
+          fetch(`${API_BASE}/api/mt5/positions`)
+        ]);
+        const acct = await acctRes.json();
+        const pos = await posRes.json();
+        setMt5Account(acct);
+        setMt5Positions(pos.positions ?? []);
+        setMt5Status(acct.mt5_status ?? 'offline');
+        setMt5CachedAt(acct.cached_at);
+      } catch {
+        setMt5Status('offline');
+      }
+    };
+    pollMT5();
+    const id = setInterval(pollMT5, 5000);
+    return () => clearInterval(id);
+  }, []);
+
   const fetchPortfolio = async (isPoll = false) => {
     try {
-      const res = await fetch('http://localhost:5001/api/portfolio');
+      const res = await fetch(`${API_BASE}/api/portfolio`);
       const data = await res.json();
       
       if (isPoll && portfolio) {
@@ -157,7 +187,7 @@ export default function App() {
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch('http://localhost:5001/api/settings');
+      const res = await fetch(`${API_BASE}/api/settings`);
       const data = await res.json();
       setSettings(data);
       setBotToken(data.telegramBotToken);
@@ -180,7 +210,7 @@ export default function App() {
 
   const fetchAIRecommendations = async () => {
     try {
-      const res = await fetch('http://localhost:5001/api/ai/recommend');
+      const res = await fetch(`${API_BASE}/api/ai/recommend`);
       const data = await res.json();
       setAiRecommend(data);
     } catch (err) {
@@ -200,7 +230,7 @@ export default function App() {
     }
 
     try {
-      const res = await fetch('http://localhost:5001/api/portfolio/transaction', {
+      const res = await fetch(`${API_BASE}/api/portfolio/transaction`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -231,7 +261,7 @@ export default function App() {
   const handleSaveTelegram = async () => {
     setTeleStatus({ loading: true, msg: '', type: '' });
     try {
-      const res = await fetch('http://localhost:5001/api/settings', {
+      const res = await fetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -257,7 +287,7 @@ export default function App() {
 
     setTeleStatus({ loading: true, msg: 'กำลังส่งข้อความทดสอบไปยัง Telegram...', type: '' });
     try {
-      const res = await fetch('http://localhost:5001/api/telegram/test', {
+      const res = await fetch(`${API_BASE}/api/telegram/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -281,7 +311,7 @@ export default function App() {
   const handleSaveLLM = async () => {
     setLlmVerifyStatus({ loading: true, msg: 'กำลังบันทึกการตั้งค่า LLM...', type: '' });
     try {
-      const res = await fetch('http://localhost:5001/api/settings', {
+      const res = await fetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -310,7 +340,7 @@ export default function App() {
   const handleVerifyLLM = async () => {
     setLlmVerifyStatus({ loading: true, msg: `กำลังส่งคำขอทดสอบไปที่ ${llmProvider}...`, type: '' });
     try {
-      const res = await fetch('http://localhost:5001/api/ai/verify', {
+      const res = await fetch(`${API_BASE}/api/ai/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -340,7 +370,7 @@ export default function App() {
     setFetchingModels(true);
     setLlmVerifyStatus({ loading: true, msg: 'กำลังเรียกข้อมูลรุ่นจากเซิร์ฟเวอร์...', type: '' });
     try {
-      const res = await fetch('http://localhost:5001/api/ai/models', {
+      const res = await fetch(`${API_BASE}/api/ai/models`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -371,7 +401,7 @@ export default function App() {
   // Handle MCP saving
   const handleSaveMCP = async (updatedEnabled = mcpEnabled, updatedUrl = mcpServerUrl, updatedConns = mcpConnectors) => {
     try {
-      const res = await fetch('http://localhost:5001/api/settings', {
+      const res = await fetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -402,7 +432,7 @@ export default function App() {
     setAiTyping(true);
 
     try {
-      const res = await fetch('http://localhost:5001/api/ai/chat', {
+      const res = await fetch(`${API_BASE}/api/ai/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userText })
@@ -419,7 +449,7 @@ export default function App() {
   // 6. Handle risk profile sliders & automatic Rebalancing trigger
   const handleRiskChange = async (profile) => {
     try {
-      const res = await fetch('http://localhost:5001/api/settings', {
+      const res = await fetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ riskProfile: profile })
@@ -454,7 +484,7 @@ export default function App() {
         const adjustUnits = Math.abs(rec.amount / price);
 
         if (adjustUnits > 0) {
-          await fetch('http://localhost:5001/api/portfolio/transaction', {
+          await fetch(`${API_BASE}/api/portfolio/transaction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -516,7 +546,7 @@ export default function App() {
   const handleRemoveAlert = async (alertId) => {
     const updatedAlerts = settings.alerts.filter(a => a.id !== alertId);
     try {
-      const res = await fetch('http://localhost:5001/api/settings', {
+      const res = await fetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ alerts: updatedAlerts })
