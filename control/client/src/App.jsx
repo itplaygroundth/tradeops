@@ -628,6 +628,7 @@ export default function App() {
             { id: 'funds', label: 'กองทุนรวม (Funds)', icon: LineChart },
             { id: 'crypto', label: 'คริปโตเคอเรนซี', icon: Coins },
             { id: 'forex', label: 'ตลาด Forex', icon: DollarSign },
+            { id: 'mt5', label: 'MT5 Positions', icon: Activity },
             { id: 'ai-advisor', label: 'AI Optimizer', icon: Cpu },
             { id: 'settings', label: 'ตั้งค่า & แจ้งเตือน', icon: Settings },
           ].map(tab => {
@@ -1449,6 +1450,47 @@ export default function App() {
                 <span>ปัจจุบัน (พอร์ตสกุลเงินหลักมีความผันผวนต่ำมั่นคงสูง)</span>
               </div>
             </section>
+          </div>
+        )}
+
+        {/* MT5 POSITIONS TAB */}
+        {activeTab === 'mt5' && (
+          <div>
+            <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '16px' }}>MT5 Open Positions</h2>
+            {mt5Positions.length === 0 ? (
+              <div style={{ color: '#6b7280', textAlign: 'center', padding: '40px' }}>
+                {mt5Status === 'offline' ? 'MT5 offline — no position data' : 'No open positions'}
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ color: '#6b7280', borderBottom: '1px solid #374151' }}>
+                    {['Ticket', 'Symbol', 'Type', 'Volume', 'Open Price', 'Current Price', 'SL', 'TP', 'P&L'].map(h => (
+                      <th key={h} style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '500' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {mt5Positions.map(pos => (
+                    <tr key={pos.ticket} style={{ borderBottom: '1px solid #1f2937' }}>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: '#9ca3af' }}>{pos.ticket}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600' }}>{pos.symbol}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: pos.type === 0 ? '#34d399' : '#f87171' }}>
+                        {pos.type === 0 ? 'BUY' : 'SELL'}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>{pos.volume}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>{pos.price_open?.toFixed(5)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>{pos.price_current?.toFixed(5)}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6b7280' }}>{pos.sl || '—'}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6b7280' }}>{pos.tp || '—'}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: pos.profit >= 0 ? '#34d399' : '#f87171', fontWeight: '600' }}>
+                        {pos.profit?.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
 
