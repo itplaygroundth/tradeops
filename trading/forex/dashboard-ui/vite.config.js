@@ -8,7 +8,7 @@ export default defineConfig({
   server: {
     port: 3004,
     proxy: {
-      '/api/mt5': 'http://localhost:5001',
+      '/api': 'http://localhost:5001',
     },
   },
   plugins: [
