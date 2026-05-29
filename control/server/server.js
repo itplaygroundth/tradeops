@@ -29,8 +29,10 @@ async function fetchMT5(endpoint, options = {}) {
     clearTimeout(timer);
     if (!res.ok) throw new Error(`MT5 bridge ${res.status}`);
     const data = await res.json();
-    mt5Cache[endpoint] = { data, cachedAt: new Date().toISOString() };
-    return { ...data, mt5_status: 'online', cached_at: mt5Cache[endpoint].cachedAt };
+    if (!options.method || options.method.toUpperCase() !== 'POST') {
+      mt5Cache[endpoint] = { data, cachedAt: new Date().toISOString() };
+    }
+    return { ...data, mt5_status: 'online', cached_at: (mt5Cache[endpoint]?.cachedAt ?? new Date().toISOString()) };
   } catch (err) {
     clearTimeout(timer);
     if (mt5Cache[endpoint]) {
@@ -973,19 +975,25 @@ app.get('/api/mt5/positions', async (req, res) => {
 });
 
 app.get('/api/mt5/price/:symbol', async (req, res) => {
-  const data = await fetchMT5(`/price/${req.params.symbol}`);
+  const symbol = req.params.symbol;
+  if (!/^[A-Z0-9]{2,12}$/.test(symbol)) {
+    return res.status(400).json({ error: 'invalid symbol' });
+  }
+  const data = await fetchMT5(`/price/${symbol}`);
   res.json(data);
 });
 
 app.post('/api/mt5/order', async (req, res) => {
   const { symbol, action, volume, sl = 0, tp = 0 } = req.body;
-  if (!symbol || !action || !volume) {
-    return res.status(400).json({ error: 'symbol, action, volume required' });
+  const vol = parseFloat(volume);
+  const validActions = ['buy', 'sell', 'BUY', 'SELL'];
+  if (!symbol || !action || !validActions.includes(action) || !isFinite(vol) || vol <= 0) {
+    return res.status(400).json({ error: 'symbol required; action must be buy/sell; volume must be positive number' });
   }
   const data = await fetchMT5('/order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbol, action, volume, sl, tp, comment: 'dashboard', magic: 20260528 })
+    body: JSON.stringify({ symbol, action, volume: vol, sl, tp, comment: 'dashboard', magic: 20260528 })
   });
   if (data.mt5_status === 'offline') return res.status(503).json(data);
   res.json(data);
