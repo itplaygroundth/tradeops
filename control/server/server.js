@@ -19,22 +19,22 @@ const PORT = 5001;
 // MT5 Bridge
 const MT5_BRIDGE_URL = 'http://192.168.1.107:8888';
 const MT5_TIMEOUT_MS = 5000;
-const mt5Cache = {}; // { [endpoint]: { data: {...}, cachedAt: ISO string } }
+const mt5Cache = {}; // { [endpoint]: { data, cachedAt } } — keyed on path string only, not request body
 
-async function fetchMT5(path, options = {}) {
+async function fetchMT5(endpoint, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), MT5_TIMEOUT_MS);
   try {
-    const res = await fetch(`${MT5_BRIDGE_URL}${path}`, { ...options, signal: controller.signal });
+    const res = await fetch(`${MT5_BRIDGE_URL}${endpoint}`, { ...options, signal: controller.signal });
     clearTimeout(timer);
     if (!res.ok) throw new Error(`MT5 bridge ${res.status}`);
     const data = await res.json();
-    mt5Cache[path] = { data, cachedAt: new Date().toISOString() };
-    return { ...data, mt5_status: 'online', cached_at: mt5Cache[path].cachedAt };
+    mt5Cache[endpoint] = { data, cachedAt: new Date().toISOString() };
+    return { ...data, mt5_status: 'online', cached_at: mt5Cache[endpoint].cachedAt };
   } catch (err) {
     clearTimeout(timer);
-    if (mt5Cache[path]) {
-      return { ...mt5Cache[path].data, mt5_status: 'offline', cached_at: mt5Cache[path].cachedAt };
+    if (mt5Cache[endpoint]) {
+      return { ...mt5Cache[endpoint].data, mt5_status: 'offline', cached_at: mt5Cache[endpoint].cachedAt };
     }
     return { mt5_status: 'offline', cached_at: null, error: err.message };
   }
