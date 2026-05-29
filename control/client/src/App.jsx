@@ -224,6 +224,31 @@ export default function App() {
     setTxSuccess(false);
     setTxError('');
 
+    if (txType === 'forex') {
+      if (mt5Status === 'offline') {
+        setTxError('MT5 is offline — cannot place order');
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/api/mt5/order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol: txAssetId,
+            action: txAction === 'buy' ? 'buy' : 'sell',
+            volume: parseFloat(txUnits),
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Order failed');
+        setTxSuccess(true);
+        setTxError('');
+      } catch (err) {
+        setTxError(err.message);
+      }
+      return;
+    }
+
     if (!txUnits || parseFloat(txUnits) <= 0 || !txPrice || parseFloat(txPrice) <= 0) {
       setTxError('กรุณากรอกจำนวนหน่วยและราคาให้ถูกต้อง');
       return;
@@ -1400,7 +1425,13 @@ export default function App() {
                     </div>
                   </div>
 
-                  <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem', background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)' }}>
+                  <button
+                    type="submit"
+                    className="btn-primary"
+                    style={{ width: '100%', justifyContent: 'center', marginTop: '0.5rem', background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)' }}
+                    disabled={txType === 'forex' && mt5Status === 'offline'}
+                    title={txType === 'forex' && mt5Status === 'offline' ? 'MT5 offline — cannot place order' : undefined}
+                  >
                     ยืนยันคำสั่งซื้อขาย Forex
                   </button>
                 </form>
