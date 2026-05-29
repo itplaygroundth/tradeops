@@ -16,6 +16,30 @@ app.use(express.json());
 
 const PORT = 5001;
 
+// MT5 Bridge
+const MT5_BRIDGE_URL = 'http://192.168.1.107:8888';
+const MT5_TIMEOUT_MS = 5000;
+const mt5Cache = {}; // { [endpoint]: { data: {...}, cachedAt: ISO string } }
+
+async function fetchMT5(path, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MT5_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${MT5_BRIDGE_URL}${path}`, { ...options, signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`MT5 bridge ${res.status}`);
+    const data = await res.json();
+    mt5Cache[path] = { data, cachedAt: new Date().toISOString() };
+    return { ...data, mt5_status: 'online', cached_at: mt5Cache[path].cachedAt };
+  } catch (err) {
+    clearTimeout(timer);
+    if (mt5Cache[path]) {
+      return { ...mt5Cache[path].data, mt5_status: 'offline', cached_at: mt5Cache[path].cachedAt };
+    }
+    return { mt5_status: 'offline', cached_at: null, error: err.message };
+  }
+}
+
 // 1. Initialize SQLite connection and pragmas
 const db = new DatabaseSync(DB_FILE);
 db.exec('PRAGMA journal_mode = WAL;');
