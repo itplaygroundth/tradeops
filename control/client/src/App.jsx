@@ -1,17 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-
-const API_BASE = import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.hostname}:5001`;
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Coins, 
-  LineChart, 
-  DollarSign, 
-  Cpu, 
-  Send, 
-  Settings, 
-  Activity, 
-  ArrowUpRight, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Coins,
+  LineChart,
+  DollarSign,
+  Cpu,
+  Send,
+  Settings,
+  Activity,
+  ArrowUpRight,
   ArrowDownRight,
   ShieldCheck,
   RefreshCw,
@@ -20,6 +18,34 @@ import {
   Trash2,
   AlertCircle
 } from 'lucide-react';
+
+const API_BASE = import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.hostname}:5001`;
+
+function MT5PriceTag({ symbol, apiBase }) {
+  const [price, setPrice] = React.useState(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    const fetch_ = async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/mt5/price/${symbol}`);
+        const d = await res.json();
+        if (!cancelled && d.mt5_status === 'online') setPrice(d);
+      } catch {}
+    };
+    fetch_();
+    const id = setInterval(fetch_, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [symbol, apiBase]);
+  if (!price) return null;
+  return (
+    <div style={{ background: '#1f2937', borderRadius: '6px', padding: '8px 12px', fontSize: '13px' }}>
+      <span style={{ color: '#6b7280', marginRight: '8px' }}>{symbol}</span>
+      <span style={{ color: '#34d399' }}>{price.bid?.toFixed(5)}</span>
+      <span style={{ color: '#6b7280', margin: '0 4px' }}>/</span>
+      <span style={{ color: '#f87171' }}>{price.ask?.toFixed(5)}</span>
+    </div>
+  );
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -563,7 +589,7 @@ export default function App() {
     const updatedAlerts = [...(settings.alerts || []), newAlert];
     
     try {
-      const res = await fetch('http://localhost:5001/api/settings', {
+      const res = await fetch(`${API_BASE}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ alerts: updatedAlerts })
@@ -1305,6 +1331,14 @@ export default function App() {
               </h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: '0.2rem' }}>ระบบเทรดและถือครองเงินสากลสกุลเงินหลัก ทํากำไรส่วนต่างอัตราแลกเปลี่ยน</p>
             </header>
+
+            {mt5Status === 'online' && (
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                {['EURUSD', 'USDJPY', 'GBPUSD'].map(sym => (
+                  <MT5PriceTag key={sym} symbol={sym} apiBase={API_BASE} />
+                ))}
+              </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem' }}>
               

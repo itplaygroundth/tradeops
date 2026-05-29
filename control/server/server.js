@@ -25,7 +25,8 @@ async function fetchMT5(endpoint, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), MT5_TIMEOUT_MS);
   try {
-    const res = await fetch(`${MT5_BRIDGE_URL}${endpoint}`, { ...options, signal: controller.signal });
+    const bridgeUrl = getSettings().mt5BridgeUrl || MT5_BRIDGE_URL;
+    const res = await fetch(`${bridgeUrl}${endpoint}`, { ...options, signal: controller.signal });
     clearTimeout(timer);
     if (!res.ok) throw new Error(`MT5 bridge ${res.status}`);
     const data = await res.json();
@@ -113,6 +114,7 @@ const DEFAULT_SETTINGS = {
   telegramBotToken: "",
   telegramChatId: "",
   riskProfile: "Balanced",
+  mt5BridgeUrl: 'http://192.168.1.107:8888',
   alerts: [
     { id: "alert-1", assetId: "BTC", condition: "above", value: 70000, active: true },
     { id: "alert-2", assetId: "SOL", condition: "below", value: 150, active: true }
@@ -976,7 +978,7 @@ app.get('/api/mt5/positions', async (req, res) => {
 
 app.get('/api/mt5/price/:symbol', async (req, res) => {
   const symbol = req.params.symbol;
-  if (!/^[A-Z0-9]{2,12}$/.test(symbol)) {
+  if (!/^[A-Z0-9_]{2,12}$/.test(symbol)) {
     return res.status(400).json({ error: 'invalid symbol' });
   }
   const data = await fetchMT5(`/price/${symbol}`);
@@ -987,7 +989,7 @@ app.post('/api/mt5/order', async (req, res) => {
   const { symbol, action, volume, sl = 0, tp = 0 } = req.body;
   const vol = parseFloat(volume);
   const normalizedAction = typeof action === 'string' ? action.toUpperCase() : '';
-  if (!symbol || !/^[A-Z0-9]{2,12}$/.test(symbol) || !['BUY', 'SELL'].includes(normalizedAction) || !isFinite(vol) || vol <= 0) {
+  if (!symbol || !/^[A-Z0-9_]{2,12}$/.test(symbol) || !['BUY', 'SELL'].includes(normalizedAction) || !isFinite(vol) || vol <= 0) {
     return res.status(400).json({ error: 'symbol required; action must be buy/sell; volume must be positive number' });
   }
   const data = await fetchMT5('/order', {
