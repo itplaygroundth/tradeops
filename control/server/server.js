@@ -985,6 +985,66 @@ app.get('/api/mt5/price/:symbol', async (req, res) => {
   res.json(data);
 });
 
+app.get('/api/mt5/ohlcv/:symbol', async (req, res) => {
+  const symbol = req.params.symbol;
+  if (!/^[A-Z0-9]{2,12}$/i.test(symbol)) {
+    return res.status(400).json({ error: 'invalid symbol' });
+  }
+  const timeframe = req.query.timeframe || 'M15';
+  const count = Math.min(parseInt(req.query.count) || 200, 1000);
+  const data = await fetchMT5(`/ohlcv/${symbol}?timeframe=${timeframe}&count=${count}`);
+  res.json(data);
+});
+
+app.get('/api/persona-signals', (req, res) => {
+  res.json({ signals: [], mt5_status: 'online', source: 'stub' });
+});
+
+// SSE stream — sends a keepalive every 15s, no real-time push (MT5 has no push API)
+app.get('/api/order_history/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+  const id = setInterval(() => res.write(': keepalive\n\n'), 15000);
+  req.on('close', () => clearInterval(id));
+});
+
+app.get('/api/order_history', async (req, res) => {
+  const hours = Math.min(parseInt(req.query.hours) || 24, 720);
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  const raw = await fetchMT5(`/history/recent?hours=${hours}&limit=${limit}`);
+  const deals = raw.deals ?? (mt5Cache[`/history/recent?hours=${hours}&limit=${limit}`]?.data?.deals ?? []);
+  // Map bridge fields to what TradeHistory expects
+  const items = deals.map(d => ({
+    ticket: d.ticket,
+    position: d.position,
+    symbol: d.symbol,
+    volume: d.volume,
+    price: d.price,
+    profit: d.profit,
+    swap: d.swap,
+    commission: d.commission,
+    time: d.time,
+    type: d.type,
+    entry: d.entry,
+    comment: d.comment,
+    // aliases TradeHistory might use
+    pnl: d.profit,
+    side: d.type === 0 ? 'buy' : 'sell',
+    status: d.entry ? 'closed' : 'open',
+  }));
+  res.json({ items, mt5_status: raw.mt5_status, cached_at: raw.cached_at });
+});
+
+app.get('/api/deal/:ticket', async (req, res) => {
+  const ticket = parseInt(req.params.ticket);
+  if (!ticket || ticket <= 0) return res.status(400).json({ error: 'invalid ticket' });
+  const data = await fetchMT5(`/history/deal/${ticket}`);
+  if (data.mt5_status === 'offline') return res.status(503).json(data);
+  res.json(data);
+});
+
 app.post('/api/mt5/order', async (req, res) => {
   const { symbol, action, volume, sl = 0, tp = 0 } = req.body;
   const vol = parseFloat(volume);
