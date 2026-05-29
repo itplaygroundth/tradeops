@@ -113,25 +113,28 @@ export default function App() {
   }, [chatMessages, aiTyping]);
 
   useEffect(() => {
+    let cancelled = false;
     const pollMT5 = async () => {
       try {
         const [acctRes, posRes] = await Promise.all([
           fetch(`${API_BASE}/api/mt5/account`),
           fetch(`${API_BASE}/api/mt5/positions`)
         ]);
+        if (cancelled) return;
         const acct = await acctRes.json();
         const pos = await posRes.json();
+        if (cancelled) return;
         setMt5Account(acct);
         setMt5Positions(pos.positions ?? []);
         setMt5Status(acct.mt5_status ?? 'offline');
         setMt5CachedAt(acct.cached_at);
       } catch {
-        setMt5Status('offline');
+        if (!cancelled) setMt5Status('offline');
       }
     };
     pollMT5();
     const id = setInterval(pollMT5, 5000);
-    return () => clearInterval(id);
+    return () => { cancelled = true; clearInterval(id); };
   }, []);
 
   const fetchPortfolio = async (isPoll = false) => {
@@ -229,6 +232,10 @@ export default function App() {
         setTxError('MT5 is offline — cannot place order');
         return;
       }
+      if (!txAssetId || !txUnits || parseFloat(txUnits) <= 0) {
+        setTxError('Symbol and valid volume required');
+        return;
+      }
       try {
         const res = await fetch(`${API_BASE}/api/mt5/order`, {
           method: 'POST',
@@ -243,6 +250,8 @@ export default function App() {
         if (!res.ok) throw new Error(data.error || 'Order failed');
         setTxSuccess(true);
         setTxError('');
+        setTxUnits('');
+        setTimeout(() => setTxSuccess(false), 5000);
       } catch (err) {
         setTxError(err.message);
       }
@@ -1512,8 +1521,8 @@ export default function App() {
                       <td style={{ padding: '8px 12px', textAlign: 'right' }}>{pos.volume}</td>
                       <td style={{ padding: '8px 12px', textAlign: 'right' }}>{pos.price_open?.toFixed(5)}</td>
                       <td style={{ padding: '8px 12px', textAlign: 'right' }}>{pos.price_current?.toFixed(5)}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6b7280' }}>{pos.sl || '—'}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6b7280' }}>{pos.tp || '—'}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6b7280' }}>{pos.sl > 0 ? pos.sl : '—'}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6b7280' }}>{pos.tp > 0 ? pos.tp : '—'}</td>
                       <td style={{ padding: '8px 12px', textAlign: 'right', color: pos.profit >= 0 ? '#34d399' : '#f87171', fontWeight: '600' }}>
                         {pos.profit?.toFixed(2)}
                       </td>
