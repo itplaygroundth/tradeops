@@ -1,0 +1,26 @@
+<h2>ถ้า MT5 bridge (192.168.1.107:8888) offline — ทำยังไง?</h2>
+<p class="subtitle">Windows machine อาจปิดหรือ MT5 หลุดได้</p>
+
+<div class="options">
+  <div class="option" data-choice="error" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>แสดง Error ทันที (Recommended)</h3>
+      <p>Dashboard แสดง "MT5 Disconnected" banner — ไม่แสดงข้อมูลเก่า</p>
+    </div>
+  </div>
+  <div class="option" data-choice="cache" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>แสดงข้อมูลเก่า (Stale Cache)</h3>
+      <p>ใช้ข้อมูลล่าสุดที่ดึงได้ + badge "Last updated X min ago"</p>
+    </div>
+  </div>
+  <div class="option" data-choice="mixed" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Mixed — stale + warning</h3>
+      <p>แสดงข้อมูลเก่า แต่มี warning ชัดเจนว่า MT5 offline</p>
+    </div>
+  </div>
+</div>
