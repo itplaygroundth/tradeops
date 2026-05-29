@@ -17,6 +17,8 @@ const WalletCard = lazy(() => import('./components/WalletCard.jsx'))
 const EquityCurveChart = lazy(() => import('./components/EquityCurveChart.jsx'))
 const DailyPnLChart = lazy(() => import('./components/DailyPnLChart.jsx'))
 const AssetGraphTabs = lazy(() => import('./components/AssetGraphTabs.jsx'))
+const TradeHistory = lazy(() => import('./components/TradeHistory.jsx'))
+const TradingPanel = lazy(() => import('./components/TradingPanel.jsx'))
 
 function LazyBox({ children }) {
   return (
@@ -57,6 +59,7 @@ export default function App() {
   const strategies = summary?.by_strategy || {}
   const topAgents = summary?.top5 || []
   const tradeJournal = summary?.trade_journal || {}
+  const orderHistory = state?.order_history || []
 
   return (
     <div className="app">
@@ -75,6 +78,7 @@ export default function App() {
         </div>
 
         <div className="agents-panel">
+          <LazyBox><TradingPanel /></LazyBox>
           <div className="panel-title">
             <span>🤖 AI Trading Agents</span>
             <span>{(agents || []).length} / {summary?.total_agents || 100}</span>
@@ -93,6 +97,7 @@ export default function App() {
           </div>
           <LazyBox><TopAgents agents={topAgents} /></LazyBox>
           <LazyBox><AiAdvisor summary={summary} /></LazyBox>
+          <LazyBox><TradeHistory orderHistory={orderHistory} /></LazyBox>
         </div>
       </div>
 
