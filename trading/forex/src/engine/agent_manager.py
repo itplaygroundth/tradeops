@@ -15,6 +15,9 @@ from engine.signals import ForexSignalEngine
 from engine.risk_guardian import ForexRiskGuardian, RiskResult
 from engine.evolution import evolve, EVOLUTION_INTERVAL
 from mt5_bridge.client import MT5Client
+from engine.competition_scheduler import CompetitionScheduler
+from engine.asset_leader import AssetLeader
+from engine.hermes_client import HermesClient, HermesError
 
 logger = logging.getLogger("agent_manager")
 
@@ -65,6 +68,18 @@ class ForexAgentManager:
                 asyncio.get_event_loop().create_task(self._load_recent_history())
             except Exception:
                 pass
+
+        # Competition scheduler & Hermes client (for sub-agent competitions)
+        symbols = list({dna.symbol for dna in dnas}) if dnas else []
+        try:
+            self.competition_scheduler = CompetitionScheduler(symbols, interval_seconds=3600)
+        except Exception:
+            self.competition_scheduler = None
+
+        try:
+            self.hermes_client = HermesClient()
+        except Exception:
+            self.hermes_client = None
 
     async def _load_recent_history(self, hours: int = 24, limit: int = 200):
         """Loads recent deals from MT5 bridge and adds them to the order history."""
@@ -135,6 +150,47 @@ class ForexAgentManager:
         if time.time() - self._last_evolution_time >= EVOLUTION_INTERVAL:
             self._run_evolution()
             self._last_evolution_time = time.time()
+
+        # Competition scheduler: run per-symbol competition in background when due
+        try:
+            if getattr(self, "competition_scheduler", None) and self.competition_scheduler.tick(symbol):
+                # find a production agent for this symbol (pick first matching)
+                prod = next((a for a in self.agents if a.dna.symbol == symbol), None)
+                asyncio.get_event_loop().create_task(self._run_competition_bg(symbol, prod))
+        except Exception:
+            logger.exception("Competition scheduling failed")
+
+    async def _run_competition_bg(self, symbol: str, production_agent: Optional[ForexAgent]):
+        try:
+            leader = AssetLeader(symbol, production_agent, self.mt5, self.hermes_client)
+            result = await leader.run_competition()
+        except HermesError as e:
+            logger.warning(f"Hermes error during competition for {symbol}: {e}")
+            return
+        except Exception as e:
+            logger.exception(f"Competition failed for {symbol}: {e}")
+            return
+
+        # write result into live_state summary for dashboard
+        try:
+            # load current state if exists
+            state = {}
+            if STATE_FILE.exists():
+                try:
+                    state = json.loads(STATE_FILE.read_text())
+                except Exception:
+                    state = {}
+            state.setdefault("summary", {})["last_competition"] = {
+                "symbol": result.symbol,
+                "winner_sharpe": result.winner_sharpe,
+                "approved": result.approved,
+                "applied": result.applied,
+                "forward_pnl": result.forward_pnl,
+                "timestamp": result.timestamp,
+            }
+            STATE_FILE.write_text(json.dumps(state))
+        except Exception:
+            logger.exception("Failed to write competition result to live state")
 
     async def _check_paper_positions(self, symbol: str, price: float):
         """Simulates SL/TP trigger evaluations for paper trading positions."""

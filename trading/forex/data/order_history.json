@@ -1,0 +1,29 @@
+[
+  {
+    "timestamp": 1780129854.9776323,
+    "agent": "FX-EUR-000",
+    "symbol": "EURUSDm",
+    "action": "BUY",
+    "volume": 0.07,
+    "price": 1.0,
+    "sl": 0.9985,
+    "tp": 1.0035,
+    "type": "paper",
+    "status": "open"
+  },
+  {
+    "timestamp": 1780129771.1439703,
+    "agent": "FX-EUR-000",
+    "symbol": "EURUSDm",
+    "action": "BUY",
+    "volume": 0.07,
+    "price": 1.0,
+    "sl": 0.9985,
+    "tp": 1.0035,
+    "type": "paper",
+    "status": "open",
+    "ticket": null,
+    "pnl": 0.0,
+    "comment": null
+  }
+]

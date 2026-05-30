@@ -22,10 +22,30 @@ PIP_SIZES = {
 }
 
 def get_pip_size(symbol: str) -> float:
-    return PIP_SIZES.get(symbol, 0.0001)
+    # Support symbols with or without 'm' suffix and case-insensitive
+    if symbol in PIP_SIZES:
+        return PIP_SIZES[symbol]
+    sym_up = symbol.upper()
+    if sym_up in PIP_SIZES:
+        return PIP_SIZES[sym_up]
+    if sym_up + "m" in PIP_SIZES:
+        return PIP_SIZES[sym_up + "m"]
+    if sym_up.endswith("M") and sym_up[:-1] in PIP_SIZES:
+        return PIP_SIZES[sym_up[:-1]]
+    return 0.0001
 
 def get_contract_size(symbol: str) -> float:
-    return CONTRACT_SIZES.get(symbol, 100000.0)  # Default 100,000 for standard FX pairs
+    # Support symbols with or without 'm' suffix and case-insensitive
+    if symbol in CONTRACT_SIZES:
+        return CONTRACT_SIZES[symbol]
+    sym_up = symbol.upper()
+    if sym_up in CONTRACT_SIZES:
+        return CONTRACT_SIZES[sym_up]
+    if sym_up + "m" in CONTRACT_SIZES:
+        return CONTRACT_SIZES[sym_up + "m"]
+    if sym_up.endswith("M") and sym_up[:-1] in CONTRACT_SIZES:
+        return CONTRACT_SIZES[sym_up[:-1]]
+    return 100000.0  # Default 100,000 for standard FX pairs
 
 def price_to_pips(symbol: str, price_distance: float) -> float:
     """Converts price distance to pips."""
