@@ -182,20 +182,26 @@ export default function TradeHistory({ orderHistory }) {
                 <td>{fmtTime(r.timestamp)}</td>
                 <td>{r.agent}</td>
                 <td>{r.symbol}</td>
-                <td>{r.action}</td>
+                <td className={`th-action ${/buy|long/i.test(r.action) ? 'up' : /sell|short/i.test(r.action) ? 'down' : ''}`}>{r.action}</td>
                 <td>{r.volume}</td>
                 <td>{r.price ?? '-'}</td>
                 <td>{r.sl ?? '-'}</td>
                 <td>{r.tp ?? '-'}</td>
                 <td>{r.type}</td>
-                <td>{r.status ?? (r.type==='closed'? 'closed':'-')}</td>
-                <td>{r.pnl !== undefined ? r.pnl : '-'}</td>
+                <td>
+                  <span className={`th-status th-status-${String(r.status ?? (r.type==='closed'?'closed':'')).toLowerCase()}`}>
+                    {r.status ?? (r.type==='closed'? 'closed':'-')}
+                  </span>
+                </td>
+                <td className={r.pnl > 0 ? 'th-pnl up' : r.pnl < 0 ? 'th-pnl down' : 'th-pnl'}>
+                  {r.pnl !== undefined && r.pnl !== null ? (r.pnl > 0 ? '+' : '') + Number(r.pnl).toFixed(2) : '-'}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div style={{textAlign:'center', padding:'8px'}}>
+      <div className="load-more-row">
         <button onClick={loadMore} disabled={loadingMore}>{loadingMore ? 'Loading...' : 'Load more'}</button>
       </div>
 

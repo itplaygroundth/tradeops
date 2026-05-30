@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Any, Dict
 from urllib import error, request
@@ -27,18 +28,80 @@ class HermesClient:
         self.timeout = timeout
         self.retries = retries
 
+    def _build_select_prompt(self, payload: Dict[str, Any]) -> str:
+        symbol = payload.get("symbol", "UNKNOWN")
+        regime = payload.get("regime", "UNKNOWN")
+        session = payload.get("session", "UNKNOWN")
+        balance = payload.get("balance", 0)
+        equity = payload.get("equity", 0)
+        results = payload.get("results", [])
+
+        lines = [
+            "You are an expert forex trading strategy analyst.",
+            f"Symbol: {symbol} | Regime: {regime} | Session: {session}",
+            f"Account balance: ${balance} | Equity: ${equity}",
+            "",
+            "Sub-agent backtest results (Sharpe ratio, higher = better):",
+        ]
+        for r in results:
+            lines.append(
+                f"  idx={r.get('idx')} strategy={r.get('strategy_name', 'N/A')} "
+                f"sharpe={r.get('sharpe', 0):.3f} pnl={r.get('pnl_pct', 0):.2f}% "
+                f"win_rate={r.get('win_rate', 0):.2f} max_dd={r.get('max_drawdown', 0):.2f}%"
+            )
+        lines += [
+            "",
+            "Select the best strategy for CURRENT market conditions.",
+            "Consider: regime fit, risk-adjusted returns, drawdown tolerance.",
+            'Respond in JSON: {"winner_idx": int, "reasoning": str, "confidence": float 0-1}',
+        ]
+        return "\n".join(lines)
+
+    def _build_verify_prompt(self, payload: Dict[str, Any]) -> str:
+        results = payload.get("forward_results", [])
+        lines = [
+            "Forward-test results for top-3 strategies over 15 minutes of live trading:",
+        ]
+        for r in results:
+            lines.append(
+                f"  strategy={r.get('strategy_name', 'N/A')} pnl={r.get('pnl', 0):.4f} "
+                f"max_dd={r.get('max_drawdown', 0):.4f} trades={r.get('trade_count', 0)}"
+            )
+        lines += [
+            "",
+            "Should we apply the winner strategy to the production agent?",
+            "Consider: is the PnL positive? Is max_drawdown acceptable (<2%)?",
+            'Respond in JSON: {"approved": bool, "apply_config": {strategy_weights dict}, "reason": str}',
+        ]
+        return "\n".join(lines)
+
     async def select_winner(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        resp = await asyncio.to_thread(self._post_with_retries, payload)
-        # basic validation
-        if not isinstance(resp, dict):
-            raise HermesError("Invalid response type from Hermes")
-        return resp
+        prompt = self._build_select_prompt(payload)
+        request_body = {
+            "model": "ClaudePro",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+        }
+        raw = await asyncio.to_thread(self._post_with_retries, request_body)
+        content = raw.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+        m = re.search(r"\{.*\}", content, re.DOTALL)
+        if m:
+            return json.loads(m.group())
+        raise HermesError(f"No JSON in Hermes response: {content[:200]}")
 
     async def verify_forward_test(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        resp = await asyncio.to_thread(self._post_with_retries, payload)
-        if not isinstance(resp, dict):
-            raise HermesError("Invalid response type from Hermes")
-        return resp
+        prompt = self._build_verify_prompt(payload)
+        request_body = {
+            "model": "ClaudePro",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+        }
+        raw = await asyncio.to_thread(self._post_with_retries, request_body)
+        content = raw.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+        m = re.search(r"\{.*\}", content, re.DOTALL)
+        if m:
+            return json.loads(m.group())
+        raise HermesError(f"No JSON in Hermes response: {content[:200]}")
 
     def _post_with_retries(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         last_exc = None

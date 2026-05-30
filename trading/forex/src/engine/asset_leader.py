@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from .dna import STRATEGY_METHODS
 from .sub_agent import BacktestResult, SubAgent
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,7 @@ class AssetLeader:
                 }
                 resp = await maybe_await(self.hermes.select_winner(payload))
                 winner_idx = resp.get("winner_idx", winner_idx)
+                winner_idx = max(0, min(int(winner_idx), len(configs) - 1))
                 reasoning = resp.get("reasoning", reasoning)
                 confidence = resp.get("confidence", confidence)
         except Exception:
@@ -99,7 +102,6 @@ class AssetLeader:
             except Exception:
                 logger.exception("Failed to apply winner config to production agent")
 
-        import time
 
         return CompetitionResult(
             self.symbol,
@@ -114,28 +116,58 @@ class AssetLeader:
         )
 
     def _make_configs(self) -> List[Dict[str, float]]:
-        # produce 12 simple configs; if production agent has dna, use it as baseline
-        base = getattr(self.production_agent, "dna", None)
-        base_weights = getattr(base, "strategy_weights", None) if base else None
+        """12 distinct strategy configs per spec (indices 0-11).
 
-        configs = []
-        for i in range(12):
-            if base_weights:
-                configs.append(dict(base_weights))
-            else:
-                # default balanced config
-                cfg = {
-                    "momentum": 0.125,
-                    "mean_reversion": 0.125,
-                    "grid_scalp": 0.125,
-                    "llm_sentiment": 0.125,
-                    "order_flow": 0.125,
-                    "breakout_atr": 0.125,
-                    "session_open": 0.125,
-                    "market_structure": 0.0,
-                }
-                configs.append(cfg)
-        return configs
+        Indices 0-9 are deterministic; 10-11 are seeded random.
+        All configs sum to exactly 1.0.
+        """
+        import random as _random
+
+        rng42 = _random.Random(42)
+        rng99 = _random.Random(99)
+        KEYS = STRATEGY_METHODS
+
+        def _rand(rng: _random.Random) -> Dict[str, float]:
+            w = [rng.random() for _ in KEYS]
+            s = sum(w)
+            return dict(zip(KEYS, [v / s for v in w]))
+
+        return [
+            # 0: momentum-heavy
+            {"momentum": 0.60, "mean_reversion": 0.10, "grid_scalp": 0.10, "llm_sentiment": 0.05,
+             "order_flow": 0.05, "breakout_atr": 0.05, "session_open": 0.05, "market_structure": 0.00},
+            # 1: mean-rev-heavy
+            {"momentum": 0.10, "mean_reversion": 0.60, "grid_scalp": 0.10, "llm_sentiment": 0.05,
+             "order_flow": 0.05, "breakout_atr": 0.05, "session_open": 0.05, "market_structure": 0.00},
+            # 2: grid-heavy
+            {"momentum": 0.10, "mean_reversion": 0.10, "grid_scalp": 0.60, "llm_sentiment": 0.05,
+             "order_flow": 0.05, "breakout_atr": 0.05, "session_open": 0.05, "market_structure": 0.00},
+            # 3: order-flow-heavy
+            {"momentum": 0.10, "mean_reversion": 0.10, "grid_scalp": 0.05, "llm_sentiment": 0.05,
+             "order_flow": 0.60, "breakout_atr": 0.05, "session_open": 0.05, "market_structure": 0.00},
+            # 4: breakout-heavy
+            {"momentum": 0.10, "mean_reversion": 0.05, "grid_scalp": 0.05, "llm_sentiment": 0.05,
+             "order_flow": 0.10, "breakout_atr": 0.55, "session_open": 0.10, "market_structure": 0.00},
+            # 5: session-heavy
+            {"momentum": 0.10, "mean_reversion": 0.05, "grid_scalp": 0.05, "llm_sentiment": 0.05,
+             "order_flow": 0.10, "breakout_atr": 0.10, "session_open": 0.55, "market_structure": 0.00},
+            # 6: structure-heavy
+            {"momentum": 0.05, "mean_reversion": 0.10, "grid_scalp": 0.05, "llm_sentiment": 0.05,
+             "order_flow": 0.15, "breakout_atr": 0.10, "session_open": 0.10, "market_structure": 0.40},
+            # 7: balanced-8 (equal weight all 8)
+            {"momentum": 0.125, "mean_reversion": 0.125, "grid_scalp": 0.125, "llm_sentiment": 0.125,
+             "order_flow": 0.125, "breakout_atr": 0.125, "session_open": 0.125, "market_structure": 0.125},
+            # 8: flow+breakout
+            {"momentum": 0.05, "mean_reversion": 0.05, "grid_scalp": 0.05, "llm_sentiment": 0.05,
+             "order_flow": 0.35, "breakout_atr": 0.35, "session_open": 0.05, "market_structure": 0.05},
+            # 9: session+structure
+            {"momentum": 0.05, "mean_reversion": 0.10, "grid_scalp": 0.05, "llm_sentiment": 0.05,
+             "order_flow": 0.10, "breakout_atr": 0.10, "session_open": 0.35, "market_structure": 0.20},
+            # 10: random-A seed 42
+            _rand(rng42),
+            # 11: random-B seed 99
+            _rand(rng99),
+        ]
 
 
 async def maybe_await(x):

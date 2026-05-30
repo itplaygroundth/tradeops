@@ -36,7 +36,7 @@ export default function TradingPanel() {
           ))}
         </div>
       </div>
-      <TvChart symbol={symbol} timeframe={tf} height={400} showVolume showCrosshair />
+      <TvChart symbol={symbol} timeframe={tf} showVolume showCrosshair />
     </div>
   )
 }

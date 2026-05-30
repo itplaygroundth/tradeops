@@ -59,6 +59,14 @@ class SubAgent:
             trades, max_dd = self._backtest_momentum(closes)
         elif primary == "mean_reversion":
             trades, max_dd = self._backtest_mean_reversion(closes)
+        elif primary == "order_flow":
+            trades, max_dd = self._backtest_order_flow(closes, candles)
+        elif primary == "breakout_atr":
+            trades, max_dd = self._backtest_breakout_atr(closes, candles)
+        elif primary == "session_open":
+            trades, max_dd = self._backtest_session_open(closes, candles)
+        elif primary == "market_structure":
+            trades, max_dd = self._backtest_market_structure(closes)
         else:
             # fallback: no trades
             trades = []
@@ -170,6 +178,141 @@ class SubAgent:
 
         max_dd = 0.0
         return trades, max_dd
+
+    def _backtest_order_flow(self, closes, candles):
+        """CVD divergence: sum(sign(close-open)*volume). Signal when CVD diverges from price momentum."""
+        trades = []
+        window = 20
+        in_pos = False
+        entry = 0.0
+        direction = 0
+
+        for i in range(window, len(candles)):
+            slice_c = candles[i - window: i]
+            cvd = sum((1 if c["close"] > c["open"] else -1) * c.get("volume", 1) for c in slice_c)
+            mom = (closes[i] - closes[i - window]) / (closes[i - window] or 1e-10) * 100.0
+            price = closes[i]
+
+            if not in_pos:
+                if mom > 0.3 and cvd < 0:
+                    in_pos, direction, entry = True, -1, price
+                elif mom < -0.3 and cvd > 0:
+                    in_pos, direction, entry = True, 1, price
+            else:
+                rev_mom = (closes[i] - closes[max(0, i - 5)]) / (closes[max(0, i - 5)] or 1e-10) * 100.0
+                if (direction == 1 and rev_mom < -0.1) or (direction == -1 and rev_mom > 0.1):
+                    ret = direction * (price - entry) / entry * 100.0
+                    trades.append(ret)
+                    in_pos = False
+
+        if in_pos:
+            trades.append(direction * (closes[-1] - entry) / entry * 100.0)
+        return trades, 0.0
+
+    def _backtest_breakout_atr(self, closes, candles):
+        """Breakout above 20-bar high or below 20-bar low, with ATR filter."""
+        trades = []
+        window = 20
+        atr_window = 14
+        in_pos = False
+        entry = 0.0
+        direction = 0
+
+        for i in range(window, len(candles)):
+            highs = [c["high"] for c in candles[i - window: i]]
+            lows = [c["low"] for c in candles[i - window: i]]
+            hi20 = max(highs)
+            lo20 = min(lows)
+            price = closes[i]
+
+            atr_bars = candles[max(0, i - atr_window): i]
+            atr = mean([c["high"] - c["low"] for c in atr_bars]) if atr_bars else 0.0
+            atr_pct = atr / price * 100.0 if price else 0.0
+
+            if not in_pos and atr_pct < 0.6:
+                if price > hi20:
+                    in_pos, direction, entry = True, 1, price
+                elif price < lo20:
+                    in_pos, direction, entry = True, -1, price
+            elif in_pos:
+                sl = atr * 2
+                pnl_abs = direction * (price - entry)
+                if pnl_abs < -sl or (direction == 1 and price < lo20) or (direction == -1 and price > hi20):
+                    trades.append(direction * (price - entry) / entry * 100.0)
+                    in_pos = False
+
+        if in_pos:
+            trades.append(direction * (closes[-1] - entry) / entry * 100.0)
+        return trades, 0.0
+
+    def _backtest_session_open(self, closes, candles):
+        """Signal in first 30 bars of session (proxy for London 07:00 open momentum)."""
+        trades = []
+        window = 5
+        in_pos = False
+        entry = 0.0
+        direction = 0
+
+        for i in range(window, len(candles)):
+            ts = candles[i].get("timestamp", i)
+            # NOTE: ts is a Unix timestamp proxy; int(ts or i) guards against None
+            bar_in_session = int(ts or i) % 480
+            if bar_in_session > 30:
+                continue
+
+            price = closes[i]
+            mom = (closes[i] - closes[i - window]) / (closes[i - window] or 1e-10) * 100.0
+
+            if not in_pos:
+                if mom > 0.2:
+                    in_pos, direction, entry = True, 1, price
+                elif mom < -0.2:
+                    in_pos, direction, entry = True, -1, price
+            else:
+                if bar_in_session > 20:
+                    trades.append(direction * (price - entry) / entry * 100.0)
+                    in_pos = False
+
+        if in_pos:
+            trades.append(direction * (closes[-1] - entry) / entry * 100.0)
+        return trades, 0.0
+
+    def _backtest_market_structure(self, closes):
+        """Break of Structure: higher high = bullish BoS, lower low = bearish BoS."""
+        trades = []
+        swing_window = 10
+        in_pos = False
+        entry = 0.0
+        direction = 0
+        prev_hh = None
+        prev_ll = None
+
+        for i in range(swing_window * 2, len(closes)):
+            window_slice = closes[i - swing_window: i]
+            hh = max(window_slice)
+            ll = min(window_slice)
+            price = closes[i]
+
+            if prev_hh is not None and prev_ll is not None:
+                if not in_pos:
+                    if price > prev_hh:
+                        in_pos, direction, entry = True, 1, price
+                    elif price < prev_ll:
+                        in_pos, direction, entry = True, -1, price
+                else:
+                    if direction == 1 and price < ll:
+                        trades.append((price - entry) / entry * 100.0)
+                        in_pos = False
+                    elif direction == -1 and price > hh:
+                        trades.append(-(price - entry) / entry * 100.0)
+                        in_pos = False
+
+            prev_hh = hh
+            prev_ll = ll
+
+        if in_pos:
+            trades.append(direction * (closes[-1] - entry) / entry * 100.0)
+        return trades, 0.0
 
 
 async def maybe_await(x):

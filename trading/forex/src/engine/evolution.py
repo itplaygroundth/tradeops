@@ -8,7 +8,7 @@ from typing import List
 
 from engine.dna import ForexAgentDNA, FOREX_SYMBOLS, STRATEGY_METHODS, random_dna
 
-MIN_TRADES_BEFORE_JUDGMENT = 30
+MIN_TRADES_BEFORE_JUDGMENT = 10  # lowered from 30 — Exness demo throughput ~6 closed/day/top-agent; 30 froze GA for ~1wk
 EVOLUTION_INTERVAL = 3600
 
 def fitness_score(agent_dict: dict, pop_strategy_avg: dict) -> float:

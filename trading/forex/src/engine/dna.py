@@ -10,7 +10,10 @@ FOREX_SYMBOLS = ["EURUSDm", "GBPUSDm", "USDJPYm", "XAUUSDm", "AUDUSDm", "USDCADm
 TIMEFRAMES = ["M15", "H1", "H4"]
 SESSIONS = ["LONDON", "NY", "ASIA", "ALL"]
 
-STRATEGY_METHODS = ["momentum", "mean_reversion", "grid_scalp", "llm_sentiment"]
+STRATEGY_METHODS = [
+    "momentum", "mean_reversion", "grid_scalp", "llm_sentiment",
+    "order_flow", "breakout_atr", "session_open", "market_structure",
+]
 
 # Symbol-specific defaults (from backtests)
 SYMBOL_DEFAULTS = {

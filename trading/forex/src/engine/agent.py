@@ -73,6 +73,14 @@ class ForexAgent:
             return tech
         elif dominant == "grid_scalp":
             return self._grid_signal(symbol, price)
+        elif dominant == "order_flow":
+            return self.signal_engine.order_flow_signal(symbol)
+        elif dominant == "breakout_atr":
+            return self.signal_engine.breakout_atr_signal(symbol)
+        elif dominant == "session_open":
+            return self.signal_engine.session_open_signal(symbol)
+        elif dominant == "market_structure":
+            return self.signal_engine.market_structure_signal(symbol)
         else:
             return self.signal_engine.technical_signal(symbol)
 
@@ -101,6 +109,25 @@ class ForexAgent:
         else:
             self.losses += 1
             self._consecutive_losses += 1
+
+    def update_strategy_weights(self, weights: dict):
+        """Apply a winning strategy-weight config (from AssetLeader competition).
+
+        Keeps only known strategies, drops non-positive/invalid values, and
+        normalizes to sum 1.0. No-op if nothing valid remains.
+        """
+        from engine.dna import STRATEGY_METHODS
+        clean = {
+            k: float(v)
+            for k, v in (weights or {}).items()
+            if k in STRATEGY_METHODS and isinstance(v, (int, float)) and v > 0
+        }
+        total = sum(clean.values())
+        if total <= 0:
+            logger.warning(f"Agent {self.dna.id}: ignoring empty/invalid weights {weights}")
+            return
+        self.dna.strategy_weights = {k: v / total for k, v in clean.items()}
+        logger.info(f"Agent {self.dna.id} ({self.dna.symbol}) weights updated -> {self.dna.strategy_weights}")
 
     def to_dict(self) -> dict:
         return {

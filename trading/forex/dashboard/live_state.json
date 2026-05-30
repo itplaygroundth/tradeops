@@ -1,0 +1,2860 @@
+{
+  "timestamp": 1780066403.5136726,
+  "paper_mode": false,
+  "account": {
+    "balance": 428.42,
+    "equity": 436.42
+  },
+  "agents": [
+    {
+      "id": 0,
+      "name": "FX-EUR-000",
+      "symbol": "EURUSDm",
+      "strategy": "grid_scalp",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 13.2,
+      "tp_pips": 30.7,
+      "strategy_weights": {
+        "momentum": 0.2563555470776124,
+        "mean_reversion": 0.22930873671491517,
+        "grid_scalp": 0.2830633247314944,
+        "llm_sentiment": 0.23127239147597808
+      }
+    },
+    {
+      "id": 1,
+      "name": "FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "strategy": "mean_reversion",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "M15",
+      "sl_pips": 22.7,
+      "tp_pips": 48.8,
+      "strategy_weights": {
+        "momentum": 0.10470311478909435,
+        "mean_reversion": 0.4321180902829142,
+        "grid_scalp": 0.10423007242524247,
+        "llm_sentiment": 0.35894872250274895
+      }
+    },
+    {
+      "id": 2,
+      "name": "FX-USD-002",
+      "symbol": "USDJPYm",
+      "strategy": "grid_scalp",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 15.6,
+      "tp_pips": 43.0,
+      "strategy_weights": {
+        "momentum": 0.19159251669525007,
+        "mean_reversion": 0.1895895382150858,
+        "grid_scalp": 0.34911117956375204,
+        "llm_sentiment": 0.2697067655259121
+      }
+    },
+    {
+      "id": 3,
+      "name": "FX-XAU-003",
+      "symbol": "XAUUSDm",
+      "strategy": "grid_scalp",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 186.6,
+      "tp_pips": 420.0,
+      "strategy_weights": {
+        "momentum": 0.4055115738643443,
+        "mean_reversion": 0.044755767549843846,
+        "grid_scalp": 0.5125558623230696,
+        "llm_sentiment": 0.03717679626274217
+      }
+    },
+    {
+      "id": 4,
+      "name": "FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "strategy": "llm_sentiment",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H4",
+      "sl_pips": 14.2,
+      "tp_pips": 31.3,
+      "strategy_weights": {
+        "momentum": 0.21390383115655703,
+        "mean_reversion": 0.23666869402983984,
+        "grid_scalp": 0.023645173795348567,
+        "llm_sentiment": 0.5257823010182545
+      }
+    },
+    {
+      "id": 5,
+      "name": "FX-USD-005",
+      "symbol": "USDCADm",
+      "strategy": "momentum",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 15.5,
+      "tp_pips": 36.2,
+      "strategy_weights": {
+        "momentum": 0.2900262207967612,
+        "mean_reversion": 0.20058253970550263,
+        "grid_scalp": 0.26506232307835553,
+        "llm_sentiment": 0.24432891641938062
+      }
+    },
+    {
+      "id": 6,
+      "name": "FX-USD-006",
+      "symbol": "USDCHFm",
+      "strategy": "momentum",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H4",
+      "sl_pips": 18.8,
+      "tp_pips": 45.2,
+      "strategy_weights": {
+        "momentum": 0.4011644821764903,
+        "mean_reversion": 0.08328165235313438,
+        "grid_scalp": 0.1571917611105209,
+        "llm_sentiment": 0.35836210435985427
+      }
+    },
+    {
+      "id": 7,
+      "name": "FX-NZD-007",
+      "symbol": "NZDUSDm",
+      "strategy": "llm_sentiment",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 13.9,
+      "tp_pips": 34.5,
+      "strategy_weights": {
+        "momentum": 0.26692578509083087,
+        "mean_reversion": 0.22583883205960034,
+        "grid_scalp": 0.23511619357897148,
+        "llm_sentiment": 0.27211918927059736
+      }
+    },
+    {
+      "id": 8,
+      "name": "FX-EUR-008",
+      "symbol": "EURUSDm",
+      "strategy": "grid_scalp",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 22.9,
+      "tp_pips": 37.5,
+      "strategy_weights": {
+        "momentum": 0.22693760255260043,
+        "mean_reversion": 0.3355391781294034,
+        "grid_scalp": 0.36532703212981843,
+        "llm_sentiment": 0.07219618718817783
+      }
+    },
+    {
+      "id": 9,
+      "name": "FX-GBP-009",
+      "symbol": "GBPUSDm",
+      "strategy": "llm_sentiment",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H4",
+      "sl_pips": 16.0,
+      "tp_pips": 38.0,
+      "strategy_weights": {
+        "momentum": 0.27685761707991974,
+        "mean_reversion": 0.21805205862258828,
+        "grid_scalp": 0.21965678940796304,
+        "llm_sentiment": 0.285433534889529
+      }
+    },
+    {
+      "id": 10,
+      "name": "FX-USD-010",
+      "symbol": "USDJPYm",
+      "strategy": "grid_scalp",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "M15",
+      "sl_pips": 18.8,
+      "tp_pips": 56.0,
+      "strategy_weights": {
+        "momentum": 0.14344153760359216,
+        "mean_reversion": 0.11993585091006673,
+        "grid_scalp": 0.42233089542733104,
+        "llm_sentiment": 0.31429171605901013
+      }
+    },
+    {
+      "id": 11,
+      "name": "FX-XAU-011",
+      "symbol": "XAUUSDm",
+      "strategy": "llm_sentiment",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H4",
+      "sl_pips": 104.3,
+      "tp_pips": 312.7,
+      "strategy_weights": {
+        "momentum": 0.35810211791353885,
+        "mean_reversion": 0.04892655061642515,
+        "grid_scalp": 0.07230374115156793,
+        "llm_sentiment": 0.520667590318468
+      }
+    },
+    {
+      "id": 12,
+      "name": "FX-AUD-012",
+      "symbol": "AUDUSDm",
+      "strategy": "grid_scalp",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 13.0,
+      "tp_pips": 29.9,
+      "strategy_weights": {
+        "momentum": 0.3067447974890736,
+        "mean_reversion": 0.31378418683782755,
+        "grid_scalp": 0.32446513775164937,
+        "llm_sentiment": 0.055005877921449516
+      }
+    },
+    {
+      "id": 13,
+      "name": "FX-USD-013",
+      "symbol": "USDCADm",
+      "strategy": "momentum",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 16.8,
+      "tp_pips": 27.1,
+      "strategy_weights": {
+        "momentum": 0.4012219499088319,
+        "mean_reversion": 0.10110356211091509,
+        "grid_scalp": 0.2832830563841279,
+        "llm_sentiment": 0.2143914315961251
+      }
+    },
+    {
+      "id": 14,
+      "name": "FX-USD-014",
+      "symbol": "USDCHFm",
+      "strategy": "grid_scalp",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H4",
+      "sl_pips": 11.4,
+      "tp_pips": 18.6,
+      "strategy_weights": {
+        "momentum": 0.20583090235347112,
+        "mean_reversion": 0.29079183480893367,
+        "grid_scalp": 0.3206299355127023,
+        "llm_sentiment": 0.18274732732489296
+      }
+    },
+    {
+      "id": 15,
+      "name": "FX-NZD-015",
+      "symbol": "NZDUSDm",
+      "strategy": "mean_reversion",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 12.7,
+      "tp_pips": 30.5,
+      "strategy_weights": {
+        "momentum": 0.34090261471533617,
+        "mean_reversion": 0.43171844502668055,
+        "grid_scalp": 0.01191188626201336,
+        "llm_sentiment": 0.21546705399597005
+      }
+    },
+    {
+      "id": 16,
+      "name": "FX-EUR-016",
+      "symbol": "EURUSDm",
+      "strategy": "momentum",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "M15",
+      "sl_pips": 24.7,
+      "tp_pips": 73.5,
+      "strategy_weights": {
+        "momentum": 0.5163077915560107,
+        "mean_reversion": 0.04443927296899403,
+        "grid_scalp": 0.1578768433011703,
+        "llm_sentiment": 0.28137609217382503
+      }
+    },
+    {
+      "id": 17,
+      "name": "FX-GBP-017",
+      "symbol": "GBPUSDm",
+      "strategy": "mean_reversion",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 25.8,
+      "tp_pips": 56.5,
+      "strategy_weights": {
+        "momentum": 0.2858485074745655,
+        "mean_reversion": 0.5147939707363814,
+        "grid_scalp": 0.1679685601016039,
+        "llm_sentiment": 0.031388961687449146
+      }
+    },
+    {
+      "id": 18,
+      "name": "FX-USD-018",
+      "symbol": "USDJPYm",
+      "strategy": "grid_scalp",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "M15",
+      "sl_pips": 16.6,
+      "tp_pips": 26.7,
+      "strategy_weights": {
+        "momentum": 0.3485101303607691,
+        "mean_reversion": 0.012999528015887432,
+        "grid_scalp": 0.38078686595953,
+        "llm_sentiment": 0.2577034756638136
+      }
+    },
+    {
+      "id": 19,
+      "name": "FX-XAU-019",
+      "symbol": "XAUUSDm",
+      "strategy": "llm_sentiment",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H4",
+      "sl_pips": 109.2,
+      "tp_pips": 198.6,
+      "strategy_weights": {
+        "momentum": 0.2822115424137924,
+        "mean_reversion": 0.10413842747063921,
+        "grid_scalp": 0.1595444208088583,
+        "llm_sentiment": 0.45410560930671007
+      }
+    },
+    {
+      "id": 20,
+      "name": "FX-AUD-020",
+      "symbol": "AUDUSDm",
+      "strategy": "llm_sentiment",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 10.4,
+      "tp_pips": 19.5,
+      "strategy_weights": {
+        "momentum": 0.12676142461825915,
+        "mean_reversion": 0.16292689074729833,
+        "grid_scalp": 0.1276379951540468,
+        "llm_sentiment": 0.5826736894803957
+      }
+    },
+    {
+      "id": 21,
+      "name": "FX-USD-021",
+      "symbol": "USDCADm",
+      "strategy": "llm_sentiment",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 13.1,
+      "tp_pips": 20.1,
+      "strategy_weights": {
+        "momentum": 0.2597735777491272,
+        "mean_reversion": 0.22711735016320517,
+        "grid_scalp": 0.24919618022009304,
+        "llm_sentiment": 0.26391289186757455
+      }
+    },
+    {
+      "id": 22,
+      "name": "FX-USD-022",
+      "symbol": "USDCHFm",
+      "strategy": "grid_scalp",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H1",
+      "sl_pips": 17.6,
+      "tp_pips": 39.5,
+      "strategy_weights": {
+        "momentum": 0.04434481650811933,
+        "mean_reversion": 0.20873937867157333,
+        "grid_scalp": 0.602769206713376,
+        "llm_sentiment": 0.14414659810693148
+      }
+    },
+    {
+      "id": 23,
+      "name": "FX-NZD-023",
+      "symbol": "NZDUSDm",
+      "strategy": "grid_scalp",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "M15",
+      "sl_pips": 11.0,
+      "tp_pips": 16.6,
+      "strategy_weights": {
+        "momentum": 0.42606571867402476,
+        "mean_reversion": 0.0710727479240971,
+        "grid_scalp": 0.43180742681714174,
+        "llm_sentiment": 0.07105410658473645
+      }
+    },
+    {
+      "id": 24,
+      "name": "FX-EUR-024",
+      "symbol": "EURUSDm",
+      "strategy": "mean_reversion",
+      "trades": 0,
+      "win_rate": 0.0,
+      "total_pnl": 0.0,
+      "total_pnl_pct": 0.0,
+      "pnl_pct": 0.0,
+      "equity": 1000.0,
+      "consecutive_losses": 0,
+      "in_trade": false,
+      "timeframe": "H4",
+      "sl_pips": 20.8,
+      "tp_pips": 58.1,
+      "strategy_weights": {
+        "momentum": 0.21528152446833762,
+        "mean_reversion": 0.49910609837409653,
+        "grid_scalp": 0.2572976311920944,
+        "llm_sentiment": 0.028314745965471406
+      }
+    }
+  ],
+  "order_history": [
+    {
+      "timestamp": 1780061616.1585982,
+      "agent": "FX-GBP-009",
+      "symbol": "GBPUSDm",
+      "action": "SELL",
+      "volume": 0.03,
+      "price": 1.3442100000000001,
+      "sl": 1.34586,
+      "tp": 1.34046,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010789315
+    },
+    {
+      "timestamp": 1780061616.0574074,
+      "agent": "FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "action": "BUY",
+      "volume": 0.02,
+      "price": 1.3443100000000001,
+      "sl": 1.34199,
+      "tp": 1.34914,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010789307
+    },
+    {
+      "timestamp": 1780061609.4150338,
+      "agent": "FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": "SELL",
+      "volume": 0.03,
+      "price": 0.71833,
+      "sl": 0.719795,
+      "tp": 0.715245,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010788947
+    },
+    {
+      "timestamp": 1779978991,
+      "agent": "D-trial-USD-8e1a09699c2b43",
+      "symbol": "",
+      "ticket": 1796397735,
+      "volume": 0.0,
+      "price": 0.0,
+      "pnl": 500.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780051195,
+      "agent": "MTAI-FX-AUD-012",
+      "symbol": "AUDUSDm",
+      "ticket": 1799680413,
+      "volume": 0.03,
+      "price": 0.7155900000000001,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780051202,
+      "agent": "MTAI-FX-XAU-019",
+      "symbol": "XAUUSDm",
+      "ticket": 1799681176,
+      "volume": 0.01,
+      "price": 4541.749,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780051202,
+      "agent": "MTAI-FX-XAU-003",
+      "symbol": "XAUUSDm",
+      "ticket": 1799681161,
+      "volume": 0.01,
+      "price": 4542.057,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780051330,
+      "agent": "MTAI-test",
+      "symbol": "AUDUSDm",
+      "ticket": 1799688154,
+      "volume": 0.01,
+      "price": 0.7156100000000001,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780051501,
+      "agent": "MTAI-close",
+      "symbol": "AUDUSDm",
+      "ticket": 1799698702,
+      "volume": 0.01,
+      "price": 0.7155,
+      "pnl": -0.11,
+      "type": "live",
+      "status": "placed"
+    },
+    {
+      "timestamp": 1780056684,
+      "agent": "[sl 0.71743]",
+      "symbol": "AUDUSDm",
+      "ticket": 1799964916,
+      "volume": 0.03,
+      "price": 0.71743,
+      "pnl": -5.52,
+      "type": "live",
+      "status": "placed"
+    },
+    {
+      "timestamp": 1780057830,
+      "agent": "[sl 4519.56100]",
+      "symbol": "XAUUSDm",
+      "ticket": 1800036750,
+      "volume": 0.01,
+      "price": 4519.561,
+      "pnl": -22.5,
+      "type": "live",
+      "status": "placed"
+    },
+    {
+      "timestamp": 1780060601,
+      "agent": "MTAI-FX-GBP-009",
+      "symbol": "GBPUSDm",
+      "ticket": 1800257045,
+      "volume": 0.02,
+      "price": 1.3439400000000001,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780060601,
+      "agent": "MTAI-FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "ticket": 1800257042,
+      "volume": 0.02,
+      "price": 1.3439400000000001,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780060805,
+      "agent": "MTAI-FX-AUD-020",
+      "symbol": "AUDUSDm",
+      "ticket": 1800264604,
+      "volume": 0.04,
+      "price": 0.7182000000000001,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780060805,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "ticket": 1800264603,
+      "volume": 0.03,
+      "price": 0.7182000000000001,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780060861,
+      "agent": "MTAI-FX-XAU-003",
+      "symbol": "XAUUSDm",
+      "ticket": 1800266675,
+      "volume": 0.01,
+      "price": 4524.344,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780060897,
+      "agent": "MTAI-FX-GBP-009",
+      "symbol": "GBPUSDm",
+      "ticket": 1800273705,
+      "volume": 0.03,
+      "price": 1.3442500000000002,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780060897,
+      "agent": "MTAI-FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "ticket": 1800273700,
+      "volume": 0.02,
+      "price": 1.3443500000000002,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780060898,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "ticket": 1800273892,
+      "volume": 0.03,
+      "price": 0.71835,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780061183,
+      "agent": "MTAI-FX-GBP-017",
+      "symbol": "GBPUSDm",
+      "ticket": 1800300959,
+      "volume": 0.03,
+      "price": 1.3441,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780061183,
+      "agent": "MTAI-FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "ticket": 1800300958,
+      "volume": 0.02,
+      "price": 1.344,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780061184,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "ticket": 1800300979,
+      "volume": 0.03,
+      "price": 0.7182200000000001,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780061220,
+      "agent": "MTAI-FX-GBP-017",
+      "symbol": "GBPUSDm",
+      "ticket": 1800301967,
+      "volume": 0.03,
+      "price": 1.3442200000000002,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780061221,
+      "agent": "MTAI-FX-AUD-012",
+      "symbol": "AUDUSDm",
+      "ticket": 1800302039,
+      "volume": 0.03,
+      "price": 0.71818,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780061221,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "ticket": 1800302034,
+      "volume": 0.03,
+      "price": 0.7182700000000001,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780061564,
+      "agent": "MTAI-FX-GBP-017",
+      "symbol": "GBPUSDm",
+      "ticket": 1800336251,
+      "volume": 0.02,
+      "price": 1.3442200000000002,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780061564,
+      "agent": "MTAI-FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "ticket": 1800336247,
+      "volume": 0.02,
+      "price": 1.3443200000000002,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780061565,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "ticket": 1800336296,
+      "volume": 0.03,
+      "price": 0.7183200000000001,
+      "pnl": 0.0,
+      "type": "live",
+      "status": "closed"
+    },
+    {
+      "timestamp": 1780061565.1314359,
+      "agent": "FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": "SELL",
+      "volume": 0.03,
+      "price": 0.7183200000000001,
+      "sl": 0.719985,
+      "tp": 0.714335,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010785232,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061564.169776,
+      "agent": "FX-GBP-017",
+      "symbol": "GBPUSDm",
+      "action": "SELL",
+      "volume": 0.02,
+      "price": 1.3442200000000002,
+      "sl": 1.34709,
+      "tp": 1.3375199999999998,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010785177,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061564.071561,
+      "agent": "FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "action": "BUY",
+      "volume": 0.02,
+      "price": 1.3443200000000002,
+      "sl": 1.3423699999999998,
+      "tp": 1.3488399999999998,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010785171,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061221.2023728,
+      "agent": "FX-AUD-012",
+      "symbol": "AUDUSDm",
+      "action": "SELL",
+      "volume": 0.03,
+      "price": 0.71818,
+      "sl": 0.719645,
+      "tp": 0.714845,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010747716,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061221.1028535,
+      "agent": "FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": "BUY",
+      "volume": 0.03,
+      "price": 0.7182700000000001,
+      "sl": 0.716645,
+      "tp": 0.721755,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010747711,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061221.0,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.7182700000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800302034,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061221.0,
+      "agent": "MTAI-FX-AUD-012",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.71818,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800302039,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061220.088378,
+      "agent": "FX-GBP-017",
+      "symbol": "GBPUSDm",
+      "action": "BUY",
+      "volume": 0.03,
+      "price": 1.3442200000000002,
+      "sl": 1.34253,
+      "tp": 1.3474700000000002,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010747629,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061220.0,
+      "agent": "MTAI-FX-GBP-017",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 1.3442200000000002,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800301967,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061184.754029,
+      "agent": "FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": "BUY",
+      "volume": 0.03,
+      "price": 0.7182200000000001,
+      "sl": 0.716515,
+      "tp": 0.722275,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010746401,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061184.0,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.7182200000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800300979,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061184.0,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.7182200000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800300979,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061183.822457,
+      "agent": "FX-GBP-017",
+      "symbol": "GBPUSDm",
+      "action": "BUY",
+      "volume": 0.03,
+      "price": 1.3441,
+      "sl": 1.34247,
+      "tp": 1.34749,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010746372,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061183.7232876,
+      "agent": "FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "action": "SELL",
+      "volume": 0.02,
+      "price": 1.344,
+      "sl": 1.34618,
+      "tp": 1.3388,
+      "type": "live",
+      "status": "placed",
+      "ticket": 2010746371,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061183.0,
+      "agent": "MTAI-FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.02,
+      "price": 1.344,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800300958,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061183.0,
+      "agent": "MTAI-FX-GBP-017",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 1.3441,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800300959,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061183.0,
+      "agent": "MTAI-FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.02,
+      "price": 1.344,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800300958,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780061183.0,
+      "agent": "MTAI-FX-GBP-017",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 1.3441,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800300959,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060898.0,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.71835,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800273892,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060898.0,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.71835,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800273892,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060897.0,
+      "agent": "MTAI-FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.02,
+      "price": 1.3443500000000002,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800273700,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060897.0,
+      "agent": "MTAI-FX-GBP-009",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 1.3442500000000002,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800273705,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060897.0,
+      "agent": "MTAI-FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.02,
+      "price": 1.3443500000000002,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800273700,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060897.0,
+      "agent": "MTAI-FX-GBP-009",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 1.3442500000000002,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800273705,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060861.0,
+      "agent": "MTAI-FX-XAU-003",
+      "symbol": "XAUUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 4524.344,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800266675,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060861.0,
+      "agent": "MTAI-FX-XAU-003",
+      "symbol": "XAUUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 4524.344,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800266675,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060805.0,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.7182000000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800264603,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060805.0,
+      "agent": "MTAI-FX-AUD-020",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.04,
+      "price": 0.7182000000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800264604,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060805.0,
+      "agent": "MTAI-FX-AUD-004",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.7182000000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800264603,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060805.0,
+      "agent": "MTAI-FX-AUD-020",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.04,
+      "price": 0.7182000000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800264604,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060601.0,
+      "agent": "MTAI-FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.02,
+      "price": 1.3439400000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800257042,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060601.0,
+      "agent": "MTAI-FX-GBP-009",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.02,
+      "price": 1.3439400000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800257045,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060601.0,
+      "agent": "MTAI-FX-GBP-001",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.02,
+      "price": 1.3439400000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800257042,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780060601.0,
+      "agent": "MTAI-FX-GBP-009",
+      "symbol": "GBPUSDm",
+      "action": null,
+      "volume": 0.02,
+      "price": 1.3439400000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1800257045,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780057830.0,
+      "agent": "[sl 4519.56100]",
+      "symbol": "XAUUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 4519.561,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "placed",
+      "ticket": 1800036750,
+      "pnl": -22.5,
+      "comment": null
+    },
+    {
+      "timestamp": 1780057830.0,
+      "agent": "[sl 4519.56100]",
+      "symbol": "XAUUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 4519.561,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "placed",
+      "ticket": 1800036750,
+      "pnl": -22.5,
+      "comment": null
+    },
+    {
+      "timestamp": 1780056684.0,
+      "agent": "[sl 0.71743]",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.71743,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "placed",
+      "ticket": 1799964916,
+      "pnl": -5.52,
+      "comment": null
+    },
+    {
+      "timestamp": 1780056684.0,
+      "agent": "[sl 0.71743]",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.71743,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "placed",
+      "ticket": 1799964916,
+      "pnl": -5.52,
+      "comment": null
+    },
+    {
+      "timestamp": 1780051501.0,
+      "agent": "MTAI-close",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 0.7155,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "placed",
+      "ticket": 1799698702,
+      "pnl": -0.11,
+      "comment": null
+    },
+    {
+      "timestamp": 1780051501.0,
+      "agent": "MTAI-close",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 0.7155,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "placed",
+      "ticket": 1799698702,
+      "pnl": -0.11,
+      "comment": null
+    },
+    {
+      "timestamp": 1780051330.0,
+      "agent": "MTAI-test",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 0.7156100000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1799688154,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780051330.0,
+      "agent": "MTAI-test",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 0.7156100000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1799688154,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780051202.0,
+      "agent": "MTAI-FX-XAU-003",
+      "symbol": "XAUUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 4542.057,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1799681161,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780051202.0,
+      "agent": "MTAI-FX-XAU-019",
+      "symbol": "XAUUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 4541.749,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1799681176,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780051202.0,
+      "agent": "MTAI-FX-XAU-003",
+      "symbol": "XAUUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 4542.057,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1799681161,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780051202.0,
+      "agent": "MTAI-FX-XAU-019",
+      "symbol": "XAUUSDm",
+      "action": null,
+      "volume": 0.01,
+      "price": 4541.749,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1799681176,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780051195.0,
+      "agent": "MTAI-FX-AUD-012",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.7155900000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1799680413,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1780051195.0,
+      "agent": "MTAI-FX-AUD-012",
+      "symbol": "AUDUSDm",
+      "action": null,
+      "volume": 0.03,
+      "price": 0.7155900000000001,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1799680413,
+      "pnl": 0.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1779978991.0,
+      "agent": "D-trial-USD-8e1a09699c2b43",
+      "symbol": "",
+      "action": null,
+      "volume": 0.0,
+      "price": 0.0,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1796397735,
+      "pnl": 500.0,
+      "comment": null
+    },
+    {
+      "timestamp": 1779978991.0,
+      "agent": "D-trial-USD-8e1a09699c2b43",
+      "symbol": "",
+      "action": null,
+      "volume": 0.0,
+      "price": 0.0,
+      "sl": 0.0,
+      "tp": 0.0,
+      "type": "live",
+      "status": "closed",
+      "ticket": 1796397735,
+      "pnl": 500.0,
+      "comment": null
+    }
+  ],
+  "summary": {
+    "total_agents": 25,
+    "active_agents": 0,
+    "total_pnl": 0.0,
+    "total_pnl_pct": 0.0,
+    "total_equity": 436.42,
+    "total_trades": 0,
+    "winners": 0,
+    "losers": 0,
+    "total_initial_capital": 1000.0,
+    "avg_win_rate": 0.0,
+    "top5": [
+      {
+        "id": 0,
+        "name": "FX-EUR-000",
+        "symbol": "EURUSDm",
+        "strategy": "grid_scalp",
+        "trades": 0,
+        "win_rate": 0.0,
+        "total_pnl": 0.0,
+        "total_pnl_pct": 0.0,
+        "pnl_pct": 0.0,
+        "equity": 1000.0,
+        "consecutive_losses": 0,
+        "in_trade": false,
+        "timeframe": "H1",
+        "sl_pips": 13.2,
+        "tp_pips": 30.7,
+        "strategy_weights": {
+          "momentum": 0.2563555470776124,
+          "mean_reversion": 0.22930873671491517,
+          "grid_scalp": 0.2830633247314944,
+          "llm_sentiment": 0.23127239147597808
+        }
+      },
+      {
+        "id": 1,
+        "name": "FX-GBP-001",
+        "symbol": "GBPUSDm",
+        "strategy": "mean_reversion",
+        "trades": 0,
+        "win_rate": 0.0,
+        "total_pnl": 0.0,
+        "total_pnl_pct": 0.0,
+        "pnl_pct": 0.0,
+        "equity": 1000.0,
+        "consecutive_losses": 0,
+        "in_trade": false,
+        "timeframe": "M15",
+        "sl_pips": 22.7,
+        "tp_pips": 48.8,
+        "strategy_weights": {
+          "momentum": 0.10470311478909435,
+          "mean_reversion": 0.4321180902829142,
+          "grid_scalp": 0.10423007242524247,
+          "llm_sentiment": 0.35894872250274895
+        }
+      },
+      {
+        "id": 2,
+        "name": "FX-USD-002",
+        "symbol": "USDJPYm",
+        "strategy": "grid_scalp",
+        "trades": 0,
+        "win_rate": 0.0,
+        "total_pnl": 0.0,
+        "total_pnl_pct": 0.0,
+        "pnl_pct": 0.0,
+        "equity": 1000.0,
+        "consecutive_losses": 0,
+        "in_trade": false,
+        "timeframe": "H1",
+        "sl_pips": 15.6,
+        "tp_pips": 43.0,
+        "strategy_weights": {
+          "momentum": 0.19159251669525007,
+          "mean_reversion": 0.1895895382150858,
+          "grid_scalp": 0.34911117956375204,
+          "llm_sentiment": 0.2697067655259121
+        }
+      },
+      {
+        "id": 3,
+        "name": "FX-XAU-003",
+        "symbol": "XAUUSDm",
+        "strategy": "grid_scalp",
+        "trades": 0,
+        "win_rate": 0.0,
+        "total_pnl": 0.0,
+        "total_pnl_pct": 0.0,
+        "pnl_pct": 0.0,
+        "equity": 1000.0,
+        "consecutive_losses": 0,
+        "in_trade": false,
+        "timeframe": "H1",
+        "sl_pips": 186.6,
+        "tp_pips": 420.0,
+        "strategy_weights": {
+          "momentum": 0.4055115738643443,
+          "mean_reversion": 0.044755767549843846,
+          "grid_scalp": 0.5125558623230696,
+          "llm_sentiment": 0.03717679626274217
+        }
+      },
+      {
+        "id": 4,
+        "name": "FX-AUD-004",
+        "symbol": "AUDUSDm",
+        "strategy": "llm_sentiment",
+        "trades": 0,
+        "win_rate": 0.0,
+        "total_pnl": 0.0,
+        "total_pnl_pct": 0.0,
+        "pnl_pct": 0.0,
+        "equity": 1000.0,
+        "consecutive_losses": 0,
+        "in_trade": false,
+        "timeframe": "H4",
+        "sl_pips": 14.2,
+        "tp_pips": 31.3,
+        "strategy_weights": {
+          "momentum": 0.21390383115655703,
+          "mean_reversion": 0.23666869402983984,
+          "grid_scalp": 0.023645173795348567,
+          "llm_sentiment": 0.5257823010182545
+        }
+      }
+    ],
+    "by_strategy": {
+      "grid_scalp": {
+        "count": 10,
+        "avg_pnl_pct": 0.0,
+        "trades": 0,
+        "total_pnl": 0.0,
+        "win_rate": 0.0
+      },
+      "mean_reversion": {
+        "count": 4,
+        "avg_pnl_pct": 0.0,
+        "trades": 0,
+        "total_pnl": 0.0,
+        "win_rate": 0.0
+      },
+      "llm_sentiment": {
+        "count": 7,
+        "avg_pnl_pct": 0.0,
+        "trades": 0,
+        "total_pnl": 0.0,
+        "win_rate": 0.0
+      },
+      "momentum": {
+        "count": 4,
+        "avg_pnl_pct": 0.0,
+        "trades": 0,
+        "total_pnl": 0.0,
+        "win_rate": 0.0
+      }
+    },
+    "prices": {
+      "EURUSDm": {
+        "price": 1.1667,
+        "change_pct": 0.01
+      },
+      "GBPUSDm": {
+        "price": 1.3467,
+        "change_pct": 0.007
+      },
+      "USDJPYm": {
+        "price": 159.188,
+        "change_pct": -0.005
+      },
+      "XAUUSDm": {
+        "price": 4565.093,
+        "change_pct": 0.013
+      },
+      "USDCHFm": {
+        "price": 0.7804,
+        "change_pct": -0.008
+      },
+      "AUDUSDm": {
+        "price": 0.7193,
+        "change_pct": 0.006
+      },
+      "USDCADm": {
+        "price": 1.3782,
+        "change_pct": 0.001
+      },
+      "NZDUSDm": {
+        "price": 0.599,
+        "change_pct": -0.002
+      }
+    },
+    "trade_journal": {
+      "equity_curve": [
+        {
+          "timestamp": 1780066350,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066351,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066350,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066351,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066350,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066352,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066351,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066350,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066352,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066353,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066352,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066353,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066352,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066353,
+          "total_equity": 436.87
+        },
+        {
+          "timestamp": 1780066354,
+          "total_equity": 437.26
+        },
+        {
+          "timestamp": 1780066355,
+          "total_equity": 437.26
+        },
+        {
+          "timestamp": 1780066356,
+          "total_equity": 437.26
+        },
+        {
+          "timestamp": 1780066357,
+          "total_equity": 437.26
+        },
+        {
+          "timestamp": 1780066358,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066357,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066358,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066357,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066358,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066359,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066358,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066359,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066360,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066359,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066360,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066359,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066360,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066361,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066359,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066360,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066361,
+          "total_equity": 437.32
+        },
+        {
+          "timestamp": 1780066360,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066361,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066362,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066361,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066362,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066363,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066362,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066363,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066362,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066363,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066362,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066363,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066364,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066363,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066364,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066363,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066364,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066363,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066364,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066363,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066364,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066363,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066364,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066365,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066363,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066365,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066364,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066365,
+          "total_equity": 438.04
+        },
+        {
+          "timestamp": 1780066366,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066365,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066366,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066365,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066366,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066367,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066366,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066367,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066366,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066368,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066366,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066368,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066367,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066368,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066369,
+          "total_equity": 437.59
+        },
+        {
+          "timestamp": 1780066368,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066369,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066368,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066369,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066368,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066369,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066370,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066369,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066370,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066369,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066368,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066369,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066370,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066369,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066370,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066369,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066370,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066368,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066371,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066369,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066371,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066372,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066371,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066372,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066371,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066372,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066371,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066372,
+          "total_equity": 437.4
+        },
+        {
+          "timestamp": 1780066373,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066372,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066373,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066372,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066373,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066374,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066373,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066374,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066373,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066374,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066375,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066374,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066375,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066374,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066375,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066374,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066375,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066375,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066375,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066375,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066375,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.37
+        },
+        {
+          "timestamp": 1780066377,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066377,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066377,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066377,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066377,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066377,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066376,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066378,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066379,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066378,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066379,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066378,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066379,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066378,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066379,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066380,
+          "total_equity": 437.33
+        },
+        {
+          "timestamp": 1780066381,
+          "total_equity": 437.13
+        },
+        {
+          "timestamp": 1780066382,
+          "total_equity": 437.13
+        },
+        {
+          "timestamp": 1780066383,
+          "total_equity": 437.13
+        },
+        {
+          "timestamp": 1780066384,
+          "total_equity": 437.13
+        },
+        {
+          "timestamp": 1780066383,
+          "total_equity": 437.13
+        },
+        {
+          "timestamp": 1780066384,
+          "total_equity": 437.13
+        },
+        {
+          "timestamp": 1780066383,
+          "total_equity": 437.13
+        },
+        {
+          "timestamp": 1780066384,
+          "total_equity": 437.13
+        },
+        {
+          "timestamp": 1780066383,
+          "total_equity": 437.13
+        },
+        {
+          "timestamp": 1780066384,
+          "total_equity": 437.13
+        },
+        {
+          "timestamp": 1780066383,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066384,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066383,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066384,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066385,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066384,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066385,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066386,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066385,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066386,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066385,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066386,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066385,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066386,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066387,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066386,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066387,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066388,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066387,
+          "total_equity": 436.85
+        },
+        {
+          "timestamp": 1780066388,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066389,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066388,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066389,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066388,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066389,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066388,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066389,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066390,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066389,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066390,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066389,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066390,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066391,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066392,
+          "total_equity": 436.63
+        },
+        {
+          "timestamp": 1780066393,
+          "total_equity": 436.86
+        },
+        {
+          "timestamp": 1780066392,
+          "total_equity": 436.86
+        },
+        {
+          "timestamp": 1780066393,
+          "total_equity": 436.86
+        },
+        {
+          "timestamp": 1780066394,
+          "total_equity": 436.86
+        },
+        {
+          "timestamp": 1780066395,
+          "total_equity": 436.86
+        },
+        {
+          "timestamp": 1780066396,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066395,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066396,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066397,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066396,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066397,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066396,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066397,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066398,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066397,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066398,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066397,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066398,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066397,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066398,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066397,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066399,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066398,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066399,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066398,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066399,
+          "total_equity": 436.79
+        },
+        {
+          "timestamp": 1780066400,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066399,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066400,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066399,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066400,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066401,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066400,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066401,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066400,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066401,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066402,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066401,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066402,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066401,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066402,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066401,
+          "total_equity": 436.42
+        },
+        {
+          "timestamp": 1780066403,
+          "total_equity": 436.42
+        }
+      ],
+      "daily_pnl": {}
+    },
+    "wallet": {
+      "usdt_value": 436.42,
+      "status": "connected"
+    },
+    "regime": {
+      "current_regime": "MIXED"
+    },
+    "paper_trade": {
+      "statistics": {
+        "total_orders_filled": 0,
+        "total_orders_placed": 0,
+        "total_fees_collected": 0.0,
+        "sharpe_ratio": 0.0,
+        "win_rate": 0.0,
+        "profit_factor": 0.0,
+        "total_pnl": 0.0
+      },
+      "positions_summary": {
+        "total_long_positions": 0,
+        "total_short_positions": 0,
+        "total_long_pnl": 0.0,
+        "total_short_pnl": 0.0
+      },
+      "order_book": {
+        "BTCUSDT": {},
+        "ETHUSDT": {},
+        "SOLUSDT": {}
+      },
+      "recent_trades": [],
+      "pnl_by_source": {
+        "trade": {
+          "net_pnl": 0.0,
+          "win_rate": 0.0
+        },
+        "dca": {
+          "net_pnl": 0.0,
+          "win_rate": 0.0
+        },
+        "rebalance": {
+          "net_pnl": 0.0,
+          "win_rate": 0.0
+        }
+      }
+    },
+    "market_context": {
+      "arena": {}
+    },
+    "discovered_strategies": {
+      "by_strategy": {}
+    },
+    "source_comparison": {}
+  }
+}

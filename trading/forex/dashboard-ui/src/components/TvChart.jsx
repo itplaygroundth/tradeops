@@ -32,7 +32,9 @@ function parseOhlcv(raw) {
   return arr.filter(c => c && typeof c.time === 'number' && c.open != null)
 }
 
-export default function TvChart({ symbol, timeframe = 'M15', height = 300, showVolume = true, showCrosshair = true }) {
+export default function TvChart({ symbol, timeframe = 'M15', height, showVolume = true, showCrosshair = true }) {
+  // height undefined => fill parent container (responsive)
+  const fillParent = height == null
   const containerRef = useRef(null)
   const chartRef = useRef(null)
   const candleRef = useRef(null)
@@ -47,7 +49,7 @@ export default function TvChart({ symbol, timeframe = 'M15', height = 300, showV
     const chart = createChart(containerRef.current, {
       ...THEME,
       width: containerRef.current.clientWidth,
-      height,
+      height: containerRef.current.clientHeight || height || 300,
       handleScroll: true,
       handleScale: true,
     })
@@ -93,8 +95,12 @@ export default function TvChart({ symbol, timeframe = 'M15', height = 300, showV
     }
 
     const ro = new ResizeObserver(entries => {
-      const w = entries[0]?.contentRect?.width
-      if (w) chart.applyOptions({ width: w })
+      const rect = entries[0]?.contentRect
+      if (rect?.width) {
+        chart.applyOptions(fillParent
+          ? { width: rect.width, height: rect.height }
+          : { width: rect.width })
+      }
     })
     ro.observe(containerRef.current)
 
@@ -105,7 +111,7 @@ export default function TvChart({ symbol, timeframe = 'M15', height = 300, showV
       candleRef.current = null
       volumeRef.current = null
     }
-  }, [height, showVolume, showCrosshair])
+  }, [height, fillParent, showVolume, showCrosshair])
 
   // Fetch data on symbol/timeframe change
   useEffect(() => {
@@ -139,7 +145,7 @@ export default function TvChart({ symbol, timeframe = 'M15', height = 300, showV
   }, [symbol, timeframe])
 
   return (
-    <div style={{ position: 'relative', width: '100%', height }}>
+    <div style={{ position: 'relative', width: '100%', height: fillParent ? '100%' : height, flex: fillParent ? 1 : undefined }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
       {loading && (
