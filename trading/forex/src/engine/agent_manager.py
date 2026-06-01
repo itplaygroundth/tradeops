@@ -21,7 +21,9 @@ from engine.hermes_client import HermesClient, HermesError
 
 logger = logging.getLogger("agent_manager")
 
-STATE_FILE = Path("dashboard/live_state.json")
+# Absolute path so the file lands where the dashboard server serves it
+# (mtai/dashboard), regardless of the process CWD.
+STATE_FILE = Path(__file__).resolve().parent.parent.parent / "dashboard" / "live_state.json"
 
 class ForexAgentManager:
     def __init__(self, mt5_client: MT5Client, paper_mode: bool = True, agent_count: int = 25):
