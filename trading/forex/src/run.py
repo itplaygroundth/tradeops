@@ -165,6 +165,7 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
     import http.server
     import socketserver
     import os
+    _event_loop = asyncio.get_event_loop()
 
     if dashboard_dir:
         dashboard_dir = Path(dashboard_dir)
@@ -183,6 +184,78 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
             pass
 
         def do_GET(self):
+            # MT5 open positions: /api/mt5/positions  → {"positions": [...]}
+            if self.path.startswith("/api/mt5/positions"):
+                if AGENT_MANAGER is None:
+                    self.send_response(503); self.end_headers(); return
+                try:
+                    fut = asyncio.run_coroutine_threadsafe(
+                        AGENT_MANAGER.mt5._client.get("/positions"), _event_loop
+                    )
+                    resp = fut.result(timeout=10)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(resp.content)
+                except Exception as e:
+                    self.send_response(502)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"positions": [], "error": str(e)}).encode())
+                return
+
+            # MT5 account: /api/mt5/account → {balance, equity, ...}
+            if self.path.startswith("/api/mt5/account"):
+                if AGENT_MANAGER is None:
+                    self.send_response(503); self.end_headers(); return
+                try:
+                    fut = asyncio.run_coroutine_threadsafe(
+                        AGENT_MANAGER.mt5._client.get("/account"), _event_loop
+                    )
+                    resp = fut.result(timeout=10)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(resp.content)
+                except Exception as e:
+                    self.send_response(502)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
+            # OHLCV chart data: /api/mt5/ohlcv/<symbol>?timeframe=M15&count=200
+            if self.path.startswith("/api/mt5/ohlcv/"):
+                from urllib.parse import urlparse, parse_qs
+                parsed = urlparse(self.path)
+                symbol = parsed.path.split("/api/mt5/ohlcv/", 1)[1].strip("/")
+                qs = parse_qs(parsed.query)
+                timeframe = qs.get("timeframe", ["M15"])[0]
+                count = int(qs.get("count", ["200"])[0])
+                if AGENT_MANAGER is None:
+                    self.send_response(503)
+                    self.end_headers()
+                    return
+                try:
+                    loop = _event_loop
+                    fut = asyncio.run_coroutine_threadsafe(
+                        AGENT_MANAGER.mt5.get_ohlcv(symbol, timeframe=timeframe, count=count), loop
+                    )
+                    result = fut.result(timeout=10)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(result).encode())
+                except Exception as e:
+                    self.send_response(502)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
             # Provide a small API to read current mode/account
             # Deal history lookup: /api/deal/<ticket>
             if self.path.startswith("/api/deal/"):
@@ -198,7 +271,7 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                     self.end_headers()
                     return
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = _event_loop
                     fut = asyncio.run_coroutine_threadsafe(AGENT_MANAGER.mt5.get_deal_history(ticket), loop)
                     result = fut.result(timeout=5)
                     self.send_response(200)
@@ -374,7 +447,7 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                 # For live requests, ensure manager is live and update account
                 AGENT_MANAGER.paper_mode = False
                 try:
-                    loop = asyncio.get_event_loop()
+                    loop = _event_loop
                     asyncio.run_coroutine_threadsafe(AGENT_MANAGER._update_account(), loop)
                 except Exception:
                     pass

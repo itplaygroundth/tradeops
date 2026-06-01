@@ -291,6 +291,9 @@ class ForexAgentManager:
                         "ticket": ticket,
                         "pnl": pnl,
                         "type": "closed",
+                        "status": "closed",
+                        "action": agent._open_side,
+                        "price": agent._open_entry,
                     }
                     self._order_history.insert(0, closed_entry)
                     if len(self._order_history) > 500:
