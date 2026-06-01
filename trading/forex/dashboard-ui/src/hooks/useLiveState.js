@@ -25,10 +25,11 @@ export function useLiveState() {
       ])
       const acct = await acctRes.json()
       const pos = await posRes.json()
+      const ok = acctRes.ok && posRes.ok && !acct.error && !pos.error
       setMt5({
         account: acct,
         positions: pos.positions ?? [],
-        status: acct.mt5_status ?? 'offline',
+        status: acct.mt5_status ?? (ok ? 'online' : 'offline'),
         cachedAt: acct.cached_at,
       })
     } catch {

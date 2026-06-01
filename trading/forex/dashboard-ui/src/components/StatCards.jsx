@@ -1,8 +1,15 @@
 export default function StatCards({ summary, mt5 }) {
   if (!summary) return null
 
-  const pnlPct = summary.total_pnl_pct || 0
-  const pnlDollar = summary.total_pnl || 0
+  const acct = mt5?.account || {}
+  const liveOnline = mt5?.status === 'online'
+  const liveProfit = typeof acct.profit === 'number' ? acct.profit : null
+  const liveBalance = typeof acct.balance === 'number' ? acct.balance : 0
+  const liveEquity = typeof acct.equity === 'number' ? acct.equity : null
+  const pnlDollar = liveProfit ?? (summary.total_pnl || 0)
+  const pnlPct = liveProfit != null && liveBalance
+    ? (liveProfit / liveBalance) * 100
+    : (summary.total_pnl_pct || 0)
   const equity = summary.total_equity || 0
   const trades = summary.total_trades || 0
   const winners = summary.winners || 0
@@ -17,13 +24,20 @@ export default function StatCards({ summary, mt5 }) {
   const activeAgents = summary.active_agents || 0
   const totalAgents = summary.total_agents || 25
   const winRate = trades > 0 ? ((winners / trades) * 100) : 0
+  const livePositions = mt5?.positions || []
+  const positionRows = liveOnline ? livePositions : []
+  const liveLong = positionRows.filter(p => String(p.type).toUpperCase() === 'BUY')
+  const liveShort = positionRows.filter(p => String(p.type).toUpperCase() === 'SELL')
+  const liveLongPnl = liveLong.reduce((s, p) => s + (p.profit || 0), 0)
+  const liveShortPnl = liveShort.reduce((s, p) => s + (p.profit || 0), 0)
+  const useLivePositions = positionRows.length > 0 || liveOnline
 
   return (
     <div className="stat-cards-row">
 
       {/* ═══ Today PnL ═══ */}
       <div className="stat-card today-pnl">
-        <div className="stat-card-label">Total PnL</div>
+        <div className="stat-card-label">{liveProfit != null ? 'Live Account PnL' : 'Total PnL'}</div>
         <div className="stat-card-value">
           <span className={pnlPct >= 0 ? 'up' : 'down'}>
             {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}
@@ -74,17 +88,17 @@ export default function StatCards({ summary, mt5 }) {
       {/* ═══ Open Positions ═══ */}
       <div className="stat-card positions">
         {(() => {
-          const longN = positionsSummary.total_long_positions || 0
-          const shortN = positionsSummary.total_short_positions || 0
-          const longPnl = positionsSummary.total_long_pnl || 0
-          const shortPnl = positionsSummary.total_short_pnl || 0
+          const longN = useLivePositions ? liveLong.length : (positionsSummary.total_long_positions || 0)
+          const shortN = useLivePositions ? liveShort.length : (positionsSummary.total_short_positions || 0)
+          const longPnl = useLivePositions ? liveLongPnl : (positionsSummary.total_long_pnl || 0)
+          const shortPnl = useLivePositions ? liveShortPnl : (positionsSummary.total_short_pnl || 0)
           const totalN = longN + shortN
           const netPnl = longPnl + shortPnl
           const longPct = totalN > 0 ? (longN / totalN) * 100 : 50
           return (
             <>
               <div className="pos-head">
-                <span className="stat-card-label">Open Positions</span>
+                <span className="stat-card-label">{useLivePositions ? 'Live Open Positions' : 'Open Positions'}</span>
                 <span className="pos-open-count">{totalN} open</span>
               </div>
               <div className={`pos-net ${netPnl >= 0 ? 'up' : 'down'}`}>
@@ -110,21 +124,24 @@ export default function StatCards({ summary, mt5 }) {
                 </div>
               </div>
 
-              {mt5?.positions?.length > 0 && (
+              {positionRows.length > 0 && (
                 <div className="pos-live">
-                  {mt5.positions.slice(0, 3).map(pos => (
+                  {positionRows.slice(0, 3).map(pos => {
+                    const side = String(pos.type || '').toUpperCase()
+                    return (
                     <div key={pos.ticket} className="pos-live-row">
                       <span className="pos-live-sym">
                         {pos.symbol.replace('m','')}
-                        <span className={pos.type === 0 ? 'up' : 'down'}> {pos.type === 0 ? 'BUY' : 'SELL'}</span>
+                        <span className={side === 'BUY' ? 'up' : 'down'}> {side}</span>
                       </span>
                       <span className={`pos-live-pnl ${pos.profit >= 0 ? 'up' : 'down'}`}>
                         {pos.profit >= 0 ? '+' : ''}${pos.profit?.toFixed(2)}
                       </span>
                     </div>
-                  ))}
-                  {mt5.positions.length > 3 && (
-                    <div className="pos-live-more">+{mt5.positions.length - 3} more</div>
+                    )
+                  })}
+                  {positionRows.length > 3 && (
+                    <div className="pos-live-more">+{positionRows.length - 3} more</div>
                   )}
                 </div>
               )}
@@ -153,7 +170,7 @@ export default function StatCards({ summary, mt5 }) {
         </div>
         <div className="stat-card-footer">
           <span>MODE <strong>{summary.paper_mode ? 'PAPER' : 'LIVE'}</strong></span>
-          <span>EQUITY <strong>${equity.toFixed(2)}</strong></span>
+          <span>EQUITY <strong>${(liveEquity ?? equity).toFixed(2)}</strong></span>
         </div>
       </div>
     </div>

@@ -189,15 +189,60 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                 if AGENT_MANAGER is None:
                     self.send_response(503); self.end_headers(); return
                 try:
-                    fut = asyncio.run_coroutine_threadsafe(
-                        AGENT_MANAGER.mt5._client.get("/positions"), _event_loop
-                    )
-                    resp = fut.result(timeout=10)
+                    async def enriched_positions():
+                        resp = await AGENT_MANAGER.mt5._client.get("/positions")
+                        resp.raise_for_status()
+                        payload = resp.json()
+                        positions = payload.get("positions", [])
+                        ticks = {}
+                        for symbol in sorted({p.get("symbol") for p in positions if p.get("symbol")}):
+                            try:
+                                tick_resp = await AGENT_MANAGER.mt5._client.get(f"/price/{symbol}")
+                                tick_resp.raise_for_status()
+                                ticks[symbol] = tick_resp.json()
+                            except Exception:
+                                ticks[symbol] = {}
+
+                        for pos in positions:
+                            side_raw = pos.get("type")
+                            side = "BUY" if side_raw == 0 else "SELL" if side_raw == 1 else str(side_raw or "").upper()
+                            tick = ticks.get(pos.get("symbol"), {})
+                            bid = tick.get("bid")
+                            ask = tick.get("ask")
+                            if bid is not None:
+                                pos["bid"] = float(bid)
+                            if ask is not None:
+                                pos["ask"] = float(ask)
+                            if bid is not None and ask is not None:
+                                pos["last"] = float((bid + ask) / 2)
+
+                            trigger = bid if side == "BUY" else ask
+                            trigger_side = "Bid" if side == "BUY" else "Ask"
+                            pos["type"] = side
+                            pos["tp_trigger_side"] = trigger_side
+                            if trigger is not None:
+                                trigger = float(trigger)
+                                pos["tp_trigger_price"] = trigger
+                                tp = float(pos.get("tp") or 0)
+                                sl = float(pos.get("sl") or 0)
+                                if tp:
+                                    raw_tp_distance = tp - trigger if side == "BUY" else trigger - tp
+                                    pos["tp_distance"] = max(raw_tp_distance, 0.0)
+                                    pos["tp_hit"] = raw_tp_distance <= 0
+                                if sl:
+                                    raw_sl_distance = trigger - sl if side == "BUY" else sl - trigger
+                                    pos["sl_distance"] = max(raw_sl_distance, 0.0)
+                                    pos["sl_hit"] = raw_sl_distance <= 0
+                        return {"positions": positions}
+
+                    fut = asyncio.run_coroutine_threadsafe(enriched_positions(), _event_loop)
+                    result = fut.result(timeout=10)
+                    body = json.dumps(result).encode()
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
-                    self.wfile.write(resp.content)
+                    self.wfile.write(body)
                 except Exception as e:
                     self.send_response(502)
                     self.send_header("Content-Type", "application/json")

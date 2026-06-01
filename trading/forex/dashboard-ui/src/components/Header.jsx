@@ -1,13 +1,16 @@
 import { useState } from 'react'
 
-export default function Header({ summary }) {
+export default function Header({ summary, mt5 }) {
   if (!summary) return null
 
   // Deployment enforces live-only; show static badge
   const [mode] = useState('live')
 
-  const pnl = summary.total_pnl_pct || 0
-  const equity = summary.total_equity || 0
+  const acct = mt5?.account || {}
+  const liveProfit = typeof acct.profit === 'number' ? acct.profit : null
+  const liveBalance = typeof acct.balance === 'number' ? acct.balance : 0
+  const pnl = liveProfit != null && liveBalance ? (liveProfit / liveBalance) * 100 : (summary.total_pnl_pct || 0)
+  const equity = typeof acct.equity === 'number' ? acct.equity : (summary.total_equity || 0)
   const trades = summary.total_trades || 0
   const winners = summary.winners || 0
   const losers = summary.losers || 0
@@ -39,7 +42,7 @@ export default function Header({ summary }) {
           </div>
         </div>
         <div className="header-stats">
-          <Stat label="Total PnL" value={`${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%`} up={pnl >= 0} />
+          <Stat label={liveProfit != null ? 'Live PnL' : 'Total PnL'} value={`${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%`} up={pnl >= 0} />
           <Stat label="Equity" value={`$${equity.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`} />
           <Stat label="Trades" value={trades.toLocaleString()} />
           <Stat label="Win/Loss" value={`${winners}/${losers}`} />
@@ -52,7 +55,7 @@ export default function Header({ summary }) {
             {regime}
           </span>
         )}
-        <span className="mode-badge" title="Live-only deployment">{mode === 'live' ? '🔴 LIVE' : '🟡 PAPER'}</span>
+        <span className="mode-badge" title="Live-only deployment">{mode === 'live' ? 'LIVE' : 'PAPER'}</span>
         <div className="uptime">{String(h).padStart(2,'0')}:{String(m).padStart(2,'0')}:{String(s).padStart(2,'0')}</div>
       </div>
     </div>

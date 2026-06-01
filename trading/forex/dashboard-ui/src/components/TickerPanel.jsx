@@ -22,7 +22,10 @@ export default function TickerPanel({ prices = {} }) {
         }
 
         const priceStr = typeof price === 'number'
-          ? `$${price.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`
+          ? price.toLocaleString(undefined, {
+              minimumFractionDigits: /JPY|XAU/i.test(sym) ? 3 : 5,
+              maximumFractionDigits: /JPY|XAU/i.test(sym) ? 3 : 5,
+            })
           : '—'
 
         return (

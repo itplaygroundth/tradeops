@@ -21,7 +21,7 @@ function toCSV(rows) {
   return [header].concat(lines).join('\n')
 }
 
-export default function TradeHistory({ orderHistory }) {
+export default function TradeHistory({ orderHistory, positions = [] }) {
   const [rows, setRows] = useState(orderHistory || [])
   const [filter, setFilter] = useState({ q: '', symbol: '', agent: '', status: '' })
   const [detail, setDetail] = useState(null)
@@ -141,6 +141,22 @@ export default function TradeHistory({ orderHistory }) {
   }
 
   const list = filtered()
+  const activeByTicket = new Map((positions || []).map(p => [String(p.ticket), p]))
+
+  function displayRow(row) {
+    const active = row.ticket ? activeByTicket.get(String(row.ticket)) : null
+    if (!active) return row
+    return {
+      ...row,
+      status: 'open',
+      pnl: active.profit,
+      price: active.price_open ?? row.price,
+      sl: active.sl ?? row.sl,
+      tp: active.tp ?? row.tp,
+      volume: active.volume ?? row.volume,
+      action: active.type ?? row.action,
+    }
+  }
 
   return (
     <div className="trade-history panel">
@@ -176,8 +192,10 @@ export default function TradeHistory({ orderHistory }) {
             </tr>
           </thead>
           <tbody>
-            {list.map((r, i) => (
-              <tr key={i} onClick={()=>showDetail(r)} style={{cursor: r.ticket ? 'pointer' : 'default'}}>
+            {list.map((raw, i) => {
+              const r = displayRow(raw)
+              return (
+              <tr key={i} onClick={()=>showDetail(raw)} style={{cursor: raw.ticket ? 'pointer' : 'default'}}>
                 <td className="th-time">{fmtTime(r.timestamp)}</td>
                 <td className="th-agent">{r.agent}</td>
                 <td className="th-symbol">{r.symbol}</td>
@@ -196,7 +214,8 @@ export default function TradeHistory({ orderHistory }) {
                   {r.pnl !== undefined && r.pnl !== null ? (r.pnl > 0 ? '+' : '') + Number(r.pnl).toFixed(2) : '-'}
                 </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>

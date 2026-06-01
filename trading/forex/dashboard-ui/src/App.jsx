@@ -52,7 +52,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Header summary={summary} />
+      <Header summary={summary} mt5={mt5} />
 
       {/* Top Stat Cards — loaded eagerly, always above fold */}
       <StatCards summary={summary} mt5={mt5} />
@@ -73,7 +73,7 @@ export default function App() {
           </div>
           
           {/* BOTTOM TERMINAL */}
-          <BottomTerminal orderHistory={orderHistory} agents={agents} summary={summary} />
+          <BottomTerminal orderHistory={orderHistory} agents={agents} summary={summary} mt5={mt5} />
         </div>
       </div>
 
@@ -82,7 +82,7 @@ export default function App() {
   )
 }
 
-function BottomTerminal({ orderHistory, agents, summary }) {
+function BottomTerminal({ orderHistory, agents, summary, mt5 }) {
   const [tab, setTab] = useState('history')
   const tabs = [
     { id: 'history', label: '📜 Trade History', count: orderHistory.length },
@@ -104,7 +104,7 @@ function BottomTerminal({ orderHistory, agents, summary }) {
         ))}
       </div>
       <div className="terminal-panel">
-        {tab === 'history' && <LazyBox><TradeHistory orderHistory={orderHistory} /></LazyBox>}
+        {tab === 'history' && <LazyBox><TradeHistory orderHistory={orderHistory} positions={mt5?.positions ?? []} /></LazyBox>}
         {tab === 'agents' && <LazyBox><AgentGrid agents={agents} /></LazyBox>}
         {tab === 'infra' && <LazyBox><Infrastructure summary={summary} /></LazyBox>}
       </div>

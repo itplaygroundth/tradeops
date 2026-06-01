@@ -2372,10 +2372,39 @@ body {
 .order-book-table td.ob-lots    { color: #5ac8fa; font-weight: 600; }
 .order-book-table td.ob-open    { color: var(--text-muted); }
 .order-book-table td.ob-current { color: var(--text-primary); font-weight: 600; }
+.order-book-table td.ob-current {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.ob-quote {
+  color: var(--text-secondary);
+}
+.ob-quote:first-child {
+  color: #5ac8fa;
+}
+.order-book-table td.ob-trigger {
+  color: var(--text-muted);
+}
+.order-book-table td.ob-trigger span {
+  margin-right: 5px;
+  color: var(--text-muted);
+}
+.order-book-table td.ob-trigger strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
 .order-book-table td.ob-pnl.ob-profit { color: #34c759; font-weight: 700; }
 .order-book-table td.ob-pnl.ob-loss   { color: #ff453a; font-weight: 700; }
 .order-book-table td.ob-sl  { color: rgba(255,69,58,0.75); }
 .order-book-table td.ob-tp  { color: rgba(52,199,89,0.75); }
+.order-book-table td.ob-distance {
+  color: var(--gold);
+  font-weight: 700;
+}
+.order-book-table td.ob-distance.hit {
+  color: var(--green);
+}
 
 /* ── Trade History per-column colors ── */
 .history-table td.th-time   { color: var(--text-muted); }
