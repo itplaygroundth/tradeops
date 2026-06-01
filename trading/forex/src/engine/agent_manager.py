@@ -177,32 +177,75 @@ class ForexAgentManager:
 
             # write result into live_state summary for dashboard
             try:
-                # load current state if exists
                 state = {}
                 if STATE_FILE.exists():
                     try:
                         state = json.loads(STATE_FILE.read_text())
                     except Exception:
                         state = {}
-                state.setdefault("summary", {})["last_competition"] = {
-                    "symbol": result.symbol,
-                    "regime": result.regime,
-                    "winner_sharpe": result.winner_sharpe,
-                    "selection_source": result.selection_source,
-                    "llm_error": result.llm_error,
-                    "deterministic_winner_idx": result.deterministic_winner_idx,
-                    "llm_winner_idx": result.llm_winner_idx,
-                    "proposal_status": result.proposal_status,
-                    "proposal_reason": result.proposal_reason,
-                    "proposal_source": result.proposal_source,
-                    "approved": result.approved,
-                    "applied": result.applied,
-                    "forward_pnl": result.forward_pnl,
-                    "timestamp": result.timestamp,
-                }
+                self._merge_competition_summary(state, self._competition_entry(result))
                 STATE_FILE.write_text(json.dumps(state))
             except Exception:
                 logger.exception("Failed to write competition result to live state")
+
+    def _competition_entry(self, result) -> Dict:
+        leader_score = float(result.forward_pnl) + (float(result.winner_sharpe) * 0.1)
+        if result.applied:
+            leader_score += 1.0
+        elif result.approved:
+            leader_score += 0.5
+        if result.llm_error:
+            leader_score -= 0.25
+        return {
+            "symbol": result.symbol,
+            "regime": result.regime,
+            "winner_sharpe": result.winner_sharpe,
+            "winner_config": result.winner_config,
+            "leader_score": round(leader_score, 6),
+            "selection_source": result.selection_source,
+            "llm_error": result.llm_error,
+            "deterministic_winner_idx": result.deterministic_winner_idx,
+            "llm_winner_idx": result.llm_winner_idx,
+            "proposal_status": result.proposal_status,
+            "proposal_reason": result.proposal_reason,
+            "proposal_source": result.proposal_source,
+            "approved": result.approved,
+            "applied": result.applied,
+            "forward_pnl": result.forward_pnl,
+            "timestamp": result.timestamp,
+        }
+
+    def _merge_competition_summary(self, state: Dict, entry: Dict):
+        summary = state.setdefault("summary", {})
+        summary["last_competition"] = entry
+
+        history = summary.get("competition_history") or []
+        if not isinstance(history, list):
+            history = []
+        history.append(entry)
+        history = sorted(history, key=lambda item: item.get("timestamp", 0), reverse=True)[:50]
+        summary["competition_history"] = history
+
+        by_symbol = summary.get("competition_by_symbol") or {}
+        if not isinstance(by_symbol, dict):
+            by_symbol = {}
+        current = by_symbol.get(entry["symbol"])
+        if not current or entry.get("timestamp", 0) >= current.get("timestamp", 0):
+            by_symbol[entry["symbol"]] = entry
+        summary["competition_by_symbol"] = by_symbol
+
+        candidates = [item for item in history if item.get("applied") or item.get("approved")]
+        if not candidates:
+            candidates = history
+        if candidates:
+            summary["best_leader_asset"] = max(
+                candidates,
+                key=lambda item: (
+                    item.get("leader_score", 0),
+                    item.get("forward_pnl", 0),
+                    item.get("winner_sharpe", 0),
+                ),
+            )
 
     async def _check_paper_positions(self, symbol: str, price: float):
         """Simulates SL/TP trigger evaluations for paper trading positions."""
@@ -485,15 +528,23 @@ class ForexAgentManager:
 
     def _write_state(self):
         """Writes current agent system state to JSON for dashboard visualization."""
-        previous_last_competition = None
+        previous_competition_summary = {}
         if STATE_FILE.exists():
             try:
                 previous_state = json.loads(STATE_FILE.read_text())
-                previous_last_competition = (
-                    previous_state.get("summary", {}).get("last_competition")
-                )
+                previous_summary = previous_state.get("summary", {})
+                previous_competition_summary = {
+                    key: previous_summary.get(key)
+                    for key in (
+                        "last_competition",
+                        "competition_history",
+                        "competition_by_symbol",
+                        "best_leader_asset",
+                    )
+                    if previous_summary.get(key)
+                }
             except Exception:
-                previous_last_competition = None
+                previous_competition_summary = {}
 
         agent_entries = [a.to_dict() for a in self.agents]
         by_strategy = {}
@@ -583,8 +634,7 @@ class ForexAgentManager:
             "discovered_strategies": {"by_strategy": {}},
             "source_comparison": {},
         }
-        if previous_last_competition:
-            summary["last_competition"] = previous_last_competition
+        summary.update(previous_competition_summary)
 
         state = {
             "timestamp": time.time(),

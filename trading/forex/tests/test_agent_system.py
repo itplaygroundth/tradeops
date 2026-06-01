@@ -147,3 +147,48 @@ async def _async_paper_trading_test():
         engine.signals.is_good_session = old_is_good
         if STATE_FILE.exists():
             STATE_FILE.unlink()
+
+
+def test_write_state_preserves_competition_leaderboard(monkeypatch, tmp_path):
+    import engine.agent_manager as manager_mod
+    state_file = tmp_path / "live_state.json"
+    monkeypatch.setattr(manager_mod, "STATE_FILE", state_file)
+    client = MT5Client()
+    manager = manager_mod.ForexAgentManager(client, paper_mode=True, agent_count=8)
+    entry = {
+        "symbol": "EURUSDm",
+        "regime": "RANGING",
+        "winner_sharpe": 1.2,
+        "winner_config": {"momentum": 1.0},
+        "leader_score": 1.42,
+        "selection_source": "hermes",
+        "llm_error": "",
+        "deterministic_winner_idx": 0,
+        "llm_winner_idx": 0,
+        "proposal_status": "none",
+        "proposal_reason": "",
+        "proposal_source": "",
+        "approved": True,
+        "applied": True,
+        "forward_pnl": 0.3,
+        "timestamp": time.time(),
+    }
+    manager._merge_competition_summary({}, entry)
+    state_file.write_text(json.dumps({"summary": {
+        "last_competition": entry,
+        "competition_history": [entry],
+        "competition_by_symbol": {"EURUSDm": entry},
+        "best_leader_asset": entry,
+    }}))
+
+    try:
+        manager._write_state()
+        state_data = json.loads(state_file.read_text())
+        summary = state_data["summary"]
+        assert summary["last_competition"]["symbol"] == "EURUSDm"
+        assert summary["competition_history"][0]["symbol"] == "EURUSDm"
+        assert summary["competition_by_symbol"]["EURUSDm"]["applied"] is True
+        assert summary["best_leader_asset"]["leader_score"] == 1.42
+    finally:
+        if state_file.exists():
+            state_file.unlink()
