@@ -909,8 +909,10 @@ body {
 /* =========== FOX BRAND PANEL BACKGROUND =========== */
 .fox-panel-bg {
   position: relative;
-  background: linear-gradient(135deg, rgba(10,10,15,0.75) 0%, rgba(10,10,15,0.15) 45%, rgba(10,10,15,0.5) 100%), url('/fox_brand.jpg');
-  background-size: contain;
+  background:
+    linear-gradient(to bottom, rgba(10,10,15,1) 0%, rgba(10,10,15,1) 60%, rgba(10,10,15,0.3) 100%),
+    url('/fox_brand.jpg');
+  background-size: 90%;
   background-position: center bottom;
   background-repeat: no-repeat;
 }
@@ -2364,13 +2366,28 @@ body {
 }
 .order-book-table tr:last-child td { border-bottom: none; }
 .order-book-table tr:hover td { background: rgba(255,255,255,0.025); }
-.ob-symbol { color: var(--text-primary); font-weight: 600; }
+.ob-symbol { color: var(--gold); font-weight: 700; }
 .ob-side   {}
 .ob-buy  { color: #34c759; font-weight: 700; }
 .ob-sell { color: #ff453a; font-weight: 700; }
-.ob-profit { color: #34c759; font-weight: 600; }
-.ob-loss   { color: #ff453a; font-weight: 600; }
+.ob-lots    { color: #5ac8fa; font-weight: 600; }
+.ob-open    { color: var(--text-muted); }
+.ob-current { color: var(--text-primary); font-weight: 600; }
+.ob-profit { color: #34c759; font-weight: 700; }
+.ob-loss   { color: #ff453a; font-weight: 700; }
+.ob-sl  { color: rgba(255,69,58,0.7); }
+.ob-tp  { color: rgba(52,199,89,0.7); }
 .ob-muted  { color: var(--text-muted); }
+
+/* ── Trade History per-column colors ── */
+.history-table td.th-time   { color: var(--text-muted); }
+.history-table td.th-agent  { color: var(--text-secondary); }
+.history-table td.th-symbol { color: var(--gold); font-weight: 600; }
+.history-table td.th-lots   { color: #5ac8fa; }
+.history-table td.th-price  { color: var(--text-primary); }
+.history-table td.th-sl     { color: rgba(255,69,58,0.7); }
+.history-table td.th-tp     { color: rgba(52,199,89,0.7); }
+.history-table td.th-type   { color: var(--text-muted); font-size: 10px; text-transform: uppercase; }
 
 /* ── Chart Tabs ─────────────────────────────────────────── */
 .chart-tabs {

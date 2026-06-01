@@ -35,14 +35,14 @@ export default function OrderBook({ positions = [] }) {
               <td className={`ob-side ${p.type === 'BUY' ? 'ob-buy' : 'ob-sell'}`}>
                 {p.type}
               </td>
-              <td>{p.volume}</td>
-              <td>{fmt(p.price_open)}</td>
-              <td>{fmt(p.price_current)}</td>
+              <td className="ob-lots">{p.volume}</td>
+              <td className="ob-open">{fmt(p.price_open)}</td>
+              <td className="ob-current">{fmt(p.price_current)}</td>
               <td className={`ob-pnl ${p.profit >= 0 ? 'ob-profit' : 'ob-loss'}`}>
                 {p.profit >= 0 ? '+' : ''}{fmt(p.profit, 2)}
               </td>
-              <td className="ob-muted">{p.sl != null && p.sl !== 0 ? fmt(p.sl) : '—'}</td>
-              <td className="ob-muted">{p.tp != null && p.tp !== 0 ? fmt(p.tp) : '—'}</td>
+              <td className="ob-sl">{p.sl != null && p.sl !== 0 ? fmt(p.sl) : '—'}</td>
+              <td className="ob-tp">{p.tp != null && p.tp !== 0 ? fmt(p.tp) : '—'}</td>
             </tr>
           ))}
         </tbody>

@@ -45,8 +45,7 @@ export default function TradeHistory({ orderHistory }) {
       }
     }
     loadInitial()
-    setRows(orderHistory || [])
-  }, [orderHistory])
+  }, [])
 
   useEffect(() => {
     // Setup SSE stream
@@ -179,15 +178,15 @@ export default function TradeHistory({ orderHistory }) {
           <tbody>
             {list.map((r, i) => (
               <tr key={i} onClick={()=>showDetail(r)} style={{cursor: r.ticket ? 'pointer' : 'default'}}>
-                <td>{fmtTime(r.timestamp)}</td>
-                <td>{r.agent}</td>
-                <td>{r.symbol}</td>
+                <td className="th-time">{fmtTime(r.timestamp)}</td>
+                <td className="th-agent">{r.agent}</td>
+                <td className="th-symbol">{r.symbol}</td>
                 <td className={`th-action ${/buy|long/i.test(r.action) ? 'up' : /sell|short/i.test(r.action) ? 'down' : ''}`}>{r.action}</td>
-                <td>{r.volume}</td>
-                <td>{r.price ?? '-'}</td>
-                <td>{r.sl ?? '-'}</td>
-                <td>{r.tp ?? '-'}</td>
-                <td>{r.type}</td>
+                <td className="th-lots">{r.volume}</td>
+                <td className="th-price">{r.price ?? '-'}</td>
+                <td className="th-sl">{r.sl ?? '-'}</td>
+                <td className="th-tp">{r.tp ?? '-'}</td>
+                <td className="th-type">{r.type}</td>
                 <td>
                   <span className={`th-status th-status-${String(r.status ?? (r.type==='closed'?'closed':'')).toLowerCase()}`}>
                     {r.status ?? (r.type==='closed'? 'closed':'-')}
