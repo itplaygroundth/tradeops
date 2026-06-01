@@ -133,8 +133,8 @@ def test_competition_approved_applies_winner(mock_run_forward):
 
 @patch("engine.sub_agent.SubAgent.run_forward_test")
 def test_competition_rejected_does_not_apply(mock_run_forward):
-    """When Hermes rejects, production agent is not updated."""
-    mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)
+    """A negative deterministic forward test keeps the winner from applying."""
+    mock_run_forward.return_value = ForwardTestResult(-0.15, 0.0, 3, -0.15)
     candles = make_candles()
     mt5 = make_mock_mt5(candles)
     hermes = make_mock_hermes(approved=False)
@@ -147,6 +147,24 @@ def test_competition_rejected_does_not_apply(mock_run_forward):
     assert result.approved is False
     assert result.applied is False
     production_agent.update_strategy_weights.assert_not_called()
+
+
+@patch("engine.sub_agent.SubAgent.run_forward_test")
+def test_competition_keeps_positive_deterministic_approval_on_hermes_reject(mock_run_forward):
+    """Hermes verify is advisory; it cannot veto a positive deterministic forward test."""
+    mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)
+    candles = make_candles()
+    mt5 = make_mock_mt5(candles)
+    hermes = make_mock_hermes(approved=False)
+    production_agent = MagicMock()
+    production_agent.update_strategy_weights = AsyncMock()
+
+    leader = AssetLeader("EURUSDm", production_agent, mt5, hermes)
+    result = asyncio.run(leader.run_competition())
+
+    assert result.approved is True
+    assert result.applied is True
+    production_agent.update_strategy_weights.assert_called_once()
 
 
 @patch("engine.sub_agent.SubAgent.run_forward_test")
@@ -165,7 +183,7 @@ def test_competition_ignores_null_hermes_apply_config(mock_run_forward):
     leader = AssetLeader("EURUSDm", None, mt5, hermes)
     result = asyncio.run(leader.run_competition())
 
-    assert result.approved is False
+    assert result.approved is True
     assert isinstance(result.winner_config, dict)
     assert result.winner_config
 

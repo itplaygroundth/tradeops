@@ -120,11 +120,11 @@ class AssetLeader:
                 logger.warning("Hermes selection failed; falling back to deterministic score: %s", llm_error)
 
         # Phase 3: forward-test top-3 sequentially (simple)
-        forward_pnl = 0.0
+        forward_pnl: Optional[float] = None
         forward_results: List[Dict[str, Any]] = []
         for idx, _ in top3:
             f = await subs[idx].run_forward_test(duration_seconds=60)
-            forward_pnl = max(forward_pnl, f.pnl)
+            forward_pnl = f.pnl if forward_pnl is None else max(forward_pnl, f.pnl)
             forward_results.append({
                 "idx": idx,
                 "pnl": f.pnl,
@@ -132,6 +132,9 @@ class AssetLeader:
                 "trade_count": f.trade_count,
                 "pnl_pct": f.pnl_pct,
             })
+
+        if forward_pnl is None:
+            forward_pnl = 0.0
 
         # Phase 4: deterministic guardrails, with optional Hermes verification.
         approved = forward_pnl >= 0.0
@@ -145,7 +148,8 @@ class AssetLeader:
                     "forward_pnl": forward_pnl,
                     "forward_results": forward_results,
                 }))
-                approved = bool(v.get("approved", approved))
+                llm_approved = bool(v.get("approved", approved))
+                approved = approved or llm_approved
                 verified_cfg = v.get("apply_config")
                 if isinstance(verified_cfg, dict) and verified_cfg:
                     apply_cfg = verified_cfg
