@@ -100,15 +100,19 @@ class SubAgent:
         max_dd = 0.0
 
         # naive watcher: poll price every second (mt5 client should expose `get_price`)
+        # get_price returns a Tick object; extract the mid as a float for math.
+        def _to_price(tick) -> float:
+            return getattr(tick, "mid", None) or getattr(tick, "price", None) or float(tick)
+
         try:
-            prev_price = await maybe_await(self.mt5.get_price(self.symbol))
+            prev_price = _to_price(await maybe_await(self.mt5.get_price(self.symbol)))
         except Exception:
             await asyncio.sleep(min(1, duration_seconds))
             return ForwardTestResult(0.0, 0.0, 0, 0.0)
 
         while asyncio.get_event_loop().time() < end_ts:
             try:
-                price = await maybe_await(self.mt5.get_price(self.symbol))
+                price = _to_price(await maybe_await(self.mt5.get_price(self.symbol)))
             except Exception:
                 await asyncio.sleep(1)
                 continue

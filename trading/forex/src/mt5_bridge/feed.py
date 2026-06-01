@@ -43,10 +43,18 @@ class MT5Feed:
 
         while self._running:
             try:
-                async with websockets.connect(url) as ws:
+                # ping_interval/ping_timeout detect half-open TCP (server stops
+                # sending without FIN); without these the read hangs forever.
+                async with websockets.connect(
+                    url, ping_interval=20, ping_timeout=20, close_timeout=5
+                ) as ws:
                     logger.info("MT5Feed connected successfully ✓")
-                    async for message in ws:
-                        if not self._running:
+                    while self._running:
+                        # recv timeout guards against a silently stalled feed
+                        try:
+                            message = await asyncio.wait_for(ws.recv(), timeout=30)
+                        except asyncio.TimeoutError:
+                            logger.warning("MT5Feed: no tick for 30s — reconnecting")
                             break
                         prices = json.loads(message)
                         await self._process_tick(prices)

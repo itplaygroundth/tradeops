@@ -23,8 +23,11 @@ class HermesClient:
     implement fallback logic (e.g., use top-sharpe result).
     """
 
-    def __init__(self, url: str = "http://127.0.0.1:20128/v1/chat/completions", timeout: int = 5, retries: int = 3):
-        self.url = url
+    def __init__(self, url: str = None, timeout: int = 5, retries: int = 3):
+        import os
+        # Default to the working bcproxy LLM endpoint; 127.0.0.1:20128 was a
+        # Next.js server (returns 405), not an LLM API. Override with HERMES_URL.
+        self.url = url or os.getenv("HERMES_URL", "http://192.168.1.166:3333/v1/chat/completions")
         self.timeout = timeout
         self.retries = retries
 
@@ -78,7 +81,7 @@ class HermesClient:
     async def select_winner(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         prompt = self._build_select_prompt(payload)
         request_body = {
-            "model": "ClaudePro",
+            "model": "sml/auto",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3,
         }
@@ -92,7 +95,7 @@ class HermesClient:
     async def verify_forward_test(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         prompt = self._build_verify_prompt(payload)
         request_body = {
-            "model": "ClaudePro",
+            "model": "sml/auto",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3,
         }
