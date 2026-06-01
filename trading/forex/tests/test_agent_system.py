@@ -232,3 +232,49 @@ def test_best_leader_asset_prioritizes_forward_pnl(monkeypatch, tmp_path):
     manager._merge_competition_summary(state, lower_sharpe_better_forward)
 
     assert state["summary"]["best_leader_asset"]["symbol"] == "EURUSDm"
+
+
+def test_leader_asset_supervisor_schedule_writes_summary(monkeypatch, tmp_path):
+    import asyncio
+    import engine.agent_manager as manager_mod
+
+    state_file = tmp_path / "live_state.json"
+    proposal_path = tmp_path / "leader_asset_proposals.json"
+    monkeypatch.setattr(manager_mod, "STATE_FILE", state_file)
+    monkeypatch.setenv("LEADER_ASSET_STATE_PATH", str(state_file))
+    monkeypatch.setenv("LEADER_ASSET_PROPOSAL_PATH", str(proposal_path))
+    monkeypatch.setenv("LEADER_ASSET_SUPERVISOR_INTERVAL", "0")
+
+    async def run_case():
+        manager = manager_mod.ForexAgentManager(MT5Client(), paper_mode=True, agent_count=8)
+        now = time.time()
+        entry = {
+            "symbol": "EURUSDm",
+            "regime": "RANGING",
+            "winner_sharpe": 0.0,
+            "winner_config": {"momentum": 1.0},
+            "leader_score": 0.02,
+            "selection_source": "deterministic",
+            "llm_error": "",
+            "deterministic_winner_idx": 0,
+            "llm_winner_idx": None,
+            "proposal_status": "none",
+            "proposal_reason": "",
+            "proposal_source": "",
+            "approved": True,
+            "applied": True,
+            "forward_pnl": 0.02,
+            "timestamp": now,
+        }
+        state = {}
+        manager._merge_competition_summary(state, entry)
+        state_file.write_text(json.dumps(state))
+        manager._schedule_leader_asset_supervisor()
+        await manager._leader_asset_supervisor_task
+        written = json.loads(state_file.read_text())
+        proposal = written["summary"]["leader_asset_supervisor"]
+        assert proposal["leader_asset"] == "EURUSDm"
+        assert proposal["status"] == "accepted"
+        assert proposal_path.exists()
+
+    asyncio.run(run_case())

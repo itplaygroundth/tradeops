@@ -5,6 +5,7 @@ live position syncing, and dashboard state management.
 import asyncio
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -18,6 +19,7 @@ from mt5_bridge.client import MT5Client
 from engine.competition_scheduler import CompetitionScheduler
 from engine.asset_leader import AssetLeader
 from engine.hermes_client import HermesClient, HermesError
+from engine.leader_asset_supervisor import LeaderAssetSupervisor
 
 logger = logging.getLogger("agent_manager")
 
@@ -83,6 +85,10 @@ class ForexAgentManager:
         except Exception:
             self.hermes_client = None
         self._competition_semaphore = asyncio.Semaphore(1)
+        self.leader_asset_supervisor = LeaderAssetSupervisor()
+        self._leader_asset_supervisor_interval = float(os.getenv("LEADER_ASSET_SUPERVISOR_INTERVAL", "180"))
+        self._last_leader_asset_supervisor_time = 0.0
+        self._leader_asset_supervisor_task = None
 
     async def _load_recent_history(self, hours: int = 24, limit: int = 200):
         """Loads recent deals from MT5 bridge and adds them to the order history."""
@@ -185,8 +191,39 @@ class ForexAgentManager:
                         state = {}
                 self._merge_competition_summary(state, self._competition_entry(result))
                 STATE_FILE.write_text(json.dumps(state))
+                self._schedule_leader_asset_supervisor()
             except Exception:
                 logger.exception("Failed to write competition result to live state")
+
+    def _schedule_leader_asset_supervisor(self):
+        now = time.time()
+        if self._leader_asset_supervisor_interval > 0:
+            if now - self._last_leader_asset_supervisor_time < self._leader_asset_supervisor_interval:
+                return
+        task = self._leader_asset_supervisor_task
+        if task is not None and not task.done():
+            return
+        self._last_leader_asset_supervisor_time = now
+        try:
+            self._leader_asset_supervisor_task = asyncio.get_event_loop().create_task(
+                self._run_leader_asset_supervisor_bg()
+            )
+        except Exception:
+            logger.exception("Failed to schedule leader asset supervisor")
+
+    async def _run_leader_asset_supervisor_bg(self):
+        try:
+            proposal = await asyncio.to_thread(self.leader_asset_supervisor.run)
+            state = {}
+            if STATE_FILE.exists():
+                try:
+                    state = json.loads(STATE_FILE.read_text())
+                except Exception:
+                    state = {}
+            state.setdefault("summary", {})["leader_asset_supervisor"] = proposal
+            STATE_FILE.write_text(json.dumps(state))
+        except Exception:
+            logger.exception("Leader asset supervisor failed")
 
     def _competition_entry(self, result) -> Dict:
         # Forward-test PnL is the primary proof for the best live leader.
@@ -539,6 +576,7 @@ class ForexAgentManager:
                         "competition_history",
                         "competition_by_symbol",
                         "best_leader_asset",
+                        "leader_asset_supervisor",
                     )
                     if previous_summary.get(key)
                 }
