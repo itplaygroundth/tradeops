@@ -150,6 +150,27 @@ def test_competition_rejected_does_not_apply(mock_run_forward):
 
 
 @patch("engine.sub_agent.SubAgent.run_forward_test")
+def test_competition_ignores_null_hermes_apply_config(mock_run_forward):
+    """Hermes verify must not replace the selected strategy config with null."""
+    mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)
+    candles = make_candles()
+    mt5 = make_mock_mt5(candles)
+    hermes = make_mock_hermes(winner_idx=0, approved=False)
+    hermes.verify_forward_test = AsyncMock(return_value={
+        "approved": False,
+        "apply_config": None,
+        "reason": "reject but no config",
+    })
+
+    leader = AssetLeader("EURUSDm", None, mt5, hermes)
+    result = asyncio.run(leader.run_competition())
+
+    assert result.approved is False
+    assert isinstance(result.winner_config, dict)
+    assert result.winner_config
+
+
+@patch("engine.sub_agent.SubAgent.run_forward_test")
 def test_competition_hermes_unreachable_fallback(mock_run_forward):
     """When Hermes is None, competition falls back to top-Sharpe algorithmic selection."""
     mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)

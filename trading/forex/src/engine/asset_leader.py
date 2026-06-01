@@ -145,8 +145,10 @@ class AssetLeader:
                     "forward_pnl": forward_pnl,
                     "forward_results": forward_results,
                 }))
-                approved = bool(v.get("approved", False))
-                apply_cfg = v.get("apply_config", apply_cfg)
+                approved = bool(v.get("approved", approved))
+                verified_cfg = v.get("apply_config")
+                if isinstance(verified_cfg, dict) and verified_cfg:
+                    apply_cfg = verified_cfg
             except Exception as exc:
                 verify_error = f"{type(exc).__name__}: {exc}"
                 llm_error = f"{llm_error}; verify {verify_error}" if llm_error else f"verify {verify_error}"
