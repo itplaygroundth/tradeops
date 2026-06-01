@@ -12,7 +12,7 @@ from engine.dna import create_population, random_dna, FOREX_SYMBOLS
 from engine.agent import ForexAgent
 from engine.agent_manager import ForexAgentManager, STATE_FILE
 from engine.evolution import evolve
-from mt5_bridge.client import MT5Client
+from mt5_bridge.client import MT5Client, Tick
 
 def test_population_creation():
     pop = create_population(25)
@@ -192,6 +192,75 @@ def test_write_state_preserves_competition_leaderboard(monkeypatch, tmp_path):
     finally:
         if state_file.exists():
             state_file.unlink()
+
+
+class FakeExitClient:
+    def __init__(self, tick):
+        self.tick = tick
+        self.closed = []
+        self.modified = []
+
+    async def get_price(self, symbol):
+        return self.tick
+
+    async def close_position(self, ticket):
+        self.closed.append(ticket)
+        return {"closed": ticket}
+
+    async def modify_position(self, ticket, sl=0, tp=0):
+        self.modified.append({"ticket": ticket, "sl": sl, "tp": tp})
+        return {"ticket": ticket, "sl": sl, "tp": tp}
+
+
+def test_live_exit_management_soft_tp_uses_close_side_price():
+    import asyncio
+    asyncio.run(_async_soft_tp_close_side_test())
+
+
+async def _async_soft_tp_close_side_test():
+    client = FakeExitClient(Tick("GBPUSDm", bid=1.1999, ask=1.2000, mid=1.19995, timestamp=time.time()))
+    manager = ForexAgentManager(client, paper_mode=False, agent_count=8)
+    agent = manager.agents[0]
+    agent.dna.symbol = "GBPUSDm"
+    agent._open_ticket = 123
+    agent._open_entry = 1.2050
+    agent._open_side = "SELL"
+    agent._open_sl = 1.2070
+    agent._open_tp = 1.1999
+
+    await manager._apply_live_exit_management([
+        {"ticket": 123, "symbol": "GBPUSDm", "type": "SELL", "price_open": 1.2050, "sl": 1.2070, "tp": 1.1999}
+    ])
+
+    assert client.closed == [123]
+    assert client.modified == []
+
+
+def test_live_exit_management_trailing_stop_only_improves_sl():
+    import asyncio
+    asyncio.run(_async_trailing_stop_test())
+
+
+async def _async_trailing_stop_test():
+    client = FakeExitClient(Tick("GBPUSDm", bid=1.2030, ask=1.2031, mid=1.20305, timestamp=time.time()))
+    manager = ForexAgentManager(client, paper_mode=False, agent_count=8)
+    agent = manager.agents[0]
+    agent.dna.symbol = "GBPUSDm"
+    agent._open_ticket = 456
+    agent._open_entry = 1.2000
+    agent._open_side = "BUY"
+    agent._open_sl = 1.1980
+    agent._open_tp = 1.2100
+
+    await manager._apply_live_exit_management([
+        {"ticket": 456, "symbol": "GBPUSDm", "type": "BUY", "price_open": 1.2000, "sl": 1.1980, "tp": 1.2100}
+    ])
+
+    assert client.closed == []
+    assert len(client.modified) == 1
+    assert client.modified[0]["ticket"] == 456
+    assert client.modified[0]["sl"] > 1.1980
+    assert client.modified[0]["tp"] == 1.2100
 
 
 def test_best_leader_asset_prioritizes_forward_pnl(monkeypatch, tmp_path):

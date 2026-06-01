@@ -27,6 +27,24 @@ logger = logging.getLogger("agent_manager")
 # (mtai/dashboard), regardless of the process CWD.
 STATE_FILE = Path(__file__).resolve().parent.parent.parent / "dashboard" / "live_state.json"
 
+SOFT_TP_ENABLED = str(os.getenv("SOFT_TP_ENABLED", "true")).lower() in ("1", "true", "yes", "on")
+SOFT_TP_SPREAD_MULTIPLIER = float(os.getenv("SOFT_TP_SPREAD_MULTIPLIER", "1.25"))
+SOFT_TP_MIN_BUFFER = {
+    "XAU": float(os.getenv("SOFT_TP_MIN_BUFFER_XAU", "0.30")),
+    "JPY": float(os.getenv("SOFT_TP_MIN_BUFFER_JPY", "0.010")),
+    "FX": float(os.getenv("SOFT_TP_MIN_BUFFER_FX", "0.00010")),
+}
+
+TRAILING_STOP_ENABLED = str(os.getenv("TRAILING_STOP_ENABLED", "true")).lower() in ("1", "true", "yes", "on")
+TRAILING_START_R = float(os.getenv("TRAILING_START_R", "1.0"))
+TRAILING_DISTANCE_R = float(os.getenv("TRAILING_DISTANCE_R", "0.5"))
+TRAILING_MIN_STEP = {
+    "XAU": float(os.getenv("TRAILING_MIN_STEP_XAU", "0.10")),
+    "JPY": float(os.getenv("TRAILING_MIN_STEP_JPY", "0.005")),
+    "FX": float(os.getenv("TRAILING_MIN_STEP_FX", "0.00005")),
+}
+MANAGED_MAGIC = int(os.getenv("MTAI_MAGIC", "20260101"))
+
 class ForexAgentManager:
     def __init__(self, mt5_client: MT5Client, paper_mode: bool = True, agent_count: int = 25):
         self.mt5 = mt5_client
@@ -89,6 +107,100 @@ class ForexAgentManager:
         self._leader_asset_supervisor_interval = float(os.getenv("LEADER_ASSET_SUPERVISOR_INTERVAL", "180"))
         self._last_leader_asset_supervisor_time = 0.0
         self._leader_asset_supervisor_task = None
+
+    @staticmethod
+    def _symbol_group(symbol: str) -> str:
+        value = symbol.upper()
+        if "XAU" in value or "GOLD" in value:
+            return "XAU"
+        if "JPY" in value:
+            return "JPY"
+        return "FX"
+
+    @staticmethod
+    def _position_side(pos: dict) -> str:
+        side = pos.get("type")
+        if side == 0:
+            return "BUY"
+        if side == 1:
+            return "SELL"
+        return str(side or "").upper()
+
+    def _soft_tp_buffer(self, symbol: str, bid: float, ask: float) -> float:
+        spread = max(float(ask) - float(bid), 0.0)
+        group = self._symbol_group(symbol)
+        return max(spread * SOFT_TP_SPREAD_MULTIPLIER, SOFT_TP_MIN_BUFFER[group])
+
+    async def _apply_live_exit_management(self, positions: List[dict]):
+        if self.paper_mode:
+            return
+
+        agents_by_ticket = {agent._open_ticket: agent for agent in self.agents if agent.is_in_trade}
+        for pos in positions:
+            ticket = pos.get("ticket")
+            if not ticket:
+                continue
+            magic = int(pos.get("magic") or 0)
+            if magic and magic != MANAGED_MAGIC:
+                continue
+            agent = agents_by_ticket.get(ticket)
+            symbol = pos.get("symbol") or (agent.dna.symbol if agent else "")
+            side = self._position_side(pos) or (agent._open_side if agent else "")
+            try:
+                tick = await self.mt5.get_price(symbol)
+            except Exception as e:
+                logger.debug(f"[LIVE EXIT] Failed to get tick for {symbol}: {e}")
+                continue
+
+            close_price = tick.bid if side == "BUY" else tick.ask
+            entry = float(pos.get("price_open") or (agent._open_entry if agent else 0.0) or 0.0)
+            sl = float(pos.get("sl") or (agent._open_sl if agent else 0.0) or 0.0)
+            tp = float(pos.get("tp") or (agent._open_tp if agent else 0.0) or 0.0)
+            if not entry or not close_price:
+                continue
+
+            if SOFT_TP_ENABLED and tp:
+                buffer = self._soft_tp_buffer(symbol, tick.bid, tick.ask)
+                should_close = close_price >= (tp - buffer) if side == "BUY" else close_price <= (tp + buffer)
+                if should_close:
+                    try:
+                        result = await self.mt5.close_position(ticket)
+                        logger.info(
+                            f"[SOFT TP] Closed {symbol} {side} ticket={ticket} "
+                            f"close_side_price={close_price:.5f} tp={tp:.5f} buffer={buffer:.5f} result={result}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"[SOFT TP] Failed to close ticket {ticket}: {e}")
+                    continue
+
+            if not TRAILING_STOP_ENABLED or not sl:
+                continue
+
+            risk_distance = abs(entry - sl)
+            if risk_distance <= 0:
+                continue
+            favorable = (close_price - entry) if side == "BUY" else (entry - close_price)
+            if favorable < risk_distance * TRAILING_START_R:
+                continue
+
+            trail_distance = risk_distance * TRAILING_DISTANCE_R
+            candidate_sl = close_price - trail_distance if side == "BUY" else close_price + trail_distance
+            group = self._symbol_group(symbol)
+            min_step = TRAILING_MIN_STEP[group]
+            improves = candidate_sl > sl + min_step if side == "BUY" else candidate_sl < sl - min_step
+            if not improves:
+                continue
+
+            try:
+                result = await self.mt5.modify_position(ticket, sl=candidate_sl, tp=tp)
+                if agent:
+                    agent._open_sl = candidate_sl
+                logger.info(
+                    f"[TRAILING SL] {symbol} {side} ticket={ticket} "
+                    f"SL {sl:.5f}->{candidate_sl:.5f} close_side_price={close_price:.5f} result={result}"
+                )
+            except Exception as e:
+                logger.warning(f"[TRAILING SL] Failed to modify ticket {ticket}: {e}")
 
     async def _load_recent_history(self, hours: int = 24, limit: int = 200):
         """Loads recent deals from MT5 bridge and adds them to the order history."""
@@ -341,6 +453,7 @@ class ForexAgentManager:
         """Syncs active live positions on MT5 to update agent states."""
         try:
             positions = await self.mt5.get_positions()
+            await self._apply_live_exit_management(positions)
             active_tickets = {pos["ticket"] for pos in positions}
         except Exception as e:
             logger.warning(f"Failed to fetch active positions for sync: {e}")
