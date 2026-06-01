@@ -189,13 +189,12 @@ class ForexAgentManager:
                 logger.exception("Failed to write competition result to live state")
 
     def _competition_entry(self, result) -> Dict:
-        leader_score = float(result.forward_pnl) + (float(result.winner_sharpe) * 0.1)
-        if result.applied:
-            leader_score += 1.0
-        elif result.approved:
-            leader_score += 0.5
+        # Forward-test PnL is the primary proof for the best live leader.
+        # Sharpe is kept as a tiny tie-breaker so low-PnL leaders do not beat
+        # better live forward performance just because their backtest Sharpe was high.
+        leader_score = float(result.forward_pnl) + (float(result.winner_sharpe) * 0.001)
         if result.llm_error:
-            leader_score -= 0.25
+            leader_score -= 0.001
         return {
             "symbol": result.symbol,
             "regime": result.regime,
@@ -241,8 +240,8 @@ class ForexAgentManager:
             summary["best_leader_asset"] = max(
                 candidates,
                 key=lambda item: (
-                    item.get("leader_score", 0),
                     item.get("forward_pnl", 0),
+                    item.get("leader_score", 0),
                     item.get("winner_sharpe", 0),
                 ),
             )

@@ -192,3 +192,43 @@ def test_write_state_preserves_competition_leaderboard(monkeypatch, tmp_path):
     finally:
         if state_file.exists():
             state_file.unlink()
+
+
+def test_best_leader_asset_prioritizes_forward_pnl(monkeypatch, tmp_path):
+    import engine.agent_manager as manager_mod
+    state_file = tmp_path / "live_state.json"
+    monkeypatch.setattr(manager_mod, "STATE_FILE", state_file)
+    manager = manager_mod.ForexAgentManager(MT5Client(), paper_mode=True, agent_count=8)
+
+    high_sharpe_low_forward = {
+        "symbol": "USDJPYm",
+        "regime": "RANGING",
+        "winner_sharpe": 5.0,
+        "winner_config": {"momentum": 1.0},
+        "leader_score": 0.005,
+        "selection_source": "deterministic",
+        "llm_error": "",
+        "deterministic_winner_idx": 0,
+        "llm_winner_idx": None,
+        "proposal_status": "none",
+        "proposal_reason": "",
+        "proposal_source": "",
+        "approved": True,
+        "applied": True,
+        "forward_pnl": 0.0001,
+        "timestamp": time.time(),
+    }
+    lower_sharpe_better_forward = dict(high_sharpe_low_forward)
+    lower_sharpe_better_forward.update({
+        "symbol": "EURUSDm",
+        "winner_sharpe": 0.0,
+        "leader_score": 0.01,
+        "forward_pnl": 0.01,
+        "timestamp": time.time() + 1,
+    })
+
+    state = {}
+    manager._merge_competition_summary(state, high_sharpe_low_forward)
+    manager._merge_competition_summary(state, lower_sharpe_better_forward)
+
+    assert state["summary"]["best_leader_asset"]["symbol"] == "EURUSDm"
