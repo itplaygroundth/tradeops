@@ -74,7 +74,7 @@ class BinanceFeed(ExchangeFeed):
         return Tick(symbol.upper(), bid, ask, mid, mid, time.time())
 
     # ---- Orders --------------------------------------------------------
-    async def place_order(self, symbol: str, side: str, qty: float, sl: float = 0, tp: float = 0) -> dict:
+    async def place_order(self, symbol: str, side: str, qty: float, sl: float = 0, tp: float = 0, comment: str = "") -> dict:
         if self.paper_mode:
             tick = await self.get_price(symbol)
             price = tick.ask if side.lower() == "buy" else tick.bid

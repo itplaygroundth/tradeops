@@ -70,8 +70,8 @@ class ExchangeRouter:
     async def get_ohlcv(self, symbol: str, timeframe: str = "M15", count: int = 200) -> list[dict]:
         return await self._feed.get_ohlcv(symbol, timeframe=timeframe, count=count)
 
-    async def place_order(self, symbol, side, qty, sl=0, tp=0) -> dict:
-        return await self._feed.place_order(symbol, side, qty, sl=sl, tp=tp)
+    async def place_order(self, symbol, side, qty, sl=0, tp=0, comment="") -> dict:
+        return await self._feed.place_order(symbol, side, qty, sl=sl, tp=tp, comment=comment)
 
     async def get_positions(self) -> list[dict]:
         return await self._feed.get_positions()
