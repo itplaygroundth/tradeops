@@ -36,7 +36,7 @@ class LeaderAssetSupervisor:
         self.state_path = Path(state_path or os.getenv("LEADER_ASSET_STATE_PATH", DEFAULT_STATE_FILE))
         self.proposal_path = Path(proposal_path or os.getenv("LEADER_ASSET_PROPOSAL_PATH", DEFAULT_PROPOSAL_FILE))
         self.lookback = int(lookback if lookback is not None else os.getenv("LEADER_ASSET_LOOKBACK", "50"))
-        self.min_samples = int(min_samples if min_samples is not None else os.getenv("LEADER_ASSET_MIN_SAMPLES", "1"))
+        self.min_samples = int(min_samples if min_samples is not None else os.getenv("LEADER_ASSET_MIN_SAMPLES", "3"))
         self.min_confidence = float(
             min_confidence if min_confidence is not None else os.getenv("LEADER_ASSET_MIN_CONFIDENCE", "0.55")
         )
@@ -135,13 +135,17 @@ class LeaderAssetSupervisor:
         consistency = float(leader.get("positive_rate", 0.0)) * float(leader.get("applied_rate", 0.0))
         margin_factor = min(1.0, max(0.0, margin_pct))
         confidence = max(0.0, min(0.99, 0.35 + sample_factor * 0.25 + consistency * 0.25 + margin_factor * 0.15))
+        if int(leader.get("samples", 0)) < self.min_samples:
+            confidence = min(confidence, 0.54)
+        if runner_up is None:
+            confidence = min(confidence, 0.75)
 
         status = "accepted"
         reasons = []
         if int(leader.get("samples", 0)) < self.min_samples:
             status = "insufficient_samples"
             reasons.append(f"samples {leader.get('samples', 0)} below {self.min_samples}")
-        if confidence < self.min_confidence:
+        elif confidence < self.min_confidence:
             status = "insufficient_confidence"
             reasons.append(f"confidence {confidence:.2f} below {self.min_confidence:.2f}")
         if not isinstance(leader.get("winner_config"), dict):

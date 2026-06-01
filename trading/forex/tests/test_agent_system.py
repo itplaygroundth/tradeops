@@ -243,6 +243,7 @@ def test_leader_asset_supervisor_schedule_writes_summary(monkeypatch, tmp_path):
     monkeypatch.setattr(manager_mod, "STATE_FILE", state_file)
     monkeypatch.setenv("LEADER_ASSET_STATE_PATH", str(state_file))
     monkeypatch.setenv("LEADER_ASSET_PROPOSAL_PATH", str(proposal_path))
+    monkeypatch.setenv("LEADER_ASSET_MIN_SAMPLES", "1")
     monkeypatch.setenv("LEADER_ASSET_SUPERVISOR_INTERVAL", "0")
 
     async def run_case():

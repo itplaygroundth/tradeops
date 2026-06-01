@@ -106,3 +106,14 @@ def test_no_history_proposal_is_safe(tmp_path):
 
     assert proposal["status"] == "no_history"
     assert proposal["leader_asset"] is None
+
+
+def test_default_proposal_requires_multiple_samples(tmp_path):
+    sup = LeaderAssetSupervisor(proposal_path=tmp_path / "proposal.json")
+    now = time.time()
+    ranking = sup.rank_assets([entry("EURUSDm", 0.02, now)])
+
+    proposal = sup.build_proposal(ranking)
+
+    assert proposal["status"] == "insufficient_samples"
+    assert proposal["confidence"] < sup.min_confidence
