@@ -10,7 +10,7 @@ const ProbabilityCard = lazy(() => import('./components/ProbabilityCard.jsx'))
 const Infrastructure = lazy(() => import('./components/Infrastructure.jsx'))
 const WalletCard = lazy(() => import('./components/WalletCard.jsx'))
 const TradeHistory = lazy(() => import('./components/TradeHistory.jsx'))
-const TradingPanel = lazy(() => import('./components/TradingPanel.jsx'))
+const ChartTabs = lazy(() => import('./components/ChartTabs.jsx'))
 
 function LazyBox({ children }) {
   return (
@@ -69,7 +69,7 @@ export default function App() {
         {/* CENTER: Chart & Terminal */}
         <div className="center-panel">
           <div className="chart-area">
-            <LazyBox><TradingPanel /></LazyBox>
+            <LazyBox><ChartTabs positions={mt5?.positions ?? []} /></LazyBox>
           </div>
           
           {/* BOTTOM TERMINAL */}
