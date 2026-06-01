@@ -44,6 +44,7 @@ class ForexAgentManager:
         self._next_agent_id = agent_count
         self._account_balance = 1000.0
         self._account_equity = 1000.0
+        self._account_currency = "USD"  # set from MT5 account; "USC" = cent account
         self._initial_capital = 1000.0
         self._latest_prices = {}
         self._equity_curve = []
@@ -345,7 +346,8 @@ class ForexAgentManager:
                 account_balance=self._account_balance,
                 account_equity=self._account_equity,
                 current_day=today,
-                get_price_func=get_price_func
+                get_price_func=get_price_func,
+                account_currency=self._account_currency,
             )
 
             if not risk_result.allowed:
@@ -456,6 +458,7 @@ class ForexAgentManager:
             account = await self.mt5.get_account()
             self._account_balance = account["balance"]
             self._account_equity = account["equity"]
+            self._account_currency = account.get("currency", "USD")
         except Exception as e:
             logger.warning(f"Account update failed: {e}")
 

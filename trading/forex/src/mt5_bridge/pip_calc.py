@@ -1,13 +1,38 @@
 """
 Pip Value Calculator — forex-specific position sizing helper.
 Used by Risk Guardian to calculate lot size from risk amount.
+
+Cent-account support
+--------------------
+On a cent (USC) account the broker reports balance/equity in *cents*:
+1 USC = 0.01 USD, so a "$5" deposit shows as 500. The contract size and
+pip value are still quoted in USD, so to size positions correctly we must
+convert the cent balance back to USD (divide by 100) before applying the
+risk percentage. Detection is automatic via account currency == "USC";
+the divisor can be overridden with CENT_ACCOUNT_DIVISOR.
 """
 import logging
+import os
 from typing import Callable, Optional
 
 logger = logging.getLogger("pip_calc")
 
-# Contract sizes per symbol (standard definitions)
+# Cent-account currency codes (Exness uses "USC"). Override with
+# CENT_CURRENCIES env (comma-separated) if your broker differs.
+CENT_CURRENCIES = {
+    c.strip().upper()
+    for c in os.getenv("CENT_CURRENCIES", "USC,EUC").split(",")
+    if c.strip()
+}
+# 1 USC = 0.01 USD → divide cent balance by 100 to get USD.
+CENT_ACCOUNT_DIVISOR = float(os.getenv("CENT_ACCOUNT_DIVISOR", "100"))
+
+def is_cent_currency(currency: Optional[str]) -> bool:
+    return bool(currency) and currency.strip().upper() in CENT_CURRENCIES
+
+# Contract sizes per symbol (standard definitions).
+# Override per-symbol via CONTRACT_SIZE_<SYMBOL> env, e.g.
+# CONTRACT_SIZE_EURUSDM=1000 for a broker whose lot is micro-sized.
 CONTRACT_SIZES = {
     "XAUUSDm": 100,     # Gold: 1 lot = 100 ounces
     "XAGUSDm": 5000,    # Silver: 1 lot = 5000 ounces
@@ -35,6 +60,13 @@ def get_pip_size(symbol: str) -> float:
     return 0.0001
 
 def get_contract_size(symbol: str) -> float:
+    # Per-symbol env override (highest priority): CONTRACT_SIZE_EURUSDM=1000
+    env_override = os.getenv(f"CONTRACT_SIZE_{symbol.upper()}")
+    if env_override:
+        try:
+            return float(env_override)
+        except ValueError:
+            logger.warning(f"Invalid CONTRACT_SIZE_{symbol.upper()}={env_override!r}; ignoring")
     # Support symbols with or without 'm' suffix and case-insensitive
     if symbol in CONTRACT_SIZES:
         return CONTRACT_SIZES[symbol]
@@ -61,13 +93,22 @@ def calculate_lot_size(
     sl_price_distance: float,
     symbol: str,
     get_price_func: Optional[Callable[[str], Optional[float]]] = None,
+    account_currency: Optional[str] = None,
 ) -> float:
     """
     Calculates the lot size based on account balance, risk percentage, and SL distance.
     Uses universal quote-currency conversion to USD (the account base currency).
+
+    On a cent account (account_currency == "USC"), the balance is in cents;
+    it is converted to USD (÷ CENT_ACCOUNT_DIVISOR) so the USD-denominated
+    pip value sizes the position correctly.
     """
     if sl_price_distance <= 0:
         return 0.01
+
+    # Convert cent-account balance to USD before applying risk %.
+    if is_cent_currency(account_currency):
+        account_balance = account_balance / CENT_ACCOUNT_DIVISOR
 
     risk_amount = account_balance * risk_pct
     contract_size = get_contract_size(symbol)

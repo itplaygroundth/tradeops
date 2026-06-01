@@ -52,6 +52,7 @@ class ForexRiskGuardian:
         current_day: int,
         spread_pips: float = 0.0,
         get_price_func = None,
+        account_currency: str = None,
     ) -> RiskResult:
         """
         Validates signal + calculates lot size.
@@ -107,6 +108,7 @@ class ForexRiskGuardian:
             sl_price_distance=sl_price_distance,
             symbol=symbol,
             get_price_func=get_price_func,
+            account_currency=account_currency,
         )
 
         # Calculate SL/TP prices
