@@ -123,13 +123,13 @@ class BybitFeed(ExchangeFeed):
                     async for msg in ws:
                         if msg.type != aiohttp.WSMsgType.TEXT:
                             continue
-                        self._handle_ws(msg.json())
+                        await self._handle_ws(msg.json())
             except asyncio.CancelledError:
                 raise
             except Exception:
                 await asyncio.sleep(3)
 
-    def _handle_ws(self, payload: dict) -> None:
+    async def _handle_ws(self, payload: dict) -> None:
         topic = payload.get("topic", "")
         if not topic.startswith("publicTrade."):
             return
@@ -141,7 +141,9 @@ class BybitFeed(ExchangeFeed):
             if sym is None or price is None:
                 continue
             if self._tick_cb is not None:
-                self._tick_cb(sym, float(price), float(qty or 0), (ts_ms or 0) / 1000.0)
+                res = self._tick_cb(sym, float(price), float(qty or 0), (ts_ms or 0) / 1000.0)
+                if asyncio.iscoroutine(res):
+                    await res
 
     async def close(self) -> None:
         if self._ws_task:
