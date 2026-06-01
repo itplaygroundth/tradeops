@@ -279,3 +279,49 @@ def test_leader_asset_supervisor_schedule_writes_summary(monkeypatch, tmp_path):
         assert proposal_path.exists()
 
     asyncio.run(run_case())
+
+
+def test_leader_asset_gate_defaults_until_proposal_accepted(monkeypatch, tmp_path):
+    import engine.agent_manager as manager_mod
+
+    proposal_path = tmp_path / "leader_asset_proposals.json"
+    monkeypatch.setenv("LEADER_ASSET_PROPOSAL_PATH", str(proposal_path))
+    manager = manager_mod.ForexAgentManager(MT5Client(), paper_mode=True, agent_count=8)
+
+    assert manager._leader_asset_gate("EURUSDm")["max_agents"] == 3
+
+    proposal_path.write_text(json.dumps({"proposals": [{
+        "status": "insufficient_samples",
+        "leader_asset": "GBPUSDm",
+        "confidence": 0.54,
+        "reason": "samples 1 below 3",
+    }]}))
+
+    gate = manager._leader_asset_gate("EURUSDm")
+    assert gate["max_agents"] == 3
+    assert gate["min_confidence"] == 50
+    assert gate["status"] == "insufficient_samples"
+
+
+def test_leader_asset_gate_prioritizes_accepted_leader(monkeypatch, tmp_path):
+    import engine.agent_manager as manager_mod
+
+    proposal_path = tmp_path / "leader_asset_proposals.json"
+    monkeypatch.setenv("LEADER_ASSET_PROPOSAL_PATH", str(proposal_path))
+    proposal_path.write_text(json.dumps({"proposals": [{
+        "status": "accepted",
+        "leader_asset": "GBPUSDm",
+        "confidence": 0.82,
+        "reason": "GBPUSDm leads",
+    }]}))
+    manager = manager_mod.ForexAgentManager(MT5Client(), paper_mode=True, agent_count=8)
+
+    leader_gate = manager._leader_asset_gate("GBPUSDm")
+    other_gate = manager._leader_asset_gate("EURUSDm")
+
+    assert leader_gate["is_leader"] is True
+    assert leader_gate["min_confidence"] == 50
+    assert leader_gate["max_agents"] == 3
+    assert other_gate["is_leader"] is False
+    assert other_gate["min_confidence"] == 65
+    assert other_gate["max_agents"] == 1

@@ -409,13 +409,46 @@ class ForexAgentManager:
             agent._open_tp = 0.0
             agent._open_risk_amount = 0.0
 
+    def _leader_asset_gate(self, symbol: str) -> Dict:
+        default_gate = {
+            "leader_asset": None,
+            "is_leader": False,
+            "min_confidence": 50,
+            "max_agents": 3,
+            "status": "inactive",
+            "reason": "leader asset proposal unavailable",
+        }
+        try:
+            proposal = self.leader_asset_supervisor.read_latest_proposal()
+        except Exception:
+            return default_gate
+        if not proposal or proposal.get("status") != "accepted":
+            if proposal:
+                default_gate["status"] = str(proposal.get("status", "inactive"))
+                default_gate["reason"] = str(proposal.get("reason", default_gate["reason"]))
+            return default_gate
+        leader = proposal.get("leader_asset")
+        if not leader:
+            return default_gate
+        is_leader = symbol == leader
+        return {
+            "leader_asset": leader,
+            "is_leader": is_leader,
+            "min_confidence": 50 if is_leader else 65,
+            "max_agents": 3 if is_leader else 1,
+            "status": "accepted",
+            "confidence": proposal.get("confidence", 0.0),
+            "reason": proposal.get("reason", ""),
+        }
+
     async def _process_agents(self, symbol: str, price: float):
         """Evaluates entry signals and executes trades for idle agents assigned to a symbol."""
         agents_for_symbol = [a for a in self.agents if a.dna.symbol == symbol and not a.is_in_trade]
+        gate = self._leader_asset_gate(symbol)
 
-        for agent in agents_for_symbol[:3]:  # max 3 signals per symbol per tick
+        for agent in agents_for_symbol[:gate["max_agents"]]:
             signal = agent.generate_signal(price)
-            if signal["action"] == "HOLD" or signal["confidence"] < 50:
+            if signal["action"] == "HOLD" or signal["confidence"] < gate["min_confidence"]:
                 continue
 
             # Risk validation
