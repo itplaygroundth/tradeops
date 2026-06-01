@@ -1,5 +1,6 @@
 """Integration tests for AssetLeader 4-phase competition."""
 import asyncio
+import json
 import sys
 import time
 import math
@@ -53,6 +54,19 @@ def make_mock_hermes(winner_idx=0, approved=True):
     return h
 
 
+def balanced_weights():
+    return {
+        "momentum": 0.125,
+        "mean_reversion": 0.125,
+        "grid_scalp": 0.125,
+        "llm_sentiment": 0.125,
+        "order_flow": 0.125,
+        "breakout_atr": 0.125,
+        "session_open": 0.125,
+        "market_structure": 0.125,
+    }
+
+
 @patch("engine.sub_agent.SubAgent.run_forward_test")
 def test_competition_returns_result(mock_run_forward):
     """run_competition must return a CompetitionResult with correct fields."""
@@ -76,6 +90,8 @@ def test_competition_returns_result(mock_run_forward):
     assert isinstance(result.approved, bool)
     assert isinstance(result.applied, bool)
     assert result.timestamp > 0
+    assert result.selection_source == "hermes"
+    assert result.deterministic_winner_idx is not None
 
 
 @patch("engine.sub_agent.SubAgent.run_forward_test")
@@ -93,6 +109,8 @@ def test_competition_hermes_selects_winner(mock_run_forward):
 
     assert result.hermes_reasoning == "Highest Sharpe with good win rate"
     assert result.hermes_confidence == 0.85
+    assert result.selection_source == "hermes"
+    assert result.llm_winner_idx == 3
 
 
 @patch("engine.sub_agent.SubAgent.run_forward_test")
@@ -141,10 +159,110 @@ def test_competition_hermes_unreachable_fallback(mock_run_forward):
     leader = AssetLeader("EURUSDm", None, mt5, None)
     result = asyncio.run(leader.run_competition())
 
-    # should not crash; approved=False when hermes unavailable
+    # should not crash; deterministic selection can approve without Hermes
     assert isinstance(result, CompetitionResult)
-    assert result.approved is False
+    assert result.approved is True
     assert result.applied is False
+    assert result.selection_source == "deterministic"
+
+
+@patch("engine.sub_agent.SubAgent.run_forward_test")
+def test_competition_llm_disabled_uses_deterministic(mock_run_forward, monkeypatch):
+    """LLM_DECISION_ENABLED=false bypasses Hermes entirely."""
+    mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)
+    monkeypatch.setenv("LLM_DECISION_ENABLED", "false")
+    candles = make_candles()
+    mt5 = make_mock_mt5(candles)
+    hermes = make_mock_hermes(winner_idx=3, approved=False)
+
+    leader = AssetLeader("EURUSDm", None, mt5, hermes)
+    result = asyncio.run(leader.run_competition())
+
+    assert result.selection_source == "deterministic"
+    assert result.llm_winner_idx is None
+    hermes.select_winner.assert_not_called()
+    hermes.verify_forward_test.assert_not_called()
+
+
+@patch("engine.sub_agent.SubAgent.run_forward_test")
+def test_competition_hermes_error_falls_back_to_deterministic(mock_run_forward):
+    """Hermes failures keep deterministic winner and record a compact error."""
+    mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)
+    candles = make_candles()
+    mt5 = make_mock_mt5(candles)
+    hermes = make_mock_hermes(winner_idx=3, approved=True)
+    hermes.select_winner = AsyncMock(side_effect=TimeoutError("slow"))
+
+    leader = AssetLeader("EURUSDm", None, mt5, hermes)
+    result = asyncio.run(leader.run_competition())
+
+    assert result.selection_source == "deterministic_fallback"
+    assert "TimeoutError" in result.llm_error
+    assert result.llm_winner_idx is None
+
+
+@patch("engine.sub_agent.SubAgent.run_forward_test")
+def test_competition_accepts_guarded_supervisor_proposal(mock_run_forward, monkeypatch, tmp_path):
+    """A valid proposal can replace the apply config after deterministic approval."""
+    mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)
+    monkeypatch.setenv("LLM_DECISION_ENABLED", "false")
+    monkeypatch.setenv("SUPERVISOR_PROPOSALS_ENABLED", "true")
+    proposal_path = tmp_path / "strategy_proposals.json"
+    weights = balanced_weights()
+    proposal_path.write_text(json.dumps({
+        "proposals": [{
+            "symbol": "EURUSDm",
+            "strategy_weights": weights,
+            "confidence": 0.9,
+            "reason": "stable balanced allocation",
+            "source": "test-supervisor",
+            "created_at": time.time(),
+            "expires_at": time.time() + 3600,
+        }]
+    }))
+    monkeypatch.setenv("STRATEGY_PROPOSALS_PATH", str(proposal_path))
+    production_agent = MagicMock()
+    production_agent.dna.strategy_weights = weights
+    production_agent.update_strategy_weights = AsyncMock()
+
+    leader = AssetLeader("EURUSDm", production_agent, make_mock_mt5(make_candles()), None)
+    result = asyncio.run(leader.run_competition())
+
+    assert result.selection_source == "supervisor_proposal"
+    assert result.proposal_status == "accepted"
+    assert result.proposal_source == "test-supervisor"
+    assert result.applied is True
+    production_agent.update_strategy_weights.assert_called_once()
+
+
+@patch("engine.sub_agent.SubAgent.run_forward_test")
+def test_competition_rejects_bad_supervisor_proposal(mock_run_forward, monkeypatch, tmp_path):
+    """Proposal guardrails reject unknown/unsafe strategy weights."""
+    mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)
+    monkeypatch.setenv("LLM_DECISION_ENABLED", "false")
+    monkeypatch.setenv("SUPERVISOR_PROPOSALS_ENABLED", "true")
+    proposal_path = tmp_path / "strategy_proposals.json"
+    weights = balanced_weights()
+    weights["unknown_strategy"] = 0.1
+    proposal_path.write_text(json.dumps({
+        "proposals": [{
+            "symbol": "EURUSDm",
+            "strategy_weights": weights,
+            "confidence": 0.9,
+            "reason": "bad key",
+            "source": "test-supervisor",
+            "created_at": time.time(),
+            "expires_at": time.time() + 3600,
+        }]
+    }))
+    monkeypatch.setenv("STRATEGY_PROPOSALS_PATH", str(proposal_path))
+
+    leader = AssetLeader("EURUSDm", None, make_mock_mt5(make_candles()), None)
+    result = asyncio.run(leader.run_competition())
+
+    assert result.selection_source == "deterministic"
+    assert result.proposal_status == "rejected"
+    assert "unknown strategy weight" in result.proposal_reason
 
 
 @patch("engine.sub_agent.SubAgent.run_forward_test")
@@ -214,8 +332,10 @@ def test_update_strategy_weights_empty_is_noop():
     assert agent.dna.strategy_weights == before
 
 
-def test_competition_applies_to_real_agent():
+@patch("engine.sub_agent.SubAgent.run_forward_test")
+def test_competition_applies_to_real_agent(mock_run_forward):
     """End-to-end: approved competition mutates a REAL agent's DNA weights."""
+    mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)
     candles = make_candles()
     mt5 = make_mock_mt5(candles)
     hermes = make_mock_hermes(winner_idx=0, approved=True)

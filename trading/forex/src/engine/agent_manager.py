@@ -67,7 +67,6 @@ class ForexAgentManager:
         if not self.paper_mode:
             try:
                 # schedule background load of recent history
-                import asyncio
                 asyncio.get_event_loop().create_task(self._load_recent_history())
             except Exception:
                 pass
@@ -83,6 +82,7 @@ class ForexAgentManager:
             self.hermes_client = HermesClient()
         except Exception:
             self.hermes_client = None
+        self._competition_semaphore = asyncio.Semaphore(1)
 
     async def _load_recent_history(self, hours: int = 24, limit: int = 200):
         """Loads recent deals from MT5 bridge and adds them to the order history."""
@@ -164,36 +164,45 @@ class ForexAgentManager:
             logger.exception("Competition scheduling failed")
 
     async def _run_competition_bg(self, symbol: str, production_agent: Optional[ForexAgent]):
-        try:
-            leader = AssetLeader(symbol, production_agent, self.mt5, self.hermes_client)
-            result = await leader.run_competition()
-        except HermesError as e:
-            logger.warning(f"Hermes error during competition for {symbol}: {e}")
-            return
-        except Exception as e:
-            logger.exception(f"Competition failed for {symbol}: {e}")
-            return
+        async with self._competition_semaphore:
+            try:
+                leader = AssetLeader(symbol, production_agent, self.mt5, self.hermes_client)
+                result = await leader.run_competition()
+            except HermesError as e:
+                logger.warning(f"Hermes error during competition for {symbol}: {e}")
+                return
+            except Exception as e:
+                logger.exception(f"Competition failed for {symbol}: {e}")
+                return
 
-        # write result into live_state summary for dashboard
-        try:
-            # load current state if exists
-            state = {}
-            if STATE_FILE.exists():
-                try:
-                    state = json.loads(STATE_FILE.read_text())
-                except Exception:
-                    state = {}
-            state.setdefault("summary", {})["last_competition"] = {
-                "symbol": result.symbol,
-                "winner_sharpe": result.winner_sharpe,
-                "approved": result.approved,
-                "applied": result.applied,
-                "forward_pnl": result.forward_pnl,
-                "timestamp": result.timestamp,
-            }
-            STATE_FILE.write_text(json.dumps(state))
-        except Exception:
-            logger.exception("Failed to write competition result to live state")
+            # write result into live_state summary for dashboard
+            try:
+                # load current state if exists
+                state = {}
+                if STATE_FILE.exists():
+                    try:
+                        state = json.loads(STATE_FILE.read_text())
+                    except Exception:
+                        state = {}
+                state.setdefault("summary", {})["last_competition"] = {
+                    "symbol": result.symbol,
+                    "regime": result.regime,
+                    "winner_sharpe": result.winner_sharpe,
+                    "selection_source": result.selection_source,
+                    "llm_error": result.llm_error,
+                    "deterministic_winner_idx": result.deterministic_winner_idx,
+                    "llm_winner_idx": result.llm_winner_idx,
+                    "proposal_status": result.proposal_status,
+                    "proposal_reason": result.proposal_reason,
+                    "proposal_source": result.proposal_source,
+                    "approved": result.approved,
+                    "applied": result.applied,
+                    "forward_pnl": result.forward_pnl,
+                    "timestamp": result.timestamp,
+                }
+                STATE_FILE.write_text(json.dumps(state))
+            except Exception:
+                logger.exception("Failed to write competition result to live state")
 
     async def _check_paper_positions(self, symbol: str, price: float):
         """Simulates SL/TP trigger evaluations for paper trading positions."""
@@ -476,6 +485,16 @@ class ForexAgentManager:
 
     def _write_state(self):
         """Writes current agent system state to JSON for dashboard visualization."""
+        previous_last_competition = None
+        if STATE_FILE.exists():
+            try:
+                previous_state = json.loads(STATE_FILE.read_text())
+                previous_last_competition = (
+                    previous_state.get("summary", {}).get("last_competition")
+                )
+            except Exception:
+                previous_last_competition = None
+
         agent_entries = [a.to_dict() for a in self.agents]
         by_strategy = {}
         for agent, entry in zip(self.agents, agent_entries):
@@ -564,6 +583,8 @@ class ForexAgentManager:
             "discovered_strategies": {"by_strategy": {}},
             "source_comparison": {},
         }
+        if previous_last_competition:
+            summary["last_competition"] = previous_last_competition
 
         state = {
             "timestamp": time.time(),

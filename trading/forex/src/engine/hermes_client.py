@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import time
+from json import JSONDecodeError
 from typing import Any, Dict
 from urllib import error, request
 
@@ -23,13 +24,17 @@ class HermesClient:
     implement fallback logic (e.g., use top-sharpe result).
     """
 
-    def __init__(self, url: str = None, timeout: int = 5, retries: int = 3):
+    def __init__(self, url: str = None, timeout: int = None, retries: int = None, model: str = None):
         import os
-        # Default to the working bcproxy LLM endpoint; 127.0.0.1:20128 was a
-        # Next.js server (returns 405), not an LLM API. Override with HERMES_URL.
-        self.url = url or os.getenv("HERMES_URL", "http://192.168.1.166:3333/v1/chat/completions")
-        self.timeout = timeout
-        self.retries = retries
+        # 9Router exposes an OpenAI-compatible API at /v1/chat/completions.
+        # HERMES_URL can still point directly to a chat endpoint; otherwise use
+        # NINEROUTER_URL as the gateway base URL.
+        gateway = os.getenv("NINEROUTER_URL", "http://127.0.0.1:20128").rstrip("/")
+        self.url = url or os.getenv("HERMES_URL", f"{gateway}/v1/chat/completions")
+        self.model = model or os.getenv("HERMES_MODEL") or os.getenv("NINEROUTER_MODEL", "FreeCombo")
+        self.api_key = os.getenv("NINEROUTER_KEY", "")
+        self.timeout = timeout if timeout is not None else int(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
+        self.retries = retries if retries is not None else int(os.getenv("LLM_RETRIES", "3"))
 
     def _build_select_prompt(self, payload: Dict[str, Any]) -> str:
         symbol = payload.get("symbol", "UNKNOWN")
@@ -62,48 +67,67 @@ class HermesClient:
 
     def _build_verify_prompt(self, payload: Dict[str, Any]) -> str:
         results = payload.get("forward_results", [])
+        winner_config = payload.get("winner_config", {})
         lines = [
+            f"Symbol: {payload.get('symbol', 'UNKNOWN')}",
+            f"Selected winner idx: {payload.get('winner_idx', 'UNKNOWN')}",
+            f"Best forward PnL: {payload.get('forward_pnl', 0):.4f}",
+            f"Winner strategy_weights: {json.dumps(winner_config, sort_keys=True)}",
+            "",
             "Forward-test results for top-3 strategies over 15 minutes of live trading:",
         ]
-        for r in results:
-            lines.append(
-                f"  strategy={r.get('strategy_name', 'N/A')} pnl={r.get('pnl', 0):.4f} "
-                f"max_dd={r.get('max_drawdown', 0):.4f} trades={r.get('trade_count', 0)}"
-            )
+        if results:
+            for r in results:
+                lines.append(
+                    f"  idx={r.get('idx', 'N/A')} pnl={r.get('pnl', 0):.4f} "
+                    f"max_dd={r.get('max_drawdown', 0):.4f} trades={r.get('trade_count', 0)} "
+                    f"pnl_pct={r.get('pnl_pct', 0):.4f}"
+                )
+        else:
+            lines.append(f"  aggregate_pnl={payload.get('forward_pnl', 0):.4f}")
         lines += [
             "",
             "Should we apply the winner strategy to the production agent?",
             "Consider: is the PnL positive? Is max_drawdown acceptable (<2%)?",
-            'Respond in JSON: {"approved": bool, "apply_config": {strategy_weights dict}, "reason": str}',
+            "Use winner strategy_weights as apply_config unless there is a clear risk reason to reject.",
+            'Respond with only valid JSON: {"approved": bool, "apply_config": {strategy_weights dict}, "reason": str}',
         ]
         return "\n".join(lines)
 
     async def select_winner(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         prompt = self._build_select_prompt(payload)
         request_body = {
-            "model": "sml/auto",
-            "messages": [{"role": "user", "content": prompt}],
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": "Return only one valid JSON object. No prose, markdown, or thinking."},
+                {"role": "user", "content": prompt},
+            ],
             "temperature": 0.3,
+            "stream": False,
         }
         raw = await asyncio.to_thread(self._post_with_retries, request_body)
         content = raw.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-        m = re.search(r"\{.*\}", content, re.DOTALL)
-        if m:
-            return json.loads(m.group())
+        parsed = _loads_first_json_object(content)
+        if parsed is not None:
+            return parsed
         raise HermesError(f"No JSON in Hermes response: {content[:200]}")
 
     async def verify_forward_test(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         prompt = self._build_verify_prompt(payload)
         request_body = {
-            "model": "sml/auto",
-            "messages": [{"role": "user", "content": prompt}],
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": "Return only one valid JSON object. No prose, markdown, or thinking."},
+                {"role": "user", "content": prompt},
+            ],
             "temperature": 0.3,
+            "stream": False,
         }
         raw = await asyncio.to_thread(self._post_with_retries, request_body)
         content = raw.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-        m = re.search(r"\{.*\}", content, re.DOTALL)
-        if m:
-            return json.loads(m.group())
+        parsed = _loads_first_json_object(content)
+        if parsed is not None:
+            return parsed
         raise HermesError(f"No JSON in Hermes response: {content[:200]}")
 
     def _post_with_retries(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -112,7 +136,7 @@ class HermesClient:
         for attempt in range(1, self.retries + 1):
             try:
                 return self._post_json(self.url, payload, timeout=self.timeout)
-            except error.URLError as e:
+            except (TimeoutError, error.URLError, error.HTTPError, JSONDecodeError) as e:
                 last_exc = e
                 logger.warning("Hermes request attempt %d failed: %s", attempt, e)
                 time.sleep(backoff)
@@ -121,8 +145,27 @@ class HermesClient:
 
     def _post_json(self, url: str, payload: Dict[str, Any], timeout: int = 5) -> Dict[str, Any]:
         data = json.dumps(payload).encode("utf-8")
-        req = request.Request(url, data=data, headers={"Content-Type": "application/json"})
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        req = request.Request(url, data=data, headers=headers)
         with request.urlopen(req, timeout=timeout) as resp:
             body = resp.read()
-            return json.loads(body.decode("utf-8"))
+            text = body.decode("utf-8")
+            try:
+                return json.loads(text)
+            except JSONDecodeError:
+                logger.warning("Hermes returned non-JSON response: %s", text[:500])
+                raise
 
+
+def _loads_first_json_object(content: str) -> Dict[str, Any] | None:
+    decoder = json.JSONDecoder()
+    for match in re.finditer(r"\{", content):
+        try:
+            obj, _ = decoder.raw_decode(content[match.start():])
+        except JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return None
