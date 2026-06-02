@@ -1,7 +1,7 @@
 import os
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 
 MAX_POSITIONS_PER_SYMBOL = int(os.getenv("MAX_POSITIONS_PER_SYMBOL", "1"))
@@ -31,12 +31,14 @@ class PositionDedupGuard:
         cooldown_seconds: int = POSITION_COOLDOWN_SECONDS,
         allow_hedge: bool = ALLOW_HEDGE_SAME_SYMBOL,
         managed_magic: int = MANAGED_MAGIC,
+        db_lookup: Optional[Callable[[], Dict[str, float]]] = None,
     ):
         self.max_per_symbol = max_per_symbol
         self.max_per_symbol_side = max_per_symbol_side
         self.cooldown_seconds = cooldown_seconds
         self.allow_hedge = allow_hedge
         self.managed_magic = managed_magic
+        self._db_lookup = db_lookup
         self._last_open_by_symbol: Dict[str, float] = {}
         self._last_summary: Dict[str, object] = {
             "max_per_symbol": max_per_symbol,
@@ -80,6 +82,13 @@ class PositionDedupGuard:
         opposite_side = [pos for pos in active if self._side(pos) and self._side(pos) != side]
 
         last_open = self._last_open_by_symbol.get(symbol)
+        if self._db_lookup is not None:
+            try:
+                db_ts = self._db_lookup().get(symbol)
+            except Exception:
+                db_ts = None
+            if db_ts is not None:
+                last_open = db_ts if last_open is None else max(last_open, db_ts)
         cooldown_remaining = 0
         if last_open:
             cooldown_remaining = int(self.cooldown_seconds - max(now - last_open, 0))

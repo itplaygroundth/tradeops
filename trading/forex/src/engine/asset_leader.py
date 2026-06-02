@@ -122,8 +122,9 @@ class AssetLeader:
         # Phase 3: forward-test top-3 sequentially (simple)
         forward_pnl: Optional[float] = None
         forward_results: List[Dict[str, Any]] = []
+        fwd_secs = int(os.getenv("FORWARD_TEST_DURATION_SECONDS", "60"))
         for idx, _ in top3:
-            f = await subs[idx].run_forward_test(duration_seconds=60)
+            f = await subs[idx].run_forward_test(duration_seconds=fwd_secs)
             forward_pnl = f.pnl if forward_pnl is None else max(forward_pnl, f.pnl)
             forward_results.append({
                 "idx": idx,
@@ -149,7 +150,7 @@ class AssetLeader:
                     "forward_results": forward_results,
                 }))
                 llm_approved = bool(v.get("approved", approved))
-                approved = approved or llm_approved
+                approved = approved and llm_approved
                 verified_cfg = v.get("apply_config")
                 if isinstance(verified_cfg, dict) and verified_cfg:
                     apply_cfg = verified_cfg
@@ -172,6 +173,12 @@ class AssetLeader:
                     reasoning = f"{reasoning}; supervisor proposal accepted: {proposal_reason}"
             else:
                 proposal_status = "none"
+
+        max_delta = float(os.getenv("SUPERVISOR_MAX_WEIGHT_DELTA", "0.35"))
+        baseline = self._current_strategy_weights(apply_cfg)
+        apply_cfg, _clamped = self._clamp_to_baseline(apply_cfg, baseline, max_delta)
+        if _clamped:
+            reasoning = f"{reasoning}; winner weights clamped to ±{max_delta:.2f} of baseline"
 
         applied = False
         if approved and self.production_agent:
@@ -289,6 +296,64 @@ class AssetLeader:
                 return "rejected", f"{key} delta exceeds {max_delta:.2f}", {}
 
         return "accepted", str(proposal.get("reason", "valid supervisor proposal")), normalized
+
+    def _clamp_to_baseline(
+        self,
+        cfg: Dict[str, Any],
+        baseline: Dict[str, float],
+        max_delta: float,
+    ) -> tuple:
+        """Normalize cfg then clamp each weight within ±max_delta of baseline.
+
+        Uses iterative projection: clamp violating weights to their bound, redistribute
+        the residual to unclamped weights, repeat until stable.
+        """
+        total = sum(max(cfg.get(k, 0.0), 0.0) for k in STRATEGY_METHODS) or 1.0
+        weights = {k: max(cfg.get(k, 0.0), 0.0) / total for k in STRATEGY_METHODS}
+        original = dict(weights)
+
+        lo = {k: max(baseline.get(k, 0.0) - max_delta, 0.0) for k in STRATEGY_METHODS}
+        hi = {k: baseline.get(k, 0.0) + max_delta for k in STRATEGY_METHODS}
+
+        # Iterative clamp: repeat until no weight violates bounds
+        for _ in range(len(STRATEGY_METHODS) + 1):
+            fixed = {}
+            free_keys = []
+            for k in STRATEGY_METHODS:
+                if weights[k] < lo[k]:
+                    fixed[k] = lo[k]
+                elif weights[k] > hi[k]:
+                    fixed[k] = hi[k]
+                else:
+                    free_keys.append(k)
+
+            if not fixed:
+                break  # all within bounds
+
+            fixed_sum = sum(fixed.values())
+            remaining = max(1.0 - fixed_sum, 0.0)
+            free_sum = sum(weights[k] for k in free_keys)
+            new_weights = dict(fixed)
+            if free_sum > 1e-12:
+                # distribute remaining proportionally
+                scale = remaining / free_sum
+                for k in free_keys:
+                    new_weights[k] = weights[k] * scale
+            elif free_keys:
+                # free weights are all zero; distribute remaining evenly
+                share = remaining / len(free_keys)
+                for k in free_keys:
+                    new_weights[k] = share
+            else:
+                for k in STRATEGY_METHODS:
+                    new_weights[k] = weights[k]
+            weights = new_weights
+
+        # renormalize to sum exactly 1.0
+        w_total = sum(weights.values()) or 1.0
+        result = {k: weights[k] / w_total for k in STRATEGY_METHODS}
+        was_clamped = any(abs(original[k] - result[k]) > 1e-9 for k in STRATEGY_METHODS)
+        return result, was_clamped
 
     def _current_strategy_weights(self, fallback: Dict[str, Any]) -> Dict[str, float]:
         dna = getattr(self.production_agent, "dna", None)

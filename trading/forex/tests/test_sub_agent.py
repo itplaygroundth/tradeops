@@ -4,10 +4,12 @@ import asyncio
 import sys
 import time
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from engine.sub_agent import SubAgent
+from engine.sub_agent import SubAgent, ForwardTestResult
 
 import math
 
@@ -88,3 +90,41 @@ def test_make_configs_12_distinct():
     for i, c in enumerate(configs):
         total = sum(c.values())
         assert abs(total - 1.0) < 1e-9, f"config {i} sum={total}"
+
+
+def test_forward_test_momentum_produces_trades():
+    """run_forward_test dispatches to _backtest_momentum and returns >=1 trade."""
+    # Build scripted price sequence: 30 rising then 15 falling
+    rising = [1.10 + i * 0.001 for i in range(30)]   # 1.100 … 1.129
+    falling = [1.130 - i * 0.001 for i in range(15)]  # 1.130 … 1.116
+    prices = rising + falling
+
+    call_count = [0]
+
+    def get_price(_symbol):
+        idx = min(call_count[0], len(prices) - 1)
+        val = prices[idx]
+        call_count[0] += 1
+        return SimpleNamespace(mid=val, timestamp=1000 + call_count[0])
+
+    fake_mt5 = MagicMock()
+    fake_mt5.get_price = get_price  # plain function, not async
+
+    sub = SubAgent("EURUSDm", make_cfg("momentum"), mt5_client=fake_mt5)
+
+    # clock: 0.0, then 0.1*i for i in 1..399, then 9999 (crosses end_ts=10 after ~100)
+    times = iter([0.0] + [0.1 * i for i in range(1, 400)] + [9999.0] * 50)
+
+    loop_mock = MagicMock()
+    loop_mock.time = lambda: next(times)
+
+    async def run():
+        with patch("engine.sub_agent.asyncio.sleep", new=AsyncMock()), \
+             patch("engine.sub_agent.asyncio.get_running_loop", return_value=loop_mock):
+            return await sub.run_forward_test(duration_seconds=10)
+
+    result = asyncio.run(run())
+
+    assert isinstance(result, ForwardTestResult)
+    assert result.trade_count >= 1
+    assert result.pnl != 0.0

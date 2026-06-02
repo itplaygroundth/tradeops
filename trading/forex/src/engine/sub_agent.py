@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from math import sqrt
 from statistics import mean, pstdev
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -87,41 +90,76 @@ class SubAgent:
     async def run_forward_test(self, duration_seconds: int = 900) -> ForwardTestResult:
         """Paper-trade on live prices for `duration_seconds`.
 
-        Skeleton implementation: if `mt5` client provided, attempt to observe prices,
-        otherwise sleep and return zeros.
+        Dispatches to the same _backtest_* helpers as run_backtest, feeding
+        tick-derived synthetic OHLCV candles.
         """
         if self.mt5 is None:
             await asyncio.sleep(min(1, duration_seconds))
             return ForwardTestResult(0.0, 0.0, 0, 0.0)
 
-        end_ts = asyncio.get_event_loop().time() + duration_seconds
-        pnl = 0.0
-        trades = 0
-        max_dd = 0.0
+        _OHLCV_STRATEGIES = {"order_flow", "breakout_atr", "session_open"}
 
-        # naive watcher: poll price every second (mt5 client should expose `get_price`)
-        # get_price returns a Tick object; extract the mid as a float for math.
+        primary = max(self.strategy_config.items(), key=lambda kv: kv[1])[0]
+
+        if primary in _OHLCV_STRATEGIES:
+            logger.warning(
+                "forward_test: tick-derived OHLCV approximate for %s on %s",
+                primary,
+                self.symbol,
+            )
+
         def _to_price(tick) -> float:
             return getattr(tick, "mid", None) or getattr(tick, "price", None) or float(tick)
 
+        end_ts = asyncio.get_running_loop().time() + duration_seconds
+
         try:
-            prev_price = _to_price(await maybe_await(self.mt5.get_price(self.symbol)))
+            first_tick = await maybe_await(self.mt5.get_price(self.symbol))
         except Exception:
             await asyncio.sleep(min(1, duration_seconds))
             return ForwardTestResult(0.0, 0.0, 0, 0.0)
 
-        while asyncio.get_event_loop().time() < end_ts:
+        first_mid = _to_price(first_tick)
+        closes: List[float] = [first_mid]
+        candle_series: List[dict] = [{
+            "open": first_mid, "high": first_mid, "low": first_mid,
+            "close": first_mid, "volume": 1,
+            "timestamp": getattr(first_tick, "timestamp", None) or len(closes),
+        }]
+
+        while asyncio.get_running_loop().time() < end_ts:
             try:
-                price = _to_price(await maybe_await(self.mt5.get_price(self.symbol)))
+                tick = await maybe_await(self.mt5.get_price(self.symbol))
             except Exception:
                 await asyncio.sleep(1)
                 continue
-            # no real trading logic here; measure tiny drift as pnl
-            pnl += (price - prev_price) / prev_price * 100.0
-            prev_price = price
+            mid = _to_price(tick)
+            closes.append(mid)
+            candle_series.append({
+                "open": mid, "high": mid, "low": mid, "close": mid, "volume": 1,
+                "timestamp": getattr(tick, "timestamp", None) or len(closes),
+            })
             await asyncio.sleep(1)
 
-        return ForwardTestResult(pnl, max_dd, trades, pnl)
+        if primary == "momentum":
+            trades_list, max_dd = self._backtest_momentum(closes)
+        elif primary == "mean_reversion":
+            trades_list, max_dd = self._backtest_mean_reversion(closes)
+        elif primary == "market_structure":
+            trades_list, max_dd = self._backtest_market_structure(closes)
+        elif primary == "order_flow":
+            trades_list, max_dd = self._backtest_order_flow(closes, candle_series)
+        elif primary == "breakout_atr":
+            trades_list, max_dd = self._backtest_breakout_atr(closes, candle_series)
+        elif primary == "session_open":
+            trades_list, max_dd = self._backtest_session_open(closes, candle_series)
+        else:
+            trades_list, max_dd = [], 0.0
+
+        pnl = sum(trades_list)
+        trade_count = len(trades_list)
+        pnl_pct = pnl
+        return ForwardTestResult(pnl, max_dd, trade_count, pnl_pct)
 
     def _backtest_momentum(self, closes: List[float]):
         short_w = 5

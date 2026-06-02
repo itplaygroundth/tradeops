@@ -58,7 +58,8 @@ class ForexAgentManager:
         self.risk_guardian = ForexRiskGuardian()
         self.account_risk_monitor = AccountRiskMonitor(managed_magic=MANAGED_MAGIC)
         self.performance_guard = PerformanceGuard()
-        self.position_dedup_guard = PositionDedupGuard(managed_magic=MANAGED_MAGIC)
+        from storage.history_db import last_open_ts_by_symbol
+        self.position_dedup_guard = PositionDedupGuard(managed_magic=MANAGED_MAGIC, db_lookup=last_open_ts_by_symbol)
         self.timeframe_filter = MultiTimeframeFilter()
 
         dnas = create_population(agent_count)

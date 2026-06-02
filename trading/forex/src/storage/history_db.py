@@ -238,3 +238,20 @@ def query_orders_for_export(
     """Return export-ready order rows in ascending time order."""
     result = query_orders(offset=0, limit=limit, symbol=symbol, agent=agent, status=status, q=q)
     return sorted(result.get("items", []), key=lambda item: float(item.get("timestamp") or 0))
+
+
+def last_open_ts_by_symbol() -> Dict[str, float]:
+    """Most recent live-entry open timestamp per symbol (for restart-safe dedup cooldown)."""
+    init_db()
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT symbol, MAX(ts) FROM orders "
+            "WHERE type = 'live' AND status = 'placed' AND action IN ('BUY','SELL') "
+            "GROUP BY symbol"
+        )
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    return {r[0]: float(r[1]) for r in rows if r[0] and r[1] is not None}

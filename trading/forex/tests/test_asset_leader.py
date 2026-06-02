@@ -150,8 +150,8 @@ def test_competition_rejected_does_not_apply(mock_run_forward):
 
 
 @patch("engine.sub_agent.SubAgent.run_forward_test")
-def test_competition_keeps_positive_deterministic_approval_on_hermes_reject(mock_run_forward):
-    """Hermes verify is advisory; it cannot veto a positive deterministic forward test."""
+def test_competition_and_gate_hermes_reject_blocks_apply(mock_run_forward):
+    """Hermes verify=False vetoes apply even when deterministic forward PnL is positive (AND-gate)."""
     mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)
     candles = make_candles()
     mt5 = make_mock_mt5(candles)
@@ -162,9 +162,9 @@ def test_competition_keeps_positive_deterministic_approval_on_hermes_reject(mock
     leader = AssetLeader("EURUSDm", production_agent, mt5, hermes)
     result = asyncio.run(leader.run_competition())
 
-    assert result.approved is True
-    assert result.applied is True
-    production_agent.update_strategy_weights.assert_called_once()
+    assert result.approved is False
+    assert result.applied is False
+    production_agent.update_strategy_weights.assert_not_called()
 
 
 @patch("engine.sub_agent.SubAgent.run_forward_test")
@@ -183,7 +183,7 @@ def test_competition_ignores_null_hermes_apply_config(mock_run_forward):
     leader = AssetLeader("EURUSDm", None, mt5, hermes)
     result = asyncio.run(leader.run_competition())
 
-    assert result.approved is True
+    assert result.approved is False
     assert isinstance(result.winner_config, dict)
     assert result.winner_config
 
@@ -388,3 +388,41 @@ def test_competition_applies_to_real_agent(mock_run_forward):
     assert result.applied is True
     assert abs(sum(agent.dna.strategy_weights.values()) - 1.0) < 1e-9
     assert agent.dna.strategy_weights != before  # actually changed
+
+
+@patch("engine.sub_agent.SubAgent.run_forward_test")
+def test_competition_clamps_huge_winner_delta(mock_run_forward, monkeypatch):
+    """One-hot winner config (delta ~0.875) is clamped to ±0.35 of baseline."""
+    mock_run_forward.return_value = ForwardTestResult(0.15, 0.0, 3, 0.15)
+    monkeypatch.setenv("SUPERVISOR_MAX_WEIGHT_DELTA", "0.35")
+    candles = make_candles()
+    mt5 = make_mock_mt5(candles)
+
+    # Hermes returns one-hot momentum, approves both selection and verification
+    all_strats = ["momentum", "mean_reversion", "grid_scalp", "llm_sentiment",
+                  "order_flow", "breakout_atr", "session_open", "market_structure"]
+    one_hot = {k: (1.0 if k == "momentum" else 0.0) for k in all_strats}
+    hermes = MagicMock()
+    hermes.select_winner = AsyncMock(return_value={
+        "winner_idx": 0,
+        "reasoning": "momentum dominates",
+        "confidence": 0.9,
+    })
+    hermes.verify_forward_test = AsyncMock(return_value={
+        "approved": True,
+        "apply_config": one_hot,
+        "reason": "one-hot momentum",
+    })
+
+    agent = make_real_agent()
+    before = dict(agent.dna.strategy_weights)
+
+    leader = AssetLeader("EURUSDm", agent, mt5, hermes)
+    result = asyncio.run(leader.run_competition())
+
+    assert result.applied is True
+    for k in all_strats:
+        assert abs(agent.dna.strategy_weights[k] - before.get(k, 0.0)) <= 0.35 + 1e-6, (
+            f"{k}: delta={abs(agent.dna.strategy_weights[k] - before.get(k, 0.0)):.4f}"
+        )
+    assert "clamped" in result.hermes_reasoning
