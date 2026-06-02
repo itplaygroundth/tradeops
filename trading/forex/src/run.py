@@ -512,6 +512,43 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
             return super().do_GET()
 
         def do_POST(self):
+            # MT5 position actions: modify SL/TP or close
+            if self.path.startswith("/api/mt5/position/modify") or self.path.startswith("/api/mt5/position/close"):
+                if AGENT_MANAGER is None:
+                    self.send_response(503); self.end_headers(); return
+                content_len = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_len) if content_len else b""
+                try:
+                    data = json.loads(body.decode() or "{}")
+                except Exception:
+                    self.send_response(400); self.end_headers(); return
+                ticket = data.get("ticket")
+                if ticket is None:
+                    self.send_response(400); self.end_headers(); return
+                try:
+                    if self.path.startswith("/api/mt5/position/modify"):
+                        coro = AGENT_MANAGER.mt5.modify_position(
+                            int(ticket),
+                            float(data.get("sl") or 0),
+                            float(data.get("tp") or 0),
+                        )
+                    else:
+                        coro = AGENT_MANAGER.mt5.close_position(int(ticket))
+                    fut = asyncio.run_coroutine_threadsafe(coro, _event_loop)
+                    result = fut.result(timeout=15)
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps(result).encode())
+                except Exception as e:
+                    self.send_response(502)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
             # Toggle mode: POST /api/mode {"mode": "paper"|"live"}
             if self.path.startswith("/api/mode"):
                 content_len = int(self.headers.get("Content-Length", 0))

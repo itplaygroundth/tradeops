@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from mt5_bridge.pip_calc import calculate_lot_size, get_pip_size, get_contract_size
+from mt5_bridge.client import MT5Client
 
 def test_pip_calc_usd_quote():
     # EURUSD: Quote is USD
@@ -74,3 +75,35 @@ def test_pip_calc_cross_pair():
         get_price_func=mock_get_price
     )
     assert lot == 0.04
+
+
+class FakeResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self.payload
+
+
+class FakePatchClient:
+    def __init__(self):
+        self.patch_calls = []
+
+    async def patch(self, path, json):
+        self.patch_calls.append((path, json))
+        return FakeResponse({"ticket": 123, "sl": json["sl"], "tp": json["tp"]})
+
+
+def test_mt5_client_modify_position_uses_patch_endpoint():
+    import asyncio
+    client = MT5Client("http://mt5.local")
+    fake = FakePatchClient()
+    client._client = fake
+
+    result = asyncio.run(client.modify_position(123, sl=1.0825, tp=1.0910))
+
+    assert fake.patch_calls == [("/position/123", {"sl": 1.0825, "tp": 1.0910})]
+    assert result == {"ticket": 123, "sl": 1.0825, "tp": 1.0910}

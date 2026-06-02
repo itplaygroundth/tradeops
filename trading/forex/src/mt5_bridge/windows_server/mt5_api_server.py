@@ -372,6 +372,32 @@ def close_position(ticket: int):
         
     return {"closed": int(ticket), "profit": float(pos.profit)}
 
+class ModifyRequest(BaseModel):
+    sl: float = 0
+    tp: float = 0
+
+@app.patch("/position/{ticket}")
+def modify_position(ticket: int, req: ModifyRequest):
+    positions = mt5.positions_get(ticket=ticket)
+    if not positions:
+        raise HTTPException(404, f"Position {ticket} not found")
+    pos = positions[0]
+    request = {
+        "action": mt5.TRADE_ACTION_SLTP,
+        "symbol": pos.symbol,
+        "position": int(ticket),
+        "sl": float(req.sl),
+        "tp": float(req.tp),
+        "magic": int(pos.magic),
+    }
+    logger.info(f"Modifying position {ticket}: {request}")
+    result = mt5.order_send(request)
+    if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+        comment = result.comment if result else "unknown"
+        retcode = result.retcode if result else -1
+        raise HTTPException(400, f"Modify failed: {comment} (code {retcode})")
+    return {"ticket": int(ticket), "sl": float(req.sl), "tp": float(req.tp)}
+
 # ── WebSocket real-time price stream ─────────────────────
 @app.websocket("/ws/prices")
 async def price_stream(ws: WebSocket, symbols: str = "EURUSD,GBPUSD,XAUUSD"):

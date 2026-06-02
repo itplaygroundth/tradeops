@@ -135,5 +135,10 @@ class MT5Client:
         r.raise_for_status()
         return r.json()
 
+    async def modify_position(self, ticket: int, sl: float = 0, tp: float = 0) -> dict:
+        r = await self._client.patch(f"/position/{ticket}", json={"sl": sl, "tp": tp})
+        r.raise_for_status()
+        return r.json()
+
     async def close(self):
         await self._client.aclose()
