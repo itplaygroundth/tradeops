@@ -57,6 +57,25 @@ def test_subagent_backtest_session_open():
     result = asyncio.run(sub.run_backtest(candles))
     assert hasattr(result, "sharpe")
 
+
+def test_session_open_uses_bar_index_not_epoch():
+    """Regression: session window keyed on bar index, not raw epoch timestamps.
+
+    With real epoch timestamps, `int(ts) % 480` was ~random so the first-30-bars
+    window almost never opened and session_open produced zero trades. Trending
+    candles inside the session window must yield at least one trade.
+    """
+    now = time.time()
+    candles = [{
+        "open": 1.10 + 0.0005 * i, "high": 1.10 + 0.0005 * i + 0.0003,
+        "low": 1.10 + 0.0005 * i - 0.0003,
+        "close": (1.10 + 0.0005 * i) if i < 40 else (1.12 - 0.0005 * (i - 40)),
+        "volume": 1000, "timestamp": now + i * 60,
+    } for i in range(120)]
+    sub = SubAgent("EURUSDm", make_cfg("session_open"))
+    result = asyncio.run(sub.run_backtest(candles))
+    assert result.trades >= 1, "session_open opened no trades — window keyed wrong"
+
 def test_subagent_backtest_market_structure():
     candles = make_candles_sine()
     sub = SubAgent("EURUSDm", make_cfg("market_structure"))

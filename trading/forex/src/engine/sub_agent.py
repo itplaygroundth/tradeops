@@ -296,9 +296,10 @@ class SubAgent:
         direction = 0
 
         for i in range(window, len(candles)):
-            ts = candles[i].get("timestamp", i)
-            # NOTE: ts is a Unix timestamp proxy; int(ts or i) guards against None
-            bar_in_session = int(ts or i) % 480
+            # Session position is the bar index cycled over a session length.
+            # Raw epoch timestamps make `% 480` meaningless (~random), so the
+            # window almost never opened; the bar counter is what was intended.
+            bar_in_session = i % 480
             if bar_in_session > 30:
                 continue
 
