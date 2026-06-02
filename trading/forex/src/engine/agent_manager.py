@@ -31,6 +31,20 @@ logger = logging.getLogger("agent_manager")
 # (mtai/dashboard), regardless of the process CWD.
 STATE_FILE = Path(__file__).resolve().parent.parent.parent / "dashboard" / "live_state.json"
 
+
+def _atomic_write_state(state: dict, *, indent=None) -> None:
+    """Write STATE_FILE atomically (tmp + os.replace).
+
+    Plain write_text() truncates then writes, so a concurrent reader — the
+    dashboard server, or the supervisor reading from its worker thread — can
+    observe a half-written file and fail json.loads(). os.replace() is an
+    atomic rename on POSIX, so readers always see a complete old-or-new file.
+    """
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = STATE_FILE.with_suffix(STATE_FILE.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(state, indent=indent))
+    os.replace(tmp_path, STATE_FILE)
+
 SOFT_TP_ENABLED = str(os.getenv("SOFT_TP_ENABLED", "true")).lower() in ("1", "true", "yes", "on")
 SOFT_TP_SPREAD_MULTIPLIER = float(os.getenv("SOFT_TP_SPREAD_MULTIPLIER", "1.25"))
 SOFT_TP_MIN_BUFFER = {
@@ -395,7 +409,7 @@ class ForexAgentManager:
                     except Exception:
                         state = {}
                 self._merge_competition_summary(state, self._competition_entry(result))
-                STATE_FILE.write_text(json.dumps(state))
+                _atomic_write_state(state)
                 self._schedule_leader_asset_supervisor()
             except Exception:
                 logger.exception("Failed to write competition result to live state")
@@ -426,7 +440,7 @@ class ForexAgentManager:
                 except Exception:
                     state = {}
             state.setdefault("summary", {})["leader_asset_supervisor"] = proposal
-            STATE_FILE.write_text(json.dumps(state))
+            _atomic_write_state(state)
         except Exception:
             logger.exception("Leader asset supervisor failed")
 
@@ -971,8 +985,7 @@ class ForexAgentManager:
             "order_history": self._order_history[:200],
             "summary": summary,
         }
-        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        STATE_FILE.write_text(json.dumps(state, indent=2))
+        _atomic_write_state(state, indent=2)
         # Persist full order history to disk for durability
         try:
             data_dir = Path("data")

@@ -223,6 +223,21 @@ def test_write_state_preserves_competition_leaderboard(monkeypatch, tmp_path):
             state_file.unlink()
 
 
+def test_write_state_is_atomic(monkeypatch, tmp_path):
+    """State writes leave no .tmp leftover and always produce valid JSON."""
+    import engine.agent_manager as manager_mod
+    state_file = tmp_path / "live_state.json"
+    monkeypatch.setattr(manager_mod, "STATE_FILE", state_file)
+    client = MT5Client()
+    manager = manager_mod.ForexAgentManager(client, paper_mode=True, agent_count=8)
+
+    manager._write_state()
+
+    assert state_file.exists()
+    json.loads(state_file.read_text())  # complete, parseable
+    assert not state_file.with_suffix(state_file.suffix + ".tmp").exists()
+
+
 class FakeExitClient:
     def __init__(self, tick):
         self.tick = tick
