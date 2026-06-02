@@ -364,6 +364,43 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                 self.wfile.write(json.dumps({"mode": mode, "account": account}).encode())
                 return
 
+            if self.path.startswith("/api/trading_journal/summary"):
+                from urllib.parse import urlparse, parse_qs
+                qs = parse_qs(urlparse(self.path).query)
+                try:
+                    limit = int(qs.get("limit", [10000])[0])
+                except Exception:
+                    limit = 10000
+                try:
+                    min_trades = int(qs.get("min_trades", [3])[0])
+                except Exception:
+                    min_trades = 3
+                try:
+                    from storage.history_db import query_orders_for_export
+                    from storage.trading_journal import build_institutional_journal
+                    from storage.journal_analysis import analyze_journal
+                    account = {}
+                    if AGENT_MANAGER is not None:
+                        account = {
+                            "balance": AGENT_MANAGER._account_balance,
+                            "equity": AGENT_MANAGER._account_equity,
+                            "currency": AGENT_MANAGER._account_currency,
+                        }
+                    orders = query_orders_for_export(limit=limit)
+                    rows = build_institutional_journal(orders, account=account, venue="MT5")
+                    body = json.dumps(analyze_journal(rows, min_trades=min_trades)).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(body)
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
             if self.path.startswith("/api/trading_journal/export"):
                 from urllib.parse import urlparse, parse_qs
                 qs = parse_qs(urlparse(self.path).query)
