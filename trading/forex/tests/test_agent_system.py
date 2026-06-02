@@ -232,6 +232,47 @@ class FakeAccountRiskClient:
         return {"closed": ticket}
 
 
+class FakeDedupClient:
+    def __init__(self):
+        self.placed = []
+        self.account = {"balance": 1000.0, "equity": 1000.0, "margin": 1.0, "currency": "USD"}
+        self.positions = [
+            {"ticket": 33, "symbol": "GBPUSDm", "type": "BUY", "magic": 20260101, "profit": 0.0},
+        ]
+
+    async def get_account(self):
+        return self.account
+
+    async def get_positions(self):
+        return list(self.positions)
+
+    async def place_order(self, **kwargs):
+        self.placed.append(kwargs)
+        return {"order_id": 44, "price": 1.2000}
+
+
+def test_position_dedup_blocks_duplicate_live_entry(monkeypatch):
+    import asyncio
+    asyncio.run(_async_position_dedup_blocks_duplicate_live_entry(monkeypatch))
+
+
+async def _async_position_dedup_blocks_duplicate_live_entry(monkeypatch):
+    client = FakeDedupClient()
+    manager = ForexAgentManager(client, paper_mode=False, agent_count=8)
+    monkeypatch.setattr(manager.performance_guard, "evaluate", lambda symbol, agent: type("D", (), {"allowed": True})())
+    manager.leader_asset_supervisor.read_latest_proposal = lambda: None
+    agent = manager.agents[0]
+    agent.dna.symbol = "GBPUSDm"
+    agent.dna.sl_pips = 15
+    agent.dna.tp_pips = 35
+    agent.generate_signal = lambda price: {"action": "LONG", "confidence": 90, "reason": "test"}
+
+    await manager._process_agents("GBPUSDm", 1.2000)
+
+    assert client.placed == []
+    assert agent._open_ticket is None
+
+
 def test_account_risk_hard_stop_closes_only_managed_positions(tmp_path):
     import asyncio
     asyncio.run(_async_account_risk_hard_stop_test(tmp_path))

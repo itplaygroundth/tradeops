@@ -21,6 +21,7 @@ from engine.asset_leader import AssetLeader
 from engine.hermes_client import HermesClient, HermesError
 from engine.leader_asset_supervisor import LeaderAssetSupervisor
 from engine.performance_guard import PerformanceGuard
+from engine.position_dedup_guard import PositionDedupGuard
 from storage.trading_journal import is_exit_deal, deal_reason_label
 
 logger = logging.getLogger("agent_manager")
@@ -56,6 +57,7 @@ class ForexAgentManager:
         self.risk_guardian = ForexRiskGuardian()
         self.account_risk_monitor = AccountRiskMonitor(managed_magic=MANAGED_MAGIC)
         self.performance_guard = PerformanceGuard()
+        self.position_dedup_guard = PositionDedupGuard(managed_magic=MANAGED_MAGIC)
 
         dnas = create_population(agent_count)
         self.agents: List[ForexAgent] = [
@@ -637,6 +639,13 @@ class ForexAgentManager:
             max_agents = min(max_agents, 1)
             min_confidence = min(95, min_confidence + 10)
         live_open_positions = account_risk.open_positions
+        live_positions = []
+        if not self.paper_mode:
+            try:
+                live_positions = await self.mt5.get_positions()
+            except Exception as e:
+                logger.warning(f"[PositionDedup] Failed to fetch positions: {e}")
+                return
 
         for agent in agents_for_symbol[:max_agents]:
             perf = self.performance_guard.evaluate(symbol, agent.dna.name)
@@ -646,6 +655,13 @@ class ForexAgentManager:
             signal = agent.generate_signal(price)
             if signal["action"] == "HOLD" or signal["confidence"] < min_confidence:
                 continue
+            action = "BUY" if signal["action"] == "LONG" else "SELL"
+
+            if not self.paper_mode:
+                dedup = self.position_dedup_guard.evaluate(symbol, action, live_positions)
+                if not dedup.allowed:
+                    logger.warning(f"[PositionDedup] {agent.dna.name} {symbol} {action} blocked: {dedup.reason}")
+                    continue
 
             # Risk validation
             today = int(time.time() / 86400)
@@ -656,7 +672,7 @@ class ForexAgentManager:
 
             risk_result = self.risk_guardian.validate(
                 symbol=symbol,
-                action="BUY" if signal["action"] == "LONG" else "SELL",
+                action=action,
                 entry_price=price,
                 sl_pips=agent.dna.sl_pips,
                 tp_pips=agent.dna.tp_pips,
@@ -679,6 +695,13 @@ class ForexAgentManager:
                 await self._live_execute(agent, signal, price, risk_result)
                 if agent._open_ticket:
                     live_open_positions += 1
+                    live_positions.append({
+                        "ticket": agent._open_ticket,
+                        "symbol": symbol,
+                        "type": action,
+                        "magic": MANAGED_MAGIC,
+                    })
+                    self.position_dedup_guard.record_open(symbol)
 
     async def _paper_execute(self, agent: ForexAgent, signal: dict, price: float, risk: RiskResult):
         """Simulates order execution for paper mode."""
@@ -904,6 +927,7 @@ class ForexAgentManager:
         summary.update(previous_competition_summary)
         summary["account_risk"] = self.account_risk_monitor.current.to_dict()
         summary["performance_guard"] = self.performance_guard.summary()
+        summary["position_dedup_guard"] = self.position_dedup_guard.summary()
 
         state = {
             "timestamp": time.time(),
