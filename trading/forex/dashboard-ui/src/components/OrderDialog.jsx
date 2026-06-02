@@ -37,7 +37,7 @@ export default function OrderDialog({ position, onClose, onDone }) {
       onDone?.()
       onClose?.()
     } catch (e) {
-      setErr(e.message)
+      setErr(`${symLabel(position.symbol)} #${position.ticket}: ${e.message}`)
       setBusy(false)
     }
   }
@@ -88,7 +88,7 @@ export default function OrderDialog({ position, onClose, onDone }) {
           </label>
         </div>
 
-        {err && <div className="od-error">{err}</div>}
+        {err && <div className="od-error" role="alert">{err}</div>}
 
         <div className="od-actions">
           <button className="od-btn od-cancel" onClick={onClose} disabled={busy}>Cancel</button>

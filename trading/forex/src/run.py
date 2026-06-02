@@ -185,6 +185,28 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
             pass
 
         def do_GET(self):
+            if self.path.startswith("/api/manual_actions"):
+                from urllib.parse import urlparse, parse_qs
+                qs = parse_qs(urlparse(self.path).query)
+                try:
+                    limit = int(qs.get("limit", [100])[0])
+                except Exception:
+                    limit = 100
+                try:
+                    from storage.manual_audit import read_manual_actions
+                    body = json.dumps({"items": read_manual_actions(limit=limit)}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(body)
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
             # MT5 open positions: /api/mt5/positions  → {"positions": [...]}
             if self.path.startswith("/api/mt5/positions"):
                 if AGENT_MANAGER is None:
@@ -525,8 +547,17 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                 ticket = data.get("ticket")
                 if ticket is None:
                     self.send_response(400); self.end_headers(); return
+                action_type = "modify" if self.path.startswith("/api/mt5/position/modify") else "close"
+                audit_payload = {
+                    "action": action_type,
+                    "ticket": int(ticket),
+                    "sl": data.get("sl"),
+                    "tp": data.get("tp"),
+                    "source": "dashboard",
+                    "path": self.path,
+                }
                 try:
-                    if self.path.startswith("/api/mt5/position/modify"):
+                    if action_type == "modify":
                         coro = AGENT_MANAGER.mt5.modify_position(
                             int(ticket),
                             float(data.get("sl") or 0),
@@ -541,12 +572,23 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps(result).encode())
+                    try:
+                        from storage.manual_audit import record_manual_action
+                        record_manual_action({**audit_payload, "status": "success", "result": result})
+                    except Exception:
+                        pass
                 except Exception as e:
+                    error_text = str(e)
+                    try:
+                        from storage.manual_audit import record_manual_action
+                        record_manual_action({**audit_payload, "status": "failed", "error": error_text})
+                    except Exception:
+                        pass
                     self.send_response(502)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
-                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                    self.wfile.write(json.dumps({"error": error_text}).encode())
                 return
 
             # Toggle mode: POST /api/mode {"mode": "paper"|"live"}

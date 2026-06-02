@@ -54,3 +54,14 @@ coverage.xml
 # Misc
 *.pem
 *.key
+
+# Runtime trading state / generated local artifacts
+dashboard/live_state.json
+data/*.db
+data/*.json
+data/*.jsonl
+src/data/
+src/dashboard/
+.superpowers/
+docs/superpowers/plans/
+logs/
