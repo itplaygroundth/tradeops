@@ -133,6 +133,7 @@ async def main(
     try:
         loop = asyncio.get_event_loop()
         asyncio.run_coroutine_threadsafe(AGENT_MANAGER._update_account(), loop)
+        asyncio.run_coroutine_threadsafe(AGENT_MANAGER._load_recent_history(hours=48, limit=500), loop)
     except Exception:
         pass
     print(f"✅ {len(manager.agents)} agents initialized")
@@ -545,6 +546,7 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                 try:
                     loop = _event_loop
                     asyncio.run_coroutine_threadsafe(AGENT_MANAGER._update_account(), loop)
+                    asyncio.run_coroutine_threadsafe(AGENT_MANAGER._load_recent_history(hours=48, limit=500), loop)
                 except Exception:
                     pass
 

@@ -265,12 +265,15 @@ class ForexAgentManager:
         """Loads recent deals from MT5 bridge and adds them to the order history."""
         try:
             deals = await self.mt5.get_recent_deals(hours=hours, limit=limit)
+            inserted_count = 0
+            updated_count = 0
             for d in deals:
                 entry_code = d.get("entry")
                 is_exit = is_exit_deal(entry_code)
                 ticket = d.get("position") or d.get("ticket")
                 comment = d.get("comment", "MT5")
                 entry = {
+                    "deal_ticket": d.get("ticket"),
                     "timestamp": d.get("time", int(time.time())),
                     "agent": comment,
                     "symbol": d.get("symbol"),
@@ -293,10 +296,17 @@ class ForexAgentManager:
                     self._order_history.pop()
                 # persist to DB
                 try:
-                    from storage.history_db import insert_order
-                    insert_order(entry)
+                    from storage.history_db import upsert_order
+                    if upsert_order(entry):
+                        inserted_count += 1
+                    else:
+                        updated_count += 1
                 except Exception:
                     pass
+            if deals:
+                logger.info(
+                    f"[HistoryBackfill] processed={len(deals)} inserted={inserted_count} updated={updated_count}"
+                )
             # write initial state so UI can show history immediately
             try:
                 self._write_state()
