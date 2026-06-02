@@ -314,6 +314,9 @@ def test_competition_mt5_offline_graceful(mock_run_forward):
     assert isinstance(result, CompetitionResult)
     # 0 candles -> all sharpes are 0.0 -> still produces a result
     assert result.symbol == "EURUSDm"
+    # zero forward trades must NOT be approved (no evidence to apply)
+    assert result.approved is False
+    assert result.applied is False
 
 
 def test_make_configs_count_and_uniqueness():

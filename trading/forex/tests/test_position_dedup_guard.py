@@ -84,6 +84,22 @@ def test_dedup_no_db_lookup_unchanged():
     assert decision.allowed is True
 
 
+def test_dedup_db_lookup_cached_within_ttl():
+    calls = {"n": 0}
+    def lookup():
+        calls["n"] += 1
+        return {"EURUSDm": 100.0}
+    guard = PositionDedupGuard(
+        max_per_symbol=1, max_per_symbol_side=1, cooldown_seconds=900,
+        db_lookup=lookup, db_cache_ttl=10.0,
+    )
+    guard.evaluate("EURUSDm", "BUY", [], now=1000.0)
+    guard.evaluate("XAUUSDm", "BUY", [], now=1005.0)  # within TTL -> cached
+    assert calls["n"] == 1
+    guard.evaluate("EURUSDm", "BUY", [], now=1011.0)  # past TTL -> refresh
+    assert calls["n"] == 2
+
+
 def test_last_open_ts_by_symbol_reads_live_entry(tmp_path, monkeypatch):
     monkeypatch.setattr(history_db_module, "DB_PATH", tmp_path / "history.db")
     init_db()

@@ -9,6 +9,7 @@ MAX_POSITIONS_PER_SYMBOL_SIDE = int(os.getenv("MAX_POSITIONS_PER_SYMBOL_SIDE", "
 POSITION_COOLDOWN_SECONDS = int(os.getenv("POSITION_COOLDOWN_SECONDS", "900"))
 ALLOW_HEDGE_SAME_SYMBOL = str(os.getenv("ALLOW_HEDGE_SAME_SYMBOL", "false")).lower() in ("1", "true", "yes", "on")
 MANAGED_MAGIC = int(os.getenv("MTAI_MAGIC", "20260101"))
+DEDUP_DB_CACHE_TTL_SECONDS = float(os.getenv("DEDUP_DB_CACHE_TTL_SECONDS", "10"))
 
 
 @dataclass
@@ -32,6 +33,7 @@ class PositionDedupGuard:
         allow_hedge: bool = ALLOW_HEDGE_SAME_SYMBOL,
         managed_magic: int = MANAGED_MAGIC,
         db_lookup: Optional[Callable[[], Dict[str, float]]] = None,
+        db_cache_ttl: float = DEDUP_DB_CACHE_TTL_SECONDS,
     ):
         self.max_per_symbol = max_per_symbol
         self.max_per_symbol_side = max_per_symbol_side
@@ -39,6 +41,9 @@ class PositionDedupGuard:
         self.allow_hedge = allow_hedge
         self.managed_magic = managed_magic
         self._db_lookup = db_lookup
+        self._db_cache_ttl = db_cache_ttl
+        self._db_cache: Dict[str, float] = {}
+        self._db_cache_at: float = 0.0
         self._last_open_by_symbol: Dict[str, float] = {}
         self._last_summary: Dict[str, object] = {
             "max_per_symbol": max_per_symbol,
@@ -68,6 +73,23 @@ class PositionDedupGuard:
                 managed.append(pos)
         return managed
 
+    def _db_last_open(self, symbol: str, now: float) -> Optional[float]:
+        """Last-open ts for symbol from the DB lookup, cached for db_cache_ttl.
+
+        evaluate() runs in the hot entry loop; without caching every call would
+        open a fresh sqlite connection. Refresh the whole snapshot at most once
+        per TTL window.
+        """
+        if self._db_lookup is None:
+            return None
+        if now - self._db_cache_at >= self._db_cache_ttl:
+            try:
+                self._db_cache = self._db_lookup() or {}
+            except Exception:
+                self._db_cache = {}
+            self._db_cache_at = now
+        return self._db_cache.get(symbol)
+
     def evaluate(
         self,
         symbol: str,
@@ -82,13 +104,9 @@ class PositionDedupGuard:
         opposite_side = [pos for pos in active if self._side(pos) and self._side(pos) != side]
 
         last_open = self._last_open_by_symbol.get(symbol)
-        if self._db_lookup is not None:
-            try:
-                db_ts = self._db_lookup().get(symbol)
-            except Exception:
-                db_ts = None
-            if db_ts is not None:
-                last_open = db_ts if last_open is None else max(last_open, db_ts)
+        db_ts = self._db_last_open(symbol, now)
+        if db_ts is not None:
+            last_open = db_ts if last_open is None else max(last_open, db_ts)
         cooldown_remaining = 0
         if last_open:
             cooldown_remaining = int(self.cooldown_seconds - max(now - last_open, 0))

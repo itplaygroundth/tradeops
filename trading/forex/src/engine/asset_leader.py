@@ -138,7 +138,11 @@ class AssetLeader:
             forward_pnl = 0.0
 
         # Phase 4: deterministic guardrails, with optional Hermes verification.
-        approved = forward_pnl >= 0.0
+        # Require at least one real forward trade: a config that never traded
+        # (no impl, too-short window, flat ticks) produces pnl=0 and must NOT be
+        # rubber-stamped as approved just because 0 >= 0.
+        forward_trades = sum(r["trade_count"] for r in forward_results)
+        approved = forward_pnl >= 0.0 and forward_trades > 0
         apply_cfg = configs[winner_idx]
         if llm_enabled and self.hermes:
             try:
