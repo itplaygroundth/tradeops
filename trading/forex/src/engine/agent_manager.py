@@ -68,6 +68,7 @@ class ForexAgentManager:
         ]
 
         self._tick_count = 0
+        self._tick_counts_by_symbol = {}
         self._last_evolution_time = time.time()
         self._next_agent_id = agent_count
         self._account_balance = 1000.0
@@ -329,13 +330,18 @@ class ForexAgentManager:
         self._record_price(symbol, price)
         self._append_equity_point(ts)
         self._tick_count += 1
+        symbol_tick_count = self._tick_counts_by_symbol.get(symbol, 0) + 1
+        # Keep legacy tests/tools that pre-seed _tick_count working until callers migrate.
+        if len(self._tick_counts_by_symbol) == 0 and self._tick_count > symbol_tick_count:
+            symbol_tick_count = self._tick_count
+        self._tick_counts_by_symbol[symbol] = symbol_tick_count
 
         # Check paper positions if paper mode is active
         if self.paper_mode:
             await self._check_paper_positions(symbol, price)
 
         # Process agent signals every 10 ticks per symbol
-        if self._tick_count % 10 == 0:
+        if symbol_tick_count % 10 == 0:
             await self._process_agents(symbol, price)
 
         # Sync live positions from MT5 every 30 ticks

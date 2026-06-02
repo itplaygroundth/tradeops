@@ -78,6 +78,35 @@ def test_paper_trading_execution_and_sl_tp():
     import asyncio
     asyncio.run(_async_paper_trading_test())
 
+
+def test_agent_processing_uses_per_symbol_tick_counts():
+    import asyncio
+    asyncio.run(_async_agent_processing_uses_per_symbol_tick_counts())
+
+
+async def _async_agent_processing_uses_per_symbol_tick_counts():
+    client = MT5Client()
+    manager = ForexAgentManager(client, paper_mode=True, agent_count=8)
+    processed = []
+
+    async def fake_process(symbol, price):
+        processed.append((symbol, price))
+
+    manager._process_agents = fake_process
+
+    for _ in range(9):
+        await manager.on_tick({"symbol": "EURUSDm", "price": 1.1000, "volume": 1.0})
+        await manager.on_tick({"symbol": "GBPUSDm", "price": 1.2500, "volume": 1.0})
+
+    assert processed == []
+
+    await manager.on_tick({"symbol": "EURUSDm", "price": 1.1010, "volume": 1.0})
+    assert processed == [("EURUSDm", 1.1010)]
+
+    await manager.on_tick({"symbol": "GBPUSDm", "price": 1.2510, "volume": 1.0})
+    assert processed == [("EURUSDm", 1.1010), ("GBPUSDm", 1.2510)]
+
+
 async def _async_paper_trading_test():
     # Remove state file if exists
     if STATE_FILE.exists():
