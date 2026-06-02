@@ -74,6 +74,8 @@ class ForexAgentManager:
         self._account_balance = 1000.0
         self._account_equity = 1000.0
         self._account_currency = "USD"  # set from MT5 account; "USC" = cent account
+        self._account_margin_free = None
+        self._account_leverage = None
         self._initial_capital = 1000.0
         self._latest_prices = {}
         self._equity_curve = []
@@ -172,6 +174,8 @@ class ForexAgentManager:
         self._account_balance = float(account.get("balance") or self._account_balance)
         self._account_equity = float(account.get("equity") or self._account_equity)
         self._account_currency = account.get("currency", self._account_currency)
+        self._account_margin_free = account.get("margin_free", self._account_margin_free)
+        self._account_leverage = account.get("leverage", self._account_leverage)
 
         today = int(time.time() / 86400)
         state = self.account_risk_monitor.evaluate(account, positions, current_day=today, now=time.time())
@@ -704,6 +708,8 @@ class ForexAgentManager:
                 get_price_func=get_price_func,
                 account_currency=self._account_currency,
                 open_positions=live_open_positions if not self.paper_mode else None,
+                account_margin_free=self._account_margin_free if not self.paper_mode else None,
+                account_leverage=self._account_leverage if not self.paper_mode else None,
             )
 
             if not risk_result.allowed:

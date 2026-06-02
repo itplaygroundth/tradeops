@@ -8,7 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from mt5_bridge.pip_calc import calculate_lot_size, get_pip_size
+from mt5_bridge.pip_calc import (
+    CENT_ACCOUNT_DIVISOR,
+    calculate_lot_size,
+    get_contract_size,
+    get_pip_size,
+    is_cent_currency,
+)
 
 logger = logging.getLogger("risk_guardian")
 
@@ -18,6 +24,8 @@ MIN_RR_RATIO = 2.0           # TP must be >= 2x SL distance
 MAX_CONCURRENT_POSITIONS = 3 # max open trades
 DAILY_DRAWDOWN_LIMIT = 0.05  # 5% daily loss → stop all
 MAX_EFFECTIVE_LEVERAGE = 100 # effective leverage ceiling 1:100
+MIN_FREE_MARGIN_AFTER_TRADE_RATIO = float(os.getenv("MIN_FREE_MARGIN_AFTER_TRADE_RATIO", "0.20"))
+MAX_MARGIN_USAGE_PER_TRADE_RATIO = float(os.getenv("MAX_MARGIN_USAGE_PER_TRADE_RATIO", "0.50"))
 RISK_WARNING_DD = float(os.getenv("RISK_WARNING_DD", "0.03"))
 RISK_PAUSE_DD = float(os.getenv("RISK_PAUSE_DD", str(DAILY_DRAWDOWN_LIMIT)))
 RISK_HARD_STOP_DD = float(os.getenv("RISK_HARD_STOP_DD", "0.07"))
@@ -226,6 +234,8 @@ class ForexRiskGuardian:
         get_price_func = None,
         account_currency: str = None,
         open_positions: Optional[int] = None,
+        account_margin_free: Optional[float] = None,
+        account_leverage: Optional[float] = None,
     ) -> RiskResult:
         """
         Validates signal + calculates lot size.
@@ -285,6 +295,39 @@ class ForexRiskGuardian:
             account_currency=account_currency,
         )
 
+        if account_margin_free is not None and account_leverage:
+            required_margin = self._estimate_required_margin(
+                symbol=symbol,
+                lot_size=lot_size,
+                entry_price=entry_price,
+                account_leverage=float(account_leverage),
+                account_currency=account_currency,
+            )
+            free_margin = float(account_margin_free)
+            equity = float(account_equity or 0.0)
+            min_free_after_trade = max(equity * MIN_FREE_MARGIN_AFTER_TRADE_RATIO, 0.0)
+            max_margin_for_trade = max(free_margin * MAX_MARGIN_USAGE_PER_TRADE_RATIO, 0.0)
+            if required_margin > max_margin_for_trade:
+                return RiskResult(
+                    False,
+                    lot_size=lot_size,
+                    risk_amount=account_balance * MAX_RISK_PCT,
+                    reason=(
+                        f"Required margin {required_margin:.2f} exceeds per-trade limit "
+                        f"{max_margin_for_trade:.2f}"
+                    ),
+                )
+            if free_margin - required_margin < min_free_after_trade:
+                return RiskResult(
+                    False,
+                    lot_size=lot_size,
+                    risk_amount=account_balance * MAX_RISK_PCT,
+                    reason=(
+                        f"Free margin after trade {free_margin - required_margin:.2f} "
+                        f"< reserve {min_free_after_trade:.2f}"
+                    ),
+                )
+
         # Calculate SL/TP prices
         sl_distance = sl_pips * pip_size
         tp_distance = tp_pips * pip_size
@@ -311,6 +354,24 @@ class ForexRiskGuardian:
             risk_amount=risk_amount,
             reason="OK",
         )
+
+    @staticmethod
+    def _estimate_required_margin(
+        symbol: str,
+        lot_size: float,
+        entry_price: float,
+        account_leverage: float,
+        account_currency: Optional[str] = None,
+    ) -> float:
+        if account_leverage <= 0 or lot_size <= 0 or entry_price <= 0:
+            return 0.0
+
+        contract_size = get_contract_size(symbol)
+        notional_usd = lot_size * contract_size * entry_price
+        required_margin_usd = notional_usd / account_leverage
+        if is_cent_currency(account_currency):
+            return required_margin_usd * CENT_ACCOUNT_DIVISOR
+        return required_margin_usd
 
     def on_position_opened(self):
         self._open_positions += 1

@@ -30,6 +30,48 @@ def test_risk_guardian_allow():
     assert round(res.sl_price, 4) == 1.0835
     assert round(res.tp_price, 4) == 1.0885
 
+
+def test_risk_guardian_allows_when_cent_account_margin_buffer_is_enough():
+    guardian = ForexRiskGuardian()
+
+    res = guardian.validate(
+        symbol="EURUSD",
+        action="BUY",
+        entry_price=1.0850,
+        sl_pips=15,
+        tp_pips=35,
+        account_balance=1000.0,
+        account_equity=1000.0,
+        current_day=28,
+        account_currency="USC",
+        account_margin_free=1000.0,
+        account_leverage=2000,
+    )
+
+    assert res.allowed is True
+    assert res.lot_size == 0.01
+
+
+def test_risk_guardian_rejects_when_required_margin_exceeds_buffer():
+    guardian = ForexRiskGuardian()
+
+    res = guardian.validate(
+        symbol="EURUSD",
+        action="BUY",
+        entry_price=1.0850,
+        sl_pips=15,
+        tp_pips=35,
+        account_balance=1000.0,
+        account_equity=1000.0,
+        current_day=28,
+        account_margin_free=100.0,
+        account_leverage=20,
+    )
+
+    assert res.allowed is False
+    assert "margin" in res.reason.lower()
+
+
 def test_risk_guardian_reject_rr():
     guardian = ForexRiskGuardian()
     
