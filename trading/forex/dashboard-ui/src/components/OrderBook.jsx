@@ -23,7 +23,7 @@ function triggerInfo(p) {
   return { side, triggerSide, triggerPrice }
 }
 
-export default function OrderBook({ positions = [] }) {
+export default function OrderBook({ positions = [], onSelect }) {
   if (!positions.length) {
     return (
       <div className="order-book-empty">
@@ -55,7 +55,7 @@ export default function OrderBook({ positions = [] }) {
             const { side, triggerSide, triggerPrice } = triggerInfo(p)
             const distance = p.tp_distance
             return (
-              <tr key={p.ticket}>
+              <tr key={p.ticket} className="ob-row" onClick={() => onSelect?.(p)}>
                 <td className="ob-symbol">{symLabel(p.symbol)}</td>
                 <td className={`ob-side ${side === 'BUY' ? 'ob-buy' : 'ob-sell'}`}>
                   {side}

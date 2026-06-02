@@ -45,5 +45,5 @@ export function useLiveState() {
     return () => { clearInterval(id1); clearInterval(id2) }
   }, [fetchState, fetchMT5])
 
-  return { state, error, mt5 }
+  return { state, error, mt5, refreshMT5: fetchMT5 }
 }

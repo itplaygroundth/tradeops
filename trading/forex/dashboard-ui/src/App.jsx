@@ -21,7 +21,7 @@ function LazyBox({ children }) {
 }
 
 export default function App() {
-  const { state, error, mt5 } = useLiveState()
+  const { state, error, mt5, refreshMT5 } = useLiveState()
 
   if (error && !state) {
     return (
@@ -69,7 +69,7 @@ export default function App() {
         {/* CENTER: Chart & Terminal */}
         <div className="center-panel">
           <div className="chart-area">
-            <LazyBox><ChartTabs positions={mt5?.positions ?? []} /></LazyBox>
+            <LazyBox><ChartTabs positions={mt5?.positions ?? []} refreshMT5={refreshMT5} /></LazyBox>
           </div>
           
           {/* BOTTOM TERMINAL */}

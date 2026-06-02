@@ -113,7 +113,7 @@ export default function TvChart({ symbol, timeframe = 'M15', height, showVolume 
     }
   }, [height, fillParent, showVolume, showCrosshair])
 
-  // Fetch data on symbol/timeframe change
+  // Fetch full history on symbol/timeframe change
   useEffect(() => {
     if (!candleRef.current) return
     let cancelled = false
@@ -142,6 +142,33 @@ export default function TvChart({ symbol, timeframe = 'M15', height, showVolume 
       })
 
     return () => { cancelled = true }
+  }, [symbol, timeframe])
+
+  // Poll latest candle every 3s and update in-place
+  useEffect(() => {
+    let cancelled = false
+    const tick = () => {
+      if (!candleRef.current) return
+      fetch(`/api/mt5/ohlcv/${symbol}?timeframe=${timeframe}&count=2`)
+        .then(r => r.json())
+        .then(raw => {
+          if (cancelled) return
+          const candles = parseOhlcv(raw)
+          if (!candles.length) return
+          const last = candles[candles.length - 1]
+          candleRef.current.update(last)
+          if (volumeRef.current) {
+            volumeRef.current.update({
+              time: last.time,
+              value: last.volume ?? 0,
+              color: last.close >= last.open ? 'rgba(52,199,89,0.25)' : 'rgba(255,69,58,0.25)',
+            })
+          }
+        })
+        .catch(() => {})
+    }
+    const id = setInterval(tick, 3000)
+    return () => { cancelled = true; clearInterval(id) }
   }, [symbol, timeframe])
 
   return (
