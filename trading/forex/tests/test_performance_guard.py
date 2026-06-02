@@ -47,3 +47,25 @@ def test_performance_guard_allows_after_win_breaks_streak(monkeypatch):
 
     assert decision.allowed is True
     assert guard.summary()["paused_symbols"] == {}
+
+
+def test_performance_guard_blocks_symbol_with_bad_expectancy(monkeypatch):
+    import engine.performance_guard as perf_mod
+
+    monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_GUARD_ENABLED", True)
+    monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_MIN_TRADES", 3)
+    monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_BLOCK_THRESHOLD", -0.25)
+
+    guard = PerformanceGuard(symbol_loss_limit=10, agent_loss_limit=10, cooldown_seconds=3600)
+    rows = [
+        closed("AUDUSDm", "FX-AUD-001", -2, 1),
+        closed("AUDUSDm", "FX-AUD-001", -1, 2),
+        closed("AUDUSDm", "FX-AUD-002", 0.25, 3),
+    ]
+    monkeypatch.setattr(guard, "_load_journal", lambda: rows)
+
+    decision = guard.evaluate("AUDUSDm", "FX-AUD-001", now=1780359000)
+
+    assert decision.allowed is False
+    assert "expectancy" in decision.reason
+    assert guard.summary()["expectancy_blocked_symbols"]["AUDUSDm"]["trades"] == 3

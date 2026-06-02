@@ -99,6 +99,7 @@ class MultiTimeframeFilter:
         self.enabled = enabled
         self._cache: Dict[tuple, tuple[float, List[Dict[str, Any]]]] = {}
         self._last_summary: Dict[str, Any] = {}
+        self._metrics: Dict[str, Dict[str, Any]] = {}
 
     def primary_timeframe(self, symbol: str, dna_timeframe: str = "") -> str:
         symbol_key = _symbol_key(symbol)
@@ -131,7 +132,9 @@ class MultiTimeframeFilter:
             primary_candles = await self._candles(mt5, symbol, primary)
             higher_candles = await self._candles(mt5, symbol, higher)
         except Exception as e:
-            return TimeframeDecision(False, f"MTF data unavailable: {e}", primary, higher)
+            decision = TimeframeDecision(False, f"MTF data unavailable: {e}", primary, higher)
+            self._record_decision(symbol, decision)
+            return decision
 
         primary_trend = _trend(primary_candles)
         higher_trend = _trend(higher_candles)
@@ -144,7 +147,9 @@ class MultiTimeframeFilter:
         }
 
         if primary_trend == "unknown" or higher_trend == "unknown":
-            return TimeframeDecision(False, "MTF insufficient candle data", primary, higher, primary_trend, higher_trend)
+            decision = TimeframeDecision(False, "MTF insufficient candle data", primary, higher, primary_trend, higher_trend)
+            self._record_decision(symbol, decision)
+            return decision
 
         # XAU is stricter: do not trade against higher timeframe and avoid range unless primary agrees clearly.
         strict = _symbol_key(symbol) == "XAU"
@@ -152,14 +157,58 @@ class MultiTimeframeFilter:
         higher_match = _matches(action, higher_trend)
 
         if primary_match and higher_match:
-            return TimeframeDecision(True, "MTF aligned", primary, higher, primary_trend, higher_trend, confidence_adjustment=5)
+            decision = TimeframeDecision(True, "MTF aligned", primary, higher, primary_trend, higher_trend, confidence_adjustment=5)
+            self._record_decision(symbol, decision)
+            return decision
         if primary_match and higher_trend == "range" and not strict:
-            return TimeframeDecision(True, "MTF primary aligned; higher range", primary, higher, primary_trend, higher_trend, confidence_adjustment=0)
+            decision = TimeframeDecision(True, "MTF primary aligned; higher range", primary, higher, primary_trend, higher_trend, confidence_adjustment=0)
+            self._record_decision(symbol, decision)
+            return decision
         if primary_trend == "range":
-            return TimeframeDecision(False, f"MTF primary {primary} is range", primary, higher, primary_trend, higher_trend)
+            decision = TimeframeDecision(False, f"MTF primary {primary} is range", primary, higher, primary_trend, higher_trend)
+            self._record_decision(symbol, decision)
+            return decision
         if higher_trend not in ("range", primary_trend):
-            return TimeframeDecision(False, f"MTF conflict {primary}:{primary_trend} vs {higher}:{higher_trend}", primary, higher, primary_trend, higher_trend)
-        return TimeframeDecision(False, f"MTF rejects {action} against {primary}:{primary_trend}", primary, higher, primary_trend, higher_trend)
+            decision = TimeframeDecision(False, f"MTF conflict {primary}:{primary_trend} vs {higher}:{higher_trend}", primary, higher, primary_trend, higher_trend)
+            self._record_decision(symbol, decision)
+            return decision
+        decision = TimeframeDecision(False, f"MTF rejects {action} against {primary}:{primary_trend}", primary, higher, primary_trend, higher_trend)
+        self._record_decision(symbol, decision)
+        return decision
+
+    def _record_decision(self, symbol: str, decision: TimeframeDecision):
+        bucket = self._metrics.setdefault(symbol, {
+            "evaluations": 0,
+            "allowed": 0,
+            "blocked": 0,
+            "block_reasons": {},
+            "last_decision": {},
+        })
+        bucket["evaluations"] += 1
+        if decision.allowed:
+            bucket["allowed"] += 1
+        else:
+            bucket["blocked"] += 1
+            reasons = bucket["block_reasons"]
+            reasons[decision.reason] = reasons.get(decision.reason, 0) + 1
+        bucket["last_decision"] = {
+            "allowed": decision.allowed,
+            "reason": decision.reason,
+            "primary_timeframe": decision.primary_timeframe,
+            "higher_timeframe": decision.higher_timeframe,
+            "primary_trend": decision.primary_trend,
+            "higher_trend": decision.higher_trend,
+            "updated_at": time.time(),
+        }
 
     def summary(self) -> Dict[str, Any]:
-        return dict(self._last_summary)
+        return {
+            "latest": dict(self._last_summary),
+            "metrics": dict(self._metrics),
+            "policy": {
+                "enabled": self.enabled,
+                "min_candles": MTF_MIN_CANDLES,
+                "cache_seconds": self.cache_seconds,
+                "primary_timeframes": dict(SYMBOL_PRIMARY_TF),
+            },
+        }

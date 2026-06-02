@@ -8,6 +8,9 @@ SYMBOL_LOSS_STREAK_LIMIT = int(os.getenv("SYMBOL_LOSS_STREAK_LIMIT", "3"))
 AGENT_LOSS_STREAK_LIMIT = int(os.getenv("AGENT_LOSS_STREAK_LIMIT", "2"))
 PERFORMANCE_GUARD_LOOKBACK = int(os.getenv("PERFORMANCE_GUARD_LOOKBACK", "200"))
 PERFORMANCE_GUARD_COOLDOWN_SECONDS = int(os.getenv("PERFORMANCE_GUARD_COOLDOWN_SECONDS", "14400"))
+EXPECTANCY_SYMBOL_GUARD_ENABLED = str(os.getenv("EXPECTANCY_SYMBOL_GUARD_ENABLED", "true")).lower() in ("1", "true", "yes", "on")
+EXPECTANCY_SYMBOL_MIN_TRADES = int(os.getenv("EXPECTANCY_SYMBOL_MIN_TRADES", "10"))
+EXPECTANCY_SYMBOL_BLOCK_THRESHOLD = float(os.getenv("EXPECTANCY_SYMBOL_BLOCK_THRESHOLD", "-0.25"))
 
 
 @dataclass
@@ -54,6 +57,7 @@ class PerformanceGuard:
         self._last_summary: Dict[str, Any] = {
             "paused_symbols": {},
             "paused_agents": {},
+            "expectancy_blocked_symbols": {},
             "symbol_stats": {},
             "agent_stats": {},
         }
@@ -118,6 +122,7 @@ class PerformanceGuard:
         agent_stats = self._stats(rows, "agent")
         paused_symbols = {}
         paused_agents = {}
+        expectancy_blocked_symbols = {}
 
         for symbol in symbol_stats:
             streak, last_ts = self._loss_streak(rows, "symbol", symbol)
@@ -139,12 +144,40 @@ class PerformanceGuard:
                     "reason": f"{agent} loss streak {streak} >= {self.agent_loss_limit}",
                 }
 
+        if EXPECTANCY_SYMBOL_GUARD_ENABLED:
+            try:
+                from storage.journal_analysis import analyze_journal
+                analysis = analyze_journal(rows, min_trades=EXPECTANCY_SYMBOL_MIN_TRADES)
+                for symbol, stats in analysis.get("by_symbol", {}).items():
+                    if (
+                        int(stats.get("trades") or 0) >= EXPECTANCY_SYMBOL_MIN_TRADES
+                        and float(stats.get("expectancy") or 0.0) <= EXPECTANCY_SYMBOL_BLOCK_THRESHOLD
+                    ):
+                        expectancy_blocked_symbols[symbol] = {
+                            "trades": stats.get("trades"),
+                            "expectancy": stats.get("expectancy"),
+                            "win_rate": stats.get("win_rate"),
+                            "net_pnl": stats.get("net_pnl"),
+                            "reason": (
+                                f"{symbol} expectancy {float(stats.get('expectancy') or 0.0):.4f} "
+                                f"<= {EXPECTANCY_SYMBOL_BLOCK_THRESHOLD:.4f}"
+                            ),
+                        }
+            except Exception:
+                expectancy_blocked_symbols = {}
+
         self._last_summary = {
             "paused_symbols": paused_symbols,
             "paused_agents": paused_agents,
+            "expectancy_blocked_symbols": expectancy_blocked_symbols,
             "symbol_stats": symbol_stats,
             "agent_stats": agent_stats,
             "cooldown_seconds": self.cooldown_seconds,
+            "expectancy_guard": {
+                "enabled": EXPECTANCY_SYMBOL_GUARD_ENABLED,
+                "min_trades": EXPECTANCY_SYMBOL_MIN_TRADES,
+                "block_threshold": EXPECTANCY_SYMBOL_BLOCK_THRESHOLD,
+            },
         }
         return self._last_summary
 
@@ -153,6 +186,9 @@ class PerformanceGuard:
         symbol_pause = summary["paused_symbols"].get(symbol)
         if symbol_pause:
             return PerformanceDecision(False, symbol_pause["reason"], symbol_streak=symbol_pause["loss_streak"])
+        expectancy_pause = summary.get("expectancy_blocked_symbols", {}).get(symbol)
+        if expectancy_pause:
+            return PerformanceDecision(False, expectancy_pause["reason"])
         agent_pause = summary["paused_agents"].get(agent)
         if agent_pause:
             return PerformanceDecision(False, agent_pause["reason"], agent_streak=agent_pause["loss_streak"])

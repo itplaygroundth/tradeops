@@ -15,7 +15,7 @@ function sideOf(p) {
   return String(p.type || '').toUpperCase()
 }
 
-export default function OrderDialog({ position, onClose, onDone }) {
+export default function OrderDialog({ position, onClose, onDone, onAlert }) {
   const digits = priceDigits(position.symbol)
   const side = sideOf(position)
   const [sl, setSl] = useState(position.sl ? String(position.sl) : '')
@@ -37,7 +37,9 @@ export default function OrderDialog({ position, onClose, onDone }) {
       onDone?.()
       onClose?.()
     } catch (e) {
-      setErr(`${symLabel(position.symbol)} #${position.ticket}: ${e.message}`)
+      const message = `${symLabel(position.symbol)} #${position.ticket}: ${e.message}`
+      setErr(message)
+      onAlert?.({ type: 'error', message })
       setBusy(false)
     }
   }

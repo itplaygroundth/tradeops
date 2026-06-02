@@ -357,6 +357,7 @@ class ForexAgentManager:
         # Update account balance and equity info every 60 ticks
         if self._tick_count % 60 == 0:
             await self._update_account()
+            self._schedule_leader_asset_supervisor()
 
         # Run evolution cycle if interval is reached
         if time.time() - self._last_evolution_time >= EVOLUTION_INTERVAL:

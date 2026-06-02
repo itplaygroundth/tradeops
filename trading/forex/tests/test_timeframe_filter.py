@@ -81,3 +81,19 @@ def test_mtf_allows_fx_primary_trend_when_higher_is_range():
 
     assert decision.allowed is True
     assert "higher range" in decision.reason
+
+
+def test_mtf_summary_tracks_policy_and_decision_metrics():
+    import asyncio
+    client = FakeMTFClient({"H1": candles(4400, 0.0), "H4": candles(4300, 1.2)})
+    filter_ = MultiTimeframeFilter(cache_seconds=60)
+
+    decision = asyncio.run(_eval(filter_, client, "XAUUSDm", "BUY", "H1"))
+    summary = filter_.summary()
+
+    assert decision.allowed is False
+    assert summary["policy"]["enabled"] is True
+    assert summary["latest"]["XAUUSDm"]["primary_timeframe"] == "H1"
+    assert summary["metrics"]["XAUUSDm"]["evaluations"] == 1
+    assert summary["metrics"]["XAUUSDm"]["blocked"] == 1
+    assert "MTF primary H1 is range" in summary["metrics"]["XAUUSDm"]["block_reasons"]

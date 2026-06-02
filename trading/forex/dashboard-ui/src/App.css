@@ -2498,6 +2498,68 @@ body {
 .od-danger  { background: transparent; border-color: #F6465D; color: #F6465D; }
 .od-confirm { background: #F6465D; color: #fff; }
 
+.global-action-alert {
+  margin: 4px 10px 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(246,70,93,0.35);
+  background: rgba(246,70,93,0.12);
+  color: #F6465D;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.global-action-alert span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.global-action-alert button {
+  background: transparent;
+  border: 1px solid rgba(246,70,93,0.45);
+  color: #F6465D;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.manual-actions-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 12px;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+}
+.manual-actions {
+  width: 100%;
+  overflow: auto;
+}
+.manual-actions table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 11px;
+}
+.manual-actions th,
+.manual-actions td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  white-space: nowrap;
+}
+.manual-actions th {
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 9px;
+}
+.manual-actions td:last-child {
+  white-space: normal;
+  min-width: 220px;
+  color: var(--text-secondary);
+}
+.ma-success { color: #0ECB81; }
+.ma-failed { color: #F6465D; }
+
 /* ── Trade History per-column colors ── */
 .history-table td.th-time   { color: var(--text-muted); }
 .history-table td.th-agent  { color: var(--text-secondary); }
