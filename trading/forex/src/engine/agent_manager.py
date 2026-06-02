@@ -22,6 +22,7 @@ from engine.hermes_client import HermesClient, HermesError
 from engine.leader_asset_supervisor import LeaderAssetSupervisor
 from engine.performance_guard import PerformanceGuard
 from engine.position_dedup_guard import PositionDedupGuard
+from engine.timeframe_filter import MultiTimeframeFilter
 from storage.trading_journal import is_exit_deal, deal_reason_label
 
 logger = logging.getLogger("agent_manager")
@@ -58,6 +59,7 @@ class ForexAgentManager:
         self.account_risk_monitor = AccountRiskMonitor(managed_magic=MANAGED_MAGIC)
         self.performance_guard = PerformanceGuard()
         self.position_dedup_guard = PositionDedupGuard(managed_magic=MANAGED_MAGIC)
+        self.timeframe_filter = MultiTimeframeFilter()
 
         dnas = create_population(agent_count)
         self.agents: List[ForexAgent] = [
@@ -672,6 +674,10 @@ class ForexAgentManager:
                 if not dedup.allowed:
                     logger.warning(f"[PositionDedup] {agent.dna.name} {symbol} {action} blocked: {dedup.reason}")
                     continue
+                mtf = await self.timeframe_filter.evaluate(self.mt5, symbol, action, agent.dna.timeframe)
+                if not mtf.allowed:
+                    logger.warning(f"[MTF] {agent.dna.name} {symbol} {action} blocked: {mtf.reason}")
+                    continue
 
             # Risk validation
             today = int(time.time() / 86400)
@@ -938,6 +944,7 @@ class ForexAgentManager:
         summary["account_risk"] = self.account_risk_monitor.current.to_dict()
         summary["performance_guard"] = self.performance_guard.summary()
         summary["position_dedup_guard"] = self.position_dedup_guard.summary()
+        summary["timeframe_filter"] = self.timeframe_filter.summary()
 
         state = {
             "timestamp": time.time(),
