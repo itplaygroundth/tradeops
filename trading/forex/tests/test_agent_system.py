@@ -212,6 +212,44 @@ class FakeExitClient:
         return {"ticket": ticket, "sl": sl, "tp": tp}
 
 
+class FakeAccountRiskClient:
+    def __init__(self):
+        self.closed = []
+        self.account = {"balance": 1000.0, "equity": 920.0, "margin": 10.0, "currency": "USD"}
+        self.positions = [
+            {"ticket": 11, "symbol": "GBPUSDm", "type": "BUY", "magic": 20260101, "profit": -80.0},
+            {"ticket": 22, "symbol": "GBPUSDm", "type": "BUY", "magic": 0, "profit": -5.0},
+        ]
+
+    async def get_account(self):
+        return self.account
+
+    async def get_positions(self):
+        return self.positions
+
+    async def close_position(self, ticket):
+        self.closed.append(ticket)
+        return {"closed": ticket}
+
+
+def test_account_risk_hard_stop_closes_only_managed_positions(tmp_path):
+    import asyncio
+    asyncio.run(_async_account_risk_hard_stop_test(tmp_path))
+
+
+async def _async_account_risk_hard_stop_test(tmp_path):
+    client = FakeAccountRiskClient()
+    manager = ForexAgentManager(client, paper_mode=False, agent_count=8)
+    manager.account_risk_monitor.state_file = tmp_path / "risk_state.json"
+    manager.account_risk_monitor.reset(equity=1000.0, current_day=int(time.time() / 86400))
+
+    state = await manager._refresh_account_risk()
+
+    assert state.mode == "HARD_STOP"
+    assert client.closed == [11]
+    assert manager.risk_guardian._open_positions == 1
+
+
 def test_live_exit_management_soft_tp_uses_close_side_price():
     import asyncio
     asyncio.run(_async_soft_tp_close_side_test())

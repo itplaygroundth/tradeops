@@ -5,7 +5,7 @@ from pathlib import Path
 # Add src to python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from engine.risk_guardian import ForexRiskGuardian
+from engine.risk_guardian import ForexRiskGuardian, AccountRiskMonitor
 from engine.dynamic_risk import get_risk_params
 
 def test_risk_guardian_allow():
@@ -101,3 +101,46 @@ def test_dynamic_risk():
     assert p.sl_pips in (16, 17)
     assert p.tp_pips == 24
     assert p.risk_pct == pytest.approx(0.007)
+
+
+def test_account_risk_monitor_pauses_and_persists(tmp_path):
+    state_file = tmp_path / "risk_state.json"
+    monitor = AccountRiskMonitor(state_file=state_file, managed_magic=20260101)
+
+    state = monitor.evaluate(
+        {"balance": 1000.0, "equity": 1000.0, "margin": 0.0},
+        [{"ticket": 1, "magic": 20260101, "profit": 0.0}],
+        current_day=28,
+        now=100.0,
+    )
+    assert state.mode == "ACTIVE"
+    assert state.open_positions == 1
+
+    state = monitor.evaluate(
+        {"balance": 1000.0, "equity": 948.0, "margin": 10.0},
+        [{"ticket": 1, "magic": 20260101, "profit": -52.0}, {"ticket": 2, "magic": 0, "profit": -10.0}],
+        current_day=28,
+        now=120.0,
+    )
+    assert state.mode == "PAUSED"
+    assert state.blocks_entries is True
+    assert state.open_positions == 1
+    assert state.floating_pnl == -52.0
+
+    reloaded = AccountRiskMonitor(state_file=state_file, managed_magic=20260101)
+    assert reloaded._state["mode"] == "PAUSED"
+
+
+def test_account_risk_monitor_hard_stop_requires_reset(tmp_path):
+    monitor = AccountRiskMonitor(state_file=tmp_path / "risk_state.json", managed_magic=20260101)
+    monitor.evaluate({"balance": 1000.0, "equity": 1000.0, "margin": 0.0}, [], current_day=28, now=100.0)
+
+    state = monitor.evaluate({"balance": 1000.0, "equity": 920.0, "margin": 0.0}, [], current_day=28, now=140.0)
+    assert state.mode == "HARD_STOP"
+    assert state.requires_hard_stop is True
+
+    next_day = monitor.evaluate({"balance": 1000.0, "equity": 1000.0, "margin": 0.0}, [], current_day=29, now=200.0)
+    assert next_day.mode == "HARD_STOP"
+
+    monitor.reset(equity=1000.0, current_day=29)
+    assert monitor.current.mode == "ACTIVE"

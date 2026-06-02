@@ -13,7 +13,7 @@ from typing import List, Dict, Optional
 from engine.dna import create_population
 from engine.agent import ForexAgent
 from engine.signals import ForexSignalEngine
-from engine.risk_guardian import ForexRiskGuardian, RiskResult
+from engine.risk_guardian import ForexRiskGuardian, RiskResult, AccountRiskMonitor
 from engine.evolution import evolve, EVOLUTION_INTERVAL
 from mt5_bridge.client import MT5Client
 from engine.competition_scheduler import CompetitionScheduler
@@ -52,6 +52,7 @@ class ForexAgentManager:
 
         self.signal_engine = ForexSignalEngine()
         self.risk_guardian = ForexRiskGuardian()
+        self.account_risk_monitor = AccountRiskMonitor(managed_magic=MANAGED_MAGIC)
 
         dnas = create_population(agent_count)
         self.agents: List[ForexAgent] = [
@@ -70,6 +71,7 @@ class ForexAgentManager:
         self._equity_curve = []
         self._daily_pnl = {}
         self._order_history = []
+        self._hard_stop_closed_tickets = set()
         # initialize history DB
         try:
             from storage.history_db import init_db, query_orders
@@ -130,6 +132,58 @@ class ForexAgentManager:
         spread = max(float(ask) - float(bid), 0.0)
         group = self._symbol_group(symbol)
         return max(spread * SOFT_TP_SPREAD_MULTIPLIER, SOFT_TP_MIN_BUFFER[group])
+
+    @staticmethod
+    def _position_magic(pos: dict) -> int:
+        try:
+            return int(pos.get("magic") or 0)
+        except Exception:
+            return 0
+
+    def _managed_positions(self, positions: List[dict]) -> List[dict]:
+        return [pos for pos in positions if self._position_magic(pos) == MANAGED_MAGIC]
+
+    async def _refresh_account_risk(
+        self,
+        positions: Optional[List[dict]] = None,
+        account: Optional[dict] = None,
+        close_on_hard: bool = True,
+    ):
+        if self.paper_mode:
+            return self.account_risk_monitor.current
+
+        try:
+            if account is None:
+                account = await self.mt5.get_account()
+            if positions is None:
+                positions = await self.mt5.get_positions()
+        except Exception as e:
+            logger.warning(f"[AccountRisk] Failed to refresh account risk: {e}")
+            return self.account_risk_monitor.current
+
+        self._account_balance = float(account.get("balance") or self._account_balance)
+        self._account_equity = float(account.get("equity") or self._account_equity)
+        self._account_currency = account.get("currency", self._account_currency)
+
+        today = int(time.time() / 86400)
+        state = self.account_risk_monitor.evaluate(account, positions, current_day=today, now=time.time())
+        self.risk_guardian.set_open_positions(state.open_positions)
+
+        if close_on_hard and state.requires_hard_stop:
+            await self._close_managed_positions_for_hard_stop(positions, state.reason)
+        return state
+
+    async def _close_managed_positions_for_hard_stop(self, positions: List[dict], reason: str):
+        for pos in self._managed_positions(positions):
+            ticket = pos.get("ticket")
+            if not ticket or ticket in self._hard_stop_closed_tickets:
+                continue
+            try:
+                result = await self.mt5.close_position(int(ticket))
+                self._hard_stop_closed_tickets.add(ticket)
+                logger.error(f"[AccountRisk] HARD_STOP closed ticket={ticket} reason={reason} result={result}")
+            except Exception as e:
+                logger.warning(f"[AccountRisk] HARD_STOP failed to close ticket={ticket}: {e}")
 
     async def _apply_live_exit_management(self, positions: List[dict]):
         if self.paper_mode:
@@ -454,6 +508,7 @@ class ForexAgentManager:
         try:
             positions = await self.mt5.get_positions()
             await self._apply_live_exit_management(positions)
+            await self._refresh_account_risk(positions=positions)
             active_tickets = {pos["ticket"] for pos in positions}
         except Exception as e:
             logger.warning(f"Failed to fetch active positions for sync: {e}")
@@ -558,10 +613,21 @@ class ForexAgentManager:
         """Evaluates entry signals and executes trades for idle agents assigned to a symbol."""
         agents_for_symbol = [a for a in self.agents if a.dna.symbol == symbol and not a.is_in_trade]
         gate = self._leader_asset_gate(symbol)
+        account_risk = await self._refresh_account_risk() if not self.paper_mode else self.account_risk_monitor.current
+        if account_risk.blocks_entries:
+            logger.warning(f"[AccountRisk] entries blocked: {account_risk.mode} {account_risk.reason}")
+            return
 
-        for agent in agents_for_symbol[:gate["max_agents"]]:
+        max_agents = gate["max_agents"]
+        min_confidence = gate["min_confidence"]
+        if account_risk.mode == "WARNING":
+            max_agents = min(max_agents, 1)
+            min_confidence = min(95, min_confidence + 10)
+        live_open_positions = account_risk.open_positions
+
+        for agent in agents_for_symbol[:max_agents]:
             signal = agent.generate_signal(price)
-            if signal["action"] == "HOLD" or signal["confidence"] < gate["min_confidence"]:
+            if signal["action"] == "HOLD" or signal["confidence"] < min_confidence:
                 continue
 
             # Risk validation
@@ -582,6 +648,7 @@ class ForexAgentManager:
                 current_day=today,
                 get_price_func=get_price_func,
                 account_currency=self._account_currency,
+                open_positions=live_open_positions if not self.paper_mode else None,
             )
 
             if not risk_result.allowed:
@@ -593,6 +660,8 @@ class ForexAgentManager:
                 await self._paper_execute(agent, signal, price, risk_result)
             else:
                 await self._live_execute(agent, signal, price, risk_result)
+                if agent._open_ticket:
+                    live_open_positions += 1
 
     async def _paper_execute(self, agent: ForexAgent, signal: dict, price: float, risk: RiskResult):
         """Simulates order execution for paper mode."""
@@ -690,9 +759,7 @@ class ForexAgentManager:
             return
         try:
             account = await self.mt5.get_account()
-            self._account_balance = account["balance"]
-            self._account_equity = account["equity"]
-            self._account_currency = account.get("currency", "USD")
+            await self._refresh_account_risk(account=account)
         except Exception as e:
             logger.warning(f"Account update failed: {e}")
 
@@ -818,6 +885,7 @@ class ForexAgentManager:
             "source_comparison": {},
         }
         summary.update(previous_competition_summary)
+        summary["account_risk"] = self.account_risk_monitor.current.to_dict()
 
         state = {
             "timestamp": time.time(),
