@@ -38,10 +38,31 @@ INSTITUTIONAL_JOURNAL_FIELDS = [
     "net_pnl",
     "r_multiple",
     "return_pct",
+    "exit_reason",
     "execution_source",
     "magic",
     "comment",
 ]
+
+MT5_DEAL_ENTRY = {
+    0: "IN",
+    1: "OUT",
+    2: "INOUT",
+    3: "OUT_BY",
+}
+
+MT5_DEAL_REASON = {
+    0: "CLIENT",
+    1: "MOBILE",
+    2: "WEB",
+    3: "EXPERT",
+    4: "SL",
+    5: "TP",
+    6: "SO",
+    7: "ROLLOVER",
+    8: "VMARGIN",
+    9: "SPLIT",
+}
 
 
 def _float(value: Any) -> Optional[float]:
@@ -83,6 +104,41 @@ def _side(value: Any) -> str:
     return text
 
 
+def deal_entry_label(value: Any) -> str:
+    try:
+        return MT5_DEAL_ENTRY.get(int(value), str(value or "").upper())
+    except Exception:
+        text = str(value or "").upper()
+        if text in MT5_DEAL_ENTRY.values():
+            return text
+        return ""
+
+
+def is_exit_deal(value: Any) -> bool:
+    return deal_entry_label(value) in ("OUT", "INOUT", "OUT_BY")
+
+
+def is_entry_deal(value: Any) -> bool:
+    return deal_entry_label(value) == "IN"
+
+
+def deal_reason_label(value: Any, comment: Any = "") -> str:
+    try:
+        label = MT5_DEAL_REASON.get(int(value), "")
+    except Exception:
+        label = ""
+    text = str(comment or "").lower()
+    if not label and "[sl " in text:
+        label = "SL"
+    if not label and "[tp " in text:
+        label = "TP"
+    if not label and "soft tp" in text:
+        label = "SOFT_TP"
+    if not label and "trail" in text:
+        label = "TRAILING_SL"
+    return label
+
+
 def _asset_class(symbol: str) -> str:
     upper = symbol.upper()
     if "XAU" in upper or "XAG" in upper:
@@ -94,6 +150,9 @@ def _asset_class(symbol: str) -> str:
 
 def _pick_entry(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     for row in rows:
+        if is_entry_deal(row.get("deal_entry")):
+            return row
+    for row in rows:
         status = str(row.get("status") or "").lower()
         if status in ("placed", "open"):
             return row
@@ -101,6 +160,9 @@ def _pick_entry(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _pick_exit(rows: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    deal_exits = [row for row in rows if is_exit_deal(row.get("deal_entry"))]
+    if deal_exits:
+        return deal_exits[-1]
     closed = [
         row for row in rows
         if str(row.get("status") or "").lower() == "closed" or str(row.get("type") or "").lower() == "closed"
@@ -179,6 +241,7 @@ def build_institutional_journal(
         status = "CLOSED" if exit_row else str(entry.get("status") or source.get("status") or "OPEN").upper()
         comment = source.get("comment") or entry.get("comment") or ""
         agent = source.get("agent") or entry.get("agent") or ""
+        exit_reason = source.get("exit_reason") or deal_reason_label(source.get("deal_reason"), comment)
 
         result.append({
             "trade_id": _trade_id(entry, idx),
@@ -210,6 +273,7 @@ def build_institutional_journal(
             "net_pnl": _round(net_pnl, 2),
             "r_multiple": _round(r_multiple, 4),
             "return_pct": _round(return_pct, 6),
+            "exit_reason": exit_reason,
             "execution_source": source.get("type") or entry.get("type") or "",
             "magic": source.get("magic") or entry.get("magic") or "",
             "comment": comment,

@@ -2,7 +2,17 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-DB_PATH = Path("data") / "history.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "history.db"
+
+EXTRA_COLUMNS = {
+    "commission": "REAL DEFAULT 0",
+    "swap": "REAL DEFAULT 0",
+    "fees": "REAL DEFAULT 0",
+    "deal_entry": "INTEGER",
+    "deal_reason": "INTEGER",
+    "exit_reason": "TEXT",
+    "magic": "INTEGER",
+}
 
 
 def init_db() -> None:
@@ -29,17 +39,26 @@ def init_db() -> None:
         )
         """
     )
+    cur.execute("PRAGMA table_info(orders)")
+    existing = {row[1] for row in cur.fetchall()}
+    for column, spec in EXTRA_COLUMNS.items():
+        if column not in existing:
+            cur.execute(f"ALTER TABLE orders ADD COLUMN {column} {spec}")
     conn.commit()
     conn.close()
 
 
 def insert_order(entry: Dict[str, Any]) -> None:
+    init_db()
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
     cur.execute(
         """
-        INSERT INTO orders (ts, agent, symbol, action, volume, price, sl, tp, type, status, ticket, pnl, comment)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO orders (
+            ts, agent, symbol, action, volume, price, sl, tp, type, status, ticket, pnl, comment,
+            commission, swap, fees, deal_entry, deal_reason, exit_reason, magic
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             float(entry.get("timestamp", 0)),
@@ -55,6 +74,13 @@ def insert_order(entry: Dict[str, Any]) -> None:
             entry.get("ticket"),
             float(entry.get("pnl") or 0),
             entry.get("comment"),
+            float(entry.get("commission") or 0),
+            float(entry.get("swap") or 0),
+            float(entry.get("fees") or 0),
+            entry.get("deal_entry"),
+            entry.get("deal_reason"),
+            entry.get("exit_reason"),
+            entry.get("magic"),
         ),
     )
     conn.commit()
@@ -69,6 +95,7 @@ def insert_order(entry: Dict[str, Any]) -> None:
 
 def delete_by_ticket(ticket: int) -> int:
     """Delete orders matching ticket. Returns number deleted."""
+    init_db()
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
     cur.execute("DELETE FROM orders WHERE ticket = ?", (int(ticket),))
@@ -79,6 +106,7 @@ def delete_by_ticket(ticket: int) -> int:
 
 
 def query_orders(offset: int = 0, limit: int = 100, symbol: Optional[str] = None, agent: Optional[str] = None, status: Optional[str] = None, q: Optional[str] = None) -> Dict[str, Any]:
+    init_db()
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
     where = []
@@ -102,7 +130,11 @@ def query_orders(offset: int = 0, limit: int = 100, symbol: Optional[str] = None
     cur.execute(total_q, params)
     total = cur.fetchone()[0]
 
-    sql = f"SELECT ts,agent,symbol,action,volume,price,sl,tp,type,status,ticket,pnl,comment FROM orders {where_sql} ORDER BY ts DESC LIMIT ? OFFSET ?"
+    sql = (
+        "SELECT ts,agent,symbol,action,volume,price,sl,tp,type,status,ticket,pnl,comment,"
+        f"commission,swap,fees,deal_entry,deal_reason,exit_reason,magic FROM orders {where_sql} "
+        "ORDER BY ts DESC LIMIT ? OFFSET ?"
+    )
     params2 = list(params) + [limit, offset]
     cur.execute(sql, params2)
     rows = cur.fetchall()
@@ -122,6 +154,13 @@ def query_orders(offset: int = 0, limit: int = 100, symbol: Optional[str] = None
             "ticket": r[10],
             "pnl": r[11],
             "comment": r[12],
+            "commission": r[13],
+            "swap": r[14],
+            "fees": r[15],
+            "deal_entry": r[16],
+            "deal_reason": r[17],
+            "exit_reason": r[18],
+            "magic": r[19],
         })
     conn.close()
     return {"total": total, "offset": offset, "limit": limit, "items": items}

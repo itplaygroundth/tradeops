@@ -71,6 +71,27 @@ def get_filling_mode(symbol: str) -> int:
         logger.info(f"Neither FOK nor IOC indicated for {symbol}. Using ORDER_FILLING_RETURN.")
         return mt5.ORDER_FILLING_RETURN
 
+
+def deal_entry_label(entry: int) -> str:
+    return {
+        getattr(mt5, "DEAL_ENTRY_IN", 0): "IN",
+        getattr(mt5, "DEAL_ENTRY_OUT", 1): "OUT",
+        getattr(mt5, "DEAL_ENTRY_INOUT", 2): "INOUT",
+        getattr(mt5, "DEAL_ENTRY_OUT_BY", 3): "OUT_BY",
+    }.get(int(entry), str(entry))
+
+
+def deal_reason_label(reason: int) -> str:
+    return {
+        getattr(mt5, "DEAL_REASON_CLIENT", 0): "CLIENT",
+        getattr(mt5, "DEAL_REASON_MOBILE", 1): "MOBILE",
+        getattr(mt5, "DEAL_REASON_WEB", 2): "WEB",
+        getattr(mt5, "DEAL_REASON_EXPERT", 3): "EXPERT",
+        getattr(mt5, "DEAL_REASON_SL", 4): "SL",
+        getattr(mt5, "DEAL_REASON_TP", 5): "TP",
+        getattr(mt5, "DEAL_REASON_SO", 6): "SO",
+    }.get(int(reason), str(reason))
+
 # ── REST Endpoints ───────────────────────────────────────
 
 @app.get("/health")
@@ -286,9 +307,12 @@ def get_recent_history(hours: int = 24, limit: int = 200):
 
     out = []
     for d in deals_list:
+        entry = int(getattr(d, 'entry', -1))
+        reason = int(getattr(d, 'reason', -1))
         out.append({
             "ticket": int(getattr(d, 'ticket', 0)),
             "position": int(getattr(d, 'position', 0)),
+            "order": int(getattr(d, 'order', 0)),
             "symbol": str(getattr(d, 'symbol', '')),
             "volume": float(getattr(d, 'volume', 0.0)),
             "price": float(getattr(d, 'price', 0.0)),
@@ -297,7 +321,11 @@ def get_recent_history(hours: int = 24, limit: int = 200):
             "commission": float(getattr(d, 'commission', 0.0)),
             "time": int(getattr(d, 'time', 0)),
             "type": int(getattr(d, 'type', 0)),
-            "entry": bool(getattr(d, 'entry', False)),
+            "entry": entry,
+            "entry_label": deal_entry_label(entry),
+            "reason": reason,
+            "reason_label": deal_reason_label(reason),
+            "magic": int(getattr(d, 'magic', 0)),
             "comment": str(getattr(d, 'comment', '')),
         })
 

@@ -94,3 +94,45 @@ def test_journal_csv_and_json_exports_are_stable():
     payload = json.loads(journal_to_json(rows))
     assert payload["standard"] == "institutional_trade_journal_v1"
     assert payload["rows"][0]["symbol"] == "XAUUSDm"
+
+
+def test_journal_uses_mt5_deal_entry_codes_for_exit_rows():
+    rows = [
+        {
+            "timestamp": 1000,
+            "agent": "XauAgent",
+            "symbol": "XAUUSDm",
+            "action": "BUY",
+            "volume": 0.01,
+            "price": 4500.0,
+            "sl": 4488.0,
+            "tp": 4524.0,
+            "type": "live",
+            "status": "placed",
+            "ticket": 99,
+            "pnl": 0,
+            "deal_entry": 0,
+        },
+        {
+            "timestamp": 1060,
+            "agent": "XauAgent",
+            "symbol": "XAUUSDm",
+            "action": "BUY",
+            "volume": 0.01,
+            "price": 4488.0,
+            "type": "live",
+            "status": "placed",
+            "ticket": 99,
+            "pnl": -12.0,
+            "deal_entry": 1,
+            "deal_reason": 4,
+            "comment": "[sl 4488.00000]",
+        },
+    ]
+
+    journal = build_institutional_journal(rows)
+
+    assert journal[0]["lifecycle_status"] == "CLOSED"
+    assert journal[0]["net_pnl"] == -12.0
+    assert journal[0]["exit_reason"] == "SL"
+    assert journal[0]["exit_price"] == 4488.0

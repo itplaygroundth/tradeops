@@ -20,6 +20,8 @@ from engine.competition_scheduler import CompetitionScheduler
 from engine.asset_leader import AssetLeader
 from engine.hermes_client import HermesClient, HermesError
 from engine.leader_asset_supervisor import LeaderAssetSupervisor
+from engine.performance_guard import PerformanceGuard
+from storage.trading_journal import is_exit_deal, deal_reason_label
 
 logger = logging.getLogger("agent_manager")
 
@@ -53,6 +55,7 @@ class ForexAgentManager:
         self.signal_engine = ForexSignalEngine()
         self.risk_guardian = ForexRiskGuardian()
         self.account_risk_monitor = AccountRiskMonitor(managed_magic=MANAGED_MAGIC)
+        self.performance_guard = PerformanceGuard()
 
         dnas = create_population(agent_count)
         self.agents: List[ForexAgent] = [
@@ -261,16 +264,26 @@ class ForexAgentManager:
         try:
             deals = await self.mt5.get_recent_deals(hours=hours, limit=limit)
             for d in deals:
+                entry_code = d.get("entry")
+                is_exit = is_exit_deal(entry_code)
+                ticket = d.get("position") or d.get("ticket")
+                comment = d.get("comment", "MT5")
                 entry = {
                     "timestamp": d.get("time", int(time.time())),
-                    "agent": d.get("comment", "MT5"),
+                    "agent": comment,
                     "symbol": d.get("symbol"),
-                    "ticket": d.get("ticket"),
+                    "ticket": ticket,
                     "volume": d.get("volume"),
                     "price": d.get("price"),
                     "pnl": d.get("profit"),
-                    "type": "live",
-                    "status": "closed" if not d.get("entry", True) else "placed",
+                    "commission": d.get("commission"),
+                    "swap": d.get("swap"),
+                    "type": "closed" if is_exit else "live",
+                    "status": "closed" if is_exit else "placed",
+                    "deal_entry": entry_code,
+                    "deal_reason": d.get("reason"),
+                    "exit_reason": deal_reason_label(d.get("reason"), comment) if is_exit else "",
+                    "magic": d.get("magic"),
                 }
                 # insert newest first
                 self._order_history.insert(0, entry)
@@ -626,6 +639,10 @@ class ForexAgentManager:
         live_open_positions = account_risk.open_positions
 
         for agent in agents_for_symbol[:max_agents]:
+            perf = self.performance_guard.evaluate(symbol, agent.dna.name)
+            if not perf.allowed:
+                logger.warning(f"[PerformanceGuard] {agent.dna.name} {symbol} blocked: {perf.reason}")
+                continue
             signal = agent.generate_signal(price)
             if signal["action"] == "HOLD" or signal["confidence"] < min_confidence:
                 continue
@@ -886,6 +903,7 @@ class ForexAgentManager:
         }
         summary.update(previous_competition_summary)
         summary["account_risk"] = self.account_risk_monitor.current.to_dict()
+        summary["performance_guard"] = self.performance_guard.summary()
 
         state = {
             "timestamp": time.time(),
