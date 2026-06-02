@@ -340,6 +340,61 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                     account = {"balance": AGENT_MANAGER._account_balance, "equity": AGENT_MANAGER._account_equity}
                 self.wfile.write(json.dumps({"mode": mode, "account": account}).encode())
                 return
+
+            if self.path.startswith("/api/trading_journal/export"):
+                from urllib.parse import urlparse, parse_qs
+                qs = parse_qs(urlparse(self.path).query)
+                fmt = qs.get("format", ["csv"])[0].lower()
+                symbol = qs.get("symbol", [None])[0]
+                agent = qs.get("agent", [None])[0]
+                status = qs.get("status", [None])[0]
+                q = qs.get("q", [None])[0]
+                try:
+                    limit = int(qs.get("limit", [10000])[0])
+                except Exception:
+                    limit = 10000
+
+                try:
+                    from storage.history_db import query_orders_for_export
+                    from storage.trading_journal import (
+                        build_institutional_journal,
+                        journal_to_csv,
+                        journal_to_json,
+                    )
+                    account = {}
+                    if AGENT_MANAGER is not None:
+                        try:
+                            fut = asyncio.run_coroutine_threadsafe(AGENT_MANAGER.mt5.get_account(), _event_loop)
+                            account = fut.result(timeout=5)
+                        except Exception:
+                            account = {
+                                "balance": AGENT_MANAGER._account_balance,
+                                "equity": AGENT_MANAGER._account_equity,
+                                "currency": AGENT_MANAGER._account_currency,
+                            }
+                    orders = query_orders_for_export(symbol=symbol, agent=agent, status=status, q=q, limit=limit)
+                    rows = build_institutional_journal(orders, account=account, venue="MT5")
+                    if fmt == "json":
+                        body = journal_to_json(rows).encode()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Disposition", "attachment; filename=trading_journal_institutional.json")
+                        self.end_headers()
+                        self.wfile.write(body)
+                    else:
+                        body = journal_to_csv(rows).encode()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/csv")
+                        self.send_header("Content-Disposition", "attachment; filename=trading_journal_institutional.csv")
+                        self.end_headers()
+                        self.wfile.write(body)
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+
             if self.path.startswith("/api/order_history") and not self.path.startswith("/api/order_history/export") and not self.path.startswith("/api/order_history/stream"):
                 # Serve paginated/filtered order history: /api/order_history?offset=0&limit=100&symbol=&agent=&status=&q=
                 from urllib.parse import urlparse, parse_qs
@@ -381,40 +436,36 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                 return
 
             if self.path.startswith("/api/order_history/export"):
-                # Export CSV for filtered query
+                # Export CSV for filtered query using the institutional journal schema.
                 from urllib.parse import urlparse, parse_qs
                 qs = parse_qs(urlparse(self.path).query)
                 try:
-                    offset = int(qs.get("offset", [0])[0])
-                    limit = int(qs.get("limit", [1000])[0])
+                    limit = int(qs.get("limit", [10000])[0])
                 except Exception:
-                    offset = 0
-                    limit = 1000
+                    limit = 10000
                 symbol = qs.get("symbol", [None])[0]
                 agent = qs.get("agent", [None])[0]
                 status = qs.get("status", [None])[0]
                 q = qs.get("q", [None])[0]
                 try:
-                    from storage.history_db import query_orders
-                    res = query_orders(offset=offset, limit=limit, symbol=symbol, agent=agent, status=status, q=q)
-                    items = res.get("items", [])
-                    # build CSV
-                    keys = ["timestamp","agent","symbol","action","volume","price","sl","tp","type","status","pnl","ticket","comment"]
-                    lines = [",".join(keys)]
-                    for it in items:
-                        line = []
-                        for k in keys:
-                            v = it.get(k, "")
-                            if v is None:
-                                v = ""
-                            s = str(v).replace('"', '""')
-                            line.append(f'"{s}"')
-                        lines.append(",".join(line)
-                        )
-                    csv = "\n".join(lines)
+                    from storage.history_db import query_orders_for_export
+                    from storage.trading_journal import build_institutional_journal, journal_to_csv
+                    account = {}
+                    if AGENT_MANAGER is not None:
+                        try:
+                            fut = asyncio.run_coroutine_threadsafe(AGENT_MANAGER.mt5.get_account(), _event_loop)
+                            account = fut.result(timeout=5)
+                        except Exception:
+                            account = {
+                                "balance": AGENT_MANAGER._account_balance,
+                                "equity": AGENT_MANAGER._account_equity,
+                                "currency": AGENT_MANAGER._account_currency,
+                            }
+                    items = query_orders_for_export(symbol=symbol, agent=agent, status=status, q=q, limit=limit)
+                    csv = journal_to_csv(build_institutional_journal(items, account=account, venue="MT5"))
                     self.send_response(200)
                     self.send_header("Content-Type", "text/csv")
-                    self.send_header("Content-Disposition", "attachment; filename=order_history.csv")
+                    self.send_header("Content-Disposition", "attachment; filename=trading_journal_institutional.csv")
                     self.end_headers()
                     self.wfile.write(csv.encode())
                 except Exception:

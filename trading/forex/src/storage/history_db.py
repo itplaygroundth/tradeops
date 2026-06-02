@@ -125,3 +125,15 @@ def query_orders(offset: int = 0, limit: int = 100, symbol: Optional[str] = None
         })
     conn.close()
     return {"total": total, "offset": offset, "limit": limit, "items": items}
+
+
+def query_orders_for_export(
+    symbol: Optional[str] = None,
+    agent: Optional[str] = None,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 10000,
+) -> List[Dict[str, Any]]:
+    """Return export-ready order rows in ascending time order."""
+    result = query_orders(offset=0, limit=limit, symbol=symbol, agent=agent, status=status, q=q)
+    return sorted(result.get("items", []), key=lambda item: float(item.get("timestamp") or 0))
