@@ -69,3 +69,32 @@ def test_performance_guard_blocks_symbol_with_bad_expectancy(monkeypatch):
     assert decision.allowed is False
     assert "expectancy" in decision.reason
     assert guard.summary()["expectancy_blocked_symbols"]["AUDUSDm"]["trades"] == 3
+
+
+def test_expectancy_block_expires_after_cooldown(monkeypatch):
+    """Bad expectancy must not be a permanent ban: once the cooldown since the
+    last trade elapses, the symbol is allowed a probation trade so its
+    expectancy can refresh. Otherwise blocked symbols can never recover."""
+    import engine.performance_guard as perf_mod
+
+    monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_GUARD_ENABLED", True)
+    monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_MIN_TRADES", 3)
+    monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_BLOCK_THRESHOLD", -0.25)
+    monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_COOLDOWN_SECONDS", 3600)
+
+    guard = PerformanceGuard(symbol_loss_limit=10, agent_loss_limit=10, cooldown_seconds=3600)
+    # last trade at 2026-06-02T00:03:00Z -> ts 1780358580
+    rows = [
+        closed("AUDUSDm", "FX-AUD-001", -2, 1),
+        closed("AUDUSDm", "FX-AUD-001", -1, 2),
+        closed("AUDUSDm", "FX-AUD-002", 0.25, 3),
+    ]
+    monkeypatch.setattr(guard, "_load_journal", lambda: rows)
+
+    last_ts = 1780358580
+    # within cooldown -> still blocked
+    assert guard.evaluate("AUDUSDm", "FX-AUD-001", now=last_ts + 60).allowed is False
+    # past cooldown -> probation allowed
+    decision = guard.evaluate("AUDUSDm", "FX-AUD-001", now=last_ts + 3601)
+    assert decision.allowed is True
+    assert guard.summary()["expectancy_blocked_symbols"] == {}

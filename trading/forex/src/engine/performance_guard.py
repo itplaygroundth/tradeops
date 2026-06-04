@@ -11,6 +11,11 @@ PERFORMANCE_GUARD_COOLDOWN_SECONDS = int(os.getenv("PERFORMANCE_GUARD_COOLDOWN_S
 EXPECTANCY_SYMBOL_GUARD_ENABLED = str(os.getenv("EXPECTANCY_SYMBOL_GUARD_ENABLED", "true")).lower() in ("1", "true", "yes", "on")
 EXPECTANCY_SYMBOL_MIN_TRADES = int(os.getenv("EXPECTANCY_SYMBOL_MIN_TRADES", "10"))
 EXPECTANCY_SYMBOL_BLOCK_THRESHOLD = float(os.getenv("EXPECTANCY_SYMBOL_BLOCK_THRESHOLD", "-0.25"))
+# Expectancy block must expire, otherwise a paused symbol can never trade again
+# (no new trades -> losses never age out of the lookback -> permanent ban).
+# After this cooldown elapses since the symbol's last closed trade, allow a
+# probation trade so its expectancy can refresh.
+EXPECTANCY_SYMBOL_COOLDOWN_SECONDS = int(os.getenv("EXPECTANCY_SYMBOL_COOLDOWN_SECONDS", "14400"))
 
 
 @dataclass
@@ -115,6 +120,15 @@ class PerformanceGuard:
             break
         return streak, last_ts
 
+    @staticmethod
+    def _last_trade_ts(rows: List[Dict[str, Any]], symbol: str) -> float:
+        last_ts = 0.0
+        for row in rows:
+            if str(row.get("symbol") or "") != symbol:
+                continue
+            last_ts = max(last_ts, _parse_utc(row.get("exit_time_utc")))
+        return last_ts
+
     def refresh(self, now: Optional[float] = None) -> Dict[str, Any]:
         now = now or datetime.now(tz=timezone.utc).timestamp()
         rows = self._closed_rows(self._load_journal())
@@ -153,6 +167,11 @@ class PerformanceGuard:
                         int(stats.get("trades") or 0) >= EXPECTANCY_SYMBOL_MIN_TRADES
                         and float(stats.get("expectancy") or 0.0) <= EXPECTANCY_SYMBOL_BLOCK_THRESHOLD
                     ):
+                        # Skip the block once the cooldown since the last trade has
+                        # elapsed, so the symbol gets a probation trade to recover.
+                        last_ts = self._last_trade_ts(rows, symbol)
+                        if last_ts and (now - last_ts) >= EXPECTANCY_SYMBOL_COOLDOWN_SECONDS:
+                            continue
                         expectancy_blocked_symbols[symbol] = {
                             "trades": stats.get("trades"),
                             "expectancy": stats.get("expectancy"),

@@ -105,12 +105,7 @@ class HermesClient:
             "temperature": 0.3,
             "stream": False,
         }
-        raw = await asyncio.to_thread(self._post_with_retries, request_body)
-        content = raw.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-        parsed = _loads_first_json_object(content)
-        if parsed is not None:
-            return parsed
-        raise HermesError(f"No JSON in Hermes response: {content[:200]}")
+        return await asyncio.to_thread(self._post_and_parse, request_body)
 
     async def verify_forward_test(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         prompt = self._build_verify_prompt(payload)
@@ -123,12 +118,21 @@ class HermesClient:
             "temperature": 0.3,
             "stream": False,
         }
-        raw = await asyncio.to_thread(self._post_with_retries, request_body)
-        content = raw.get("choices", [{}])[0].get("message", {}).get("content", "{}")
-        parsed = _loads_first_json_object(content)
-        if parsed is not None:
-            return parsed
-        raise HermesError(f"No JSON in Hermes response: {content[:200]}")
+        return await asyncio.to_thread(self._post_and_parse, request_body)
+
+    def _post_and_parse(self, request_body: Dict[str, Any]) -> Dict[str, Any]:
+        """POST and extract the JSON object, retrying when the model returns no
+        parseable JSON (e.g. a truncated <thinking> block). The LLM is
+        stochastic, so a re-roll usually yields valid JSON."""
+        last_content = ""
+        for attempt in range(1, self.retries + 1):
+            raw = self._post_with_retries(request_body)
+            last_content = raw.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+            parsed = _loads_first_json_object(last_content)
+            if parsed is not None:
+                return parsed
+            logger.warning("Hermes returned no JSON (attempt %d/%d): %s", attempt, self.retries, last_content[:120])
+        raise HermesError(f"No JSON in Hermes response: {last_content[:200]}")
 
     def _post_with_retries(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         last_exc = None

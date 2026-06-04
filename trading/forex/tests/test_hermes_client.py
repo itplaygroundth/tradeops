@@ -114,3 +114,31 @@ def test_loads_first_json_object_ignores_extra_text():
     parsed = hermes_mod._loads_first_json_object(content)
 
     assert parsed == {"approved": True, "reason": "ok"}
+
+
+def test_loads_first_json_object_strips_thinking_block():
+    content = '<thinking>idx 0 has {bad} higher sharpe</thinking>{"winner_idx": 0}'
+
+    parsed = hermes_mod._loads_first_json_object(content)
+
+    assert parsed == {"winner_idx": 0}
+
+
+def test_select_winner_retries_on_no_json(monkeypatch):
+    """A response that is only a truncated <thinking> block (no JSON) must be
+    retried, because the LLM is stochastic and a re-roll usually returns JSON."""
+    client = hermes_mod.HermesClient(retries=3, timeout=0.1)
+    calls = {"count": 0}
+
+    def fake_post(payload):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return {"choices": [{"message": {"content": "<thinking>"}}]}
+        return {"choices": [{"message": {"content": '{"winner_idx": 1, "reasoning": "ok", "confidence": 0.8}'}}]}
+
+    monkeypatch.setattr(client, "_post_with_retries", fake_post)
+
+    result = asyncio.run(client.select_winner({"results": []}))
+
+    assert calls["count"] == 2
+    assert result["winner_idx"] == 1
