@@ -56,7 +56,7 @@ class ExchangeRouter:
         self._feed.paper_mode = paper
 
     def set_tick_callback(self, cb) -> None:
-        # cb signature: cb(symbol, price, volume, timestamp)
+        # cb signature: cb(symbol, price, volume, timestamp, is_buy)
         self._tick_cb = cb
         self._feed.set_tick_callback(cb)
 

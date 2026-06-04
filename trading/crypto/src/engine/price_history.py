@@ -9,15 +9,88 @@ from typing import Tuple, Optional
 class PriceHistory:
     """Rolling price history for technical analysis."""
 
-    def __init__(self, maxlen: int = 100):
-        self.prices: deque = deque(maxlen=maxlen)
-        self.volumes: deque = deque(maxlen=maxlen)
+    def __init__(self, maxlen: int = 100, bucket_seconds: int = 0):
+        # bucket_seconds == 0 -> legacy raw-tick mode. > 0 -> OHLC candle mode,
+        # where ticks aggregate into time buckets and self.prices holds candle
+        # CLOSES so the close-based indicators keep working unchanged.
+        self.bucket_seconds = bucket_seconds
+        self.prices: deque = deque(maxlen=maxlen)   # candle closes (or raw ticks)
+        self.volumes: deque = deque(maxlen=maxlen)  # candle volume (or raw tick vol)
         self.timestamps: deque = deque(maxlen=maxlen)
+        self.opens: deque = deque(maxlen=maxlen)
+        self.highs: deque = deque(maxlen=maxlen)
+        self.lows: deque = deque(maxlen=maxlen)
+        # aggressor-side volume per candle (true CVD, from the is_buy flag)
+        self.buy_vols: deque = deque(maxlen=maxlen)
+        self.sell_vols: deque = deque(maxlen=maxlen)
+        self._cur_bucket: Optional[int] = None  # bucket index of in-progress candle
 
-    def add(self, price: float, volume: float = 0, timestamp: float = 0):
-        self.prices.append(price)
+    def add(self, price: float, volume: float = 0, timestamp: float = 0, is_buy: bool = True):
+        buy = volume if is_buy else 0.0
+        sell = 0.0 if is_buy else volume
+        if self.bucket_seconds <= 0:
+            # legacy raw-tick mode: 1 tick = 1 data point
+            self.prices.append(price)
+            self.volumes.append(volume)
+            self.timestamps.append(timestamp)
+            self.opens.append(price)
+            self.highs.append(price)
+            self.lows.append(price)
+            self.buy_vols.append(buy)
+            self.sell_vols.append(sell)
+            return
+
+        bucket = int(timestamp // self.bucket_seconds)
+        if self._cur_bucket is None or bucket > self._cur_bucket:
+            # open a new in-progress candle (the previous one is already
+            # finalized in the deques — we only ever mutate the tail in place)
+            self._cur_bucket = bucket
+            self.opens.append(price)
+            self.highs.append(price)
+            self.lows.append(price)
+            self.prices.append(price)
+            self.volumes.append(volume)
+            self.timestamps.append(timestamp)
+            self.buy_vols.append(buy)
+            self.sell_vols.append(sell)
+        else:
+            # same bucket -> update the in-progress candle tail
+            self.highs[-1] = max(self.highs[-1], price)
+            self.lows[-1] = min(self.lows[-1], price)
+            self.prices[-1] = price            # close = last price
+            self.volumes[-1] += volume
+            self.timestamps[-1] = timestamp
+            self.buy_vols[-1] += buy
+            self.sell_vols[-1] += sell
+
+    def seed_candle(self, open_: float, high: float, low: float,
+                    close: float, volume: float = 0.0, timestamp: float = 0.0,
+                    buy_vol: Optional[float] = None, sell_vol: Optional[float] = None):
+        """Append a fully-formed historical candle (warmup backfill).
+
+        buy_vol/sell_vol come from kline taker-buy volume when available;
+        otherwise the candle volume is split 50/50 (no aggressor info).
+        """
+        if buy_vol is None or sell_vol is None:
+            buy_vol = volume / 2.0
+            sell_vol = volume / 2.0
+        self.opens.append(open_)
+        self.highs.append(high)
+        self.lows.append(low)
+        self.prices.append(close)
         self.volumes.append(volume)
         self.timestamps.append(timestamp)
+        self.buy_vols.append(buy_vol)
+        self.sell_vols.append(sell_vol)
+        # mark this bucket consumed so the next live tick opens a fresh candle
+        if self.bucket_seconds > 0 and timestamp:
+            self._cur_bucket = int(timestamp // self.bucket_seconds)
+
+    def cvd(self, n: int = 30) -> float:
+        """Cumulative Volume Delta over the last n candles: buy - sell volume."""
+        buys = list(self.buy_vols)[-n:]
+        sells = list(self.sell_vols)[-n:]
+        return sum(buys) - sum(sells)
 
     @property
     def count(self) -> int:
@@ -94,16 +167,11 @@ class PriceHistory:
 
     def atr_percent(self, period: int = 14) -> Optional[float]:
         """Average True Range as percentage of price."""
-        prices = list(self.prices)
-        if len(prices) < period + 1:
+        atr = self.atr(period)
+        if atr is None:
             return None
-        tr_sum = 0.0
-        for i in range(-period, 0):
-            high = max(prices[i], prices[i - 1])
-            low = min(prices[i], prices[i - 1])
-            tr_sum += high - low
-        atr = tr_sum / period
-        return (atr / prices[-1]) * 100 if prices[-1] else 0
+        last = self.prices[-1] if self.prices else 0
+        return (atr / last) * 100 if last else 0
 
     def instantaneous_trendline(self, a: float = 0.07) -> Optional[list]:
         """John Ehlers Instantaneous Trendline — DSP-based noise-reduced trend."""
@@ -226,10 +294,27 @@ class PriceHistory:
         return ((price - vwap_val) / vwap_val) * 100
 
     def atr(self, period: int = 14) -> Optional[float]:
-        """ATR in price units."""
+        """ATR in price units.
+
+        Candle mode: true range = max(high-low, |high-prevClose|, |low-prevClose|).
+        Legacy tick mode: approximate range from consecutive tick pairs.
+        """
         prices = list(self.prices)
         if len(prices) < period + 1:
             return None
+        if self.bucket_seconds > 0:
+            highs = list(self.highs)
+            lows = list(self.lows)
+            tr_sum = 0.0
+            for i in range(-period, 0):
+                prev_close = prices[i - 1]
+                tr = max(
+                    highs[i] - lows[i],
+                    abs(highs[i] - prev_close),
+                    abs(lows[i] - prev_close),
+                )
+                tr_sum += tr
+            return tr_sum / period
         tr_sum = 0.0
         for i in range(-period, 0):
             high = max(prices[i], prices[i - 1])

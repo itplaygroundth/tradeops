@@ -55,12 +55,20 @@ class CryptoAgent:
     def generate_signal(self, price: float) -> dict:
         """Generates a signal for the agent's assigned symbol via dominant strategy."""
         symbol = self.dna.symbol
+        tf = self.dna.timeframe
         dominant = max(self.dna.strategy_weights, key=lambda k: self.dna.strategy_weights[k])
 
         if dominant == "momentum":
-            return self.signal_engine.technical_signal(symbol)
+            return self.signal_engine.technical_signal(symbol, tf)
         elif dominant == "mean_reversion":
-            tech = self.signal_engine.technical_signal(symbol)
+            # Mean reversion only makes sense in a ranging market. Fading a
+            # trending/high-vol move (crypto's norm) bleeds money, so gate on
+            # the regime and HOLD when the market is directional.
+            regime, _ = self.signal_engine.get_history(symbol, tf).market_regime()
+            if regime != "SIDEWAYS":
+                return {"action": "HOLD", "confidence": 0,
+                        "reason": f"MR skipped: regime={regime} (not ranging)"}
+            tech = self.signal_engine.technical_signal(symbol, tf)
             if tech["action"] == "LONG":
                 tech["action"] = "SHORT"
                 tech["reason"] = "MR: " + tech["reason"]
@@ -71,16 +79,16 @@ class CryptoAgent:
         elif dominant == "grid_scalp":
             return self._grid_signal(symbol, price)
         elif dominant == "order_flow":
-            return self.signal_engine.order_flow_signal(symbol)
+            return self.signal_engine.order_flow_signal(symbol, tf)
         elif dominant == "breakout_atr":
-            return self.signal_engine.breakout_atr_signal(symbol)
+            return self.signal_engine.breakout_atr_signal(symbol, tf)
         elif dominant == "market_structure":
-            return self.signal_engine.market_structure_signal(symbol)
+            return self.signal_engine.market_structure_signal(symbol, tf)
         else:
-            return self.signal_engine.technical_signal(symbol)
+            return self.signal_engine.technical_signal(symbol, tf)
 
     def _grid_signal(self, symbol: str, price: float) -> dict:
-        hist = self.signal_engine.get_history(symbol)
+        hist = self.signal_engine.get_history(symbol, self.dna.timeframe)
         sma20 = hist.sma(20)
         if not sma20:
             return {"action": "HOLD", "confidence": 0, "reason": "Grid: no SMA20"}

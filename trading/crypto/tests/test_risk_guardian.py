@@ -41,7 +41,7 @@ def test_sell_sl_tp_prices_inverted():
 def test_max_concurrent_block():
     rg = CryptoRiskGuardian()
     for _ in range(MAX_CONCURRENT_POSITIONS):
-        rg.on_position_opened()
+        rg.on_position_opened("BTCUSDT")
     res = rg.validate(
         symbol="BTCUSDT", action="BUY", entry_price=50000.0,
         sl_pct=0.02, tp_pct=0.04,
@@ -49,6 +49,29 @@ def test_max_concurrent_block():
     )
     assert not res.allowed
     assert "position" in res.reason.lower()
+
+
+def test_max_concurrent_is_per_pair():
+    """The cap is per-pair: filling BTCUSDT must not block ETHUSDT."""
+    rg = CryptoRiskGuardian()
+    for _ in range(MAX_CONCURRENT_POSITIONS):
+        rg.on_position_opened("BTCUSDT")
+    # BTCUSDT is full -> blocked
+    btc = rg.validate("BTCUSDT", "BUY", 50000.0, 0.02, 0.04, 1000.0, 1000.0, current_day=1)
+    assert not btc.allowed
+    # ETHUSDT is empty -> allowed
+    eth = rg.validate("ETHUSDT", "BUY", 2000.0, 0.02, 0.04, 1000.0, 1000.0, current_day=1)
+    assert eth.allowed
+
+
+def test_position_close_decrements_correct_pair():
+    rg = CryptoRiskGuardian()
+    for _ in range(MAX_CONCURRENT_POSITIONS):
+        rg.on_position_opened("BTCUSDT")
+    rg.on_position_closed("BTCUSDT", 0.0)
+    # one slot freed on BTCUSDT
+    res = rg.validate("BTCUSDT", "BUY", 50000.0, 0.02, 0.04, 1000.0, 1000.0, current_day=1)
+    assert res.allowed
 
 
 def test_daily_drawdown_block():

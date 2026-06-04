@@ -59,6 +59,8 @@ class BinanceFeed(ExchangeFeed):
                 "low": float(r[3]),
                 "close": float(r[4]),
                 "volume": float(r[5]),
+                # field [9] = taker buy base-asset volume (buy aggressor volume)
+                "taker_buy": float(r[9]),
             })
         return out
 
@@ -132,8 +134,10 @@ class BinanceFeed(ExchangeFeed):
         ts_ms = data.get("T")
         if sym is None or price is None:
             return
+        # aggTrade "m" = buyer is market maker -> the SELLER was the aggressor.
+        is_buy = not data.get("m", False)
         if self._tick_cb is not None:
-            res = self._tick_cb(sym, float(price), float(qty or 0), (ts_ms or 0) / 1000.0)
+            res = self._tick_cb(sym, float(price), float(qty or 0), (ts_ms or 0) / 1000.0, is_buy)
             if asyncio.iscoroutine(res):
                 await res
 

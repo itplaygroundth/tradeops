@@ -14,28 +14,42 @@ def _make_agent(dominant, symbol="BTCUSDT"):
 
 
 def _feed(agent, prices, vol=10.0):
-    for p in prices:
-        agent.signal_engine.record_tick(agent.dna.symbol, p, vol)
+    # space ticks by a large interval so each price forms its own candle
+    # across every timeframe bucket (H1 = 3600s is the coarsest)
+    for i, p in enumerate(prices):
+        agent.signal_engine.record_tick(agent.dna.symbol, p, vol, timestamp=float((i + 1) * 3600))
 
 
 def test_generate_signal_momentum_dispatch():
     agent = _make_agent("momentum")
     _feed(agent, [100.0 + i for i in range(40)])
     sig = agent.generate_signal(140.0)
-    assert sig["action"] == "SHORT"  # rising => overbought
+    # rising trend: the RSI trend-guard prevents a counter-trend SHORT, so the
+    # momentum strategy follows the uptrend (LONG) or stands aside — never SHORT
+    assert sig["action"] != "SHORT"
 
 
-def test_generate_signal_mean_reversion_inverts():
-    mom = _make_agent("momentum")
+def test_mean_reversion_holds_in_trending_regime():
+    """A strong directional move is TRENDING/HIGH_VOL — mean reversion must NOT
+    fade it; it should HOLD instead of inverting into the trend."""
     mr = _make_agent("mean_reversion")
-    prices = [100.0 + i for i in range(40)]
-    _feed(mom, prices)
-    _feed(mr, prices)
-    mom_sig = mom.generate_signal(140.0)
-    mr_sig = mr.generate_signal(140.0)
-    # mean reversion inverts the technical action
-    assert mom_sig["action"] == "SHORT"
-    assert mr_sig["action"] == "LONG"
+    _feed(mr, [100.0 + i for i in range(40)])  # strong uptrend -> HIGH_VOL
+    sig = mr.generate_signal(140.0)
+    assert sig["action"] == "HOLD"
+    assert "regime" in sig["reason"].lower() or "trend" in sig["reason"].lower()
+
+
+def test_mean_reversion_inverts_in_sideways_regime():
+    """In a ranging (SIDEWAYS) market, mean reversion inverts the technical signal."""
+    import math
+    mr = _make_agent("mean_reversion", symbol="ETHUSDT")
+    _feed(mr, [100.0 + 0.2 * math.sin(i / 2.0) for i in range(60)])
+    tech_action = mr.signal_engine.technical_signal("ETHUSDT", mr.dna.timeframe)["action"]
+    sig = mr.generate_signal(100.0)
+    if tech_action == "SHORT":
+        assert sig["action"] == "LONG"
+    elif tech_action == "LONG":
+        assert sig["action"] == "SHORT"
 
 
 def test_generate_signal_order_flow_dispatch():

@@ -140,8 +140,10 @@ class BybitFeed(ExchangeFeed):
             ts_ms = trade.get("T")
             if sym is None or price is None:
                 continue
+            # publicTrade "S" = aggressor side ("Buy"/"Sell")
+            is_buy = trade.get("S") == "Buy"
             if self._tick_cb is not None:
-                res = self._tick_cb(sym, float(price), float(qty or 0), (ts_ms or 0) / 1000.0)
+                res = self._tick_cb(sym, float(price), float(qty or 0), (ts_ms or 0) / 1000.0, is_buy)
                 if asyncio.iscoroutine(res):
                     await res
 

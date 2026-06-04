@@ -35,7 +35,9 @@ class CryptoRiskGuardian:
         self._daily_loss = 0.0
         self._daily_reset_day = -1
         self._is_paused = False
-        self._open_positions = 0
+        # Per-pair open-position counts. The cap is per pair, so one busy
+        # symbol must not starve the others.
+        self._open_positions: dict[str, int] = {}
 
     def validate(
         self,
@@ -63,9 +65,9 @@ class CryptoRiskGuardian:
             self._is_paused = True
             return RiskResult(False, reason=f"Daily drawdown >{DAILY_DRAWDOWN_LIMIT*100:.0f}% — all trading stopped")
 
-        # Max concurrent positions
-        if self._open_positions >= MAX_CONCURRENT_POSITIONS:
-            return RiskResult(False, reason=f"Max {MAX_CONCURRENT_POSITIONS} positions open")
+        # Max concurrent positions (per pair)
+        if self._open_positions.get(symbol, 0) >= MAX_CONCURRENT_POSITIONS:
+            return RiskResult(False, reason=f"Max {MAX_CONCURRENT_POSITIONS} positions open on {symbol}")
 
         # SL must be valid
         if sl_pct < MIN_SL_PCT:
@@ -111,10 +113,10 @@ class CryptoRiskGuardian:
             reason="OK",
         )
 
-    def on_position_opened(self):
-        self._open_positions += 1
+    def on_position_opened(self, symbol: str):
+        self._open_positions[symbol] = self._open_positions.get(symbol, 0) + 1
 
-    def on_position_closed(self, pnl: float):
-        self._open_positions = max(0, self._open_positions - 1)
+    def on_position_closed(self, symbol: str, pnl: float):
+        self._open_positions[symbol] = max(0, self._open_positions.get(symbol, 0) - 1)
         if pnl < 0:
             self._daily_loss += abs(pnl)

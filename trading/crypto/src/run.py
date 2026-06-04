@@ -113,6 +113,11 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
                 return
 
             if path == "/api/positions":
+                # Paper positions live on the manager's agents, not the exchange
+                # feed (which is empty in paper mode).
+                if router.paper_mode and manager is not None:
+                    self._json({"positions": manager.get_open_positions()})
+                    return
                 try:
                     positions = self._await(router.get_positions())
                 except Exception as e:
@@ -271,6 +276,8 @@ async def main():
     logger.info(f"API server on http://{host}:{port}")
 
     pairs = manager.pairs if manager is not None else DEFAULT_PAIRS
+    if manager is not None:
+        await manager.warmup()
     await router.subscribe(pairs)
     logger.info(f"Subscribed to {pairs} on {router.exchange_name} (mode={args.mode})")
 

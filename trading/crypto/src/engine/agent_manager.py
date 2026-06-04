@@ -16,7 +16,7 @@ import logging
 import time
 from typing import List, Dict, Optional
 
-from engine.dna import create_population, random_dna, CRYPTO_SYMBOLS
+from engine.dna import create_population, random_dna, CRYPTO_SYMBOLS, TIMEFRAMES
 from engine.agent import CryptoAgent
 from engine.signals import CryptoSignalEngine
 from engine.risk_guardian import CryptoRiskGuardian, RiskResult
@@ -76,9 +76,43 @@ class CryptoAgentManager:
             self._pairs.remove(symbol)
             logger.info(f"Removed pair {symbol}")
 
+    # ── warmup ──────────────────────────────────────────
+    async def warmup(self) -> None:
+        """Backfill candle histories with real OHLC klines so agents trade
+        immediately instead of waiting hours for ticks to fill the buckets.
+
+        Best-effort: any failure degrades to a cold start (ticks fill candles).
+        """
+        seeded = 0
+        for symbol in self._pairs:
+            for tf in TIMEFRAMES:
+                try:
+                    bars = await self.router.get_ohlcv(symbol, timeframe=tf, count=200)
+                except Exception as e:
+                    logger.warning(f"[Warmup] {symbol} {tf} backfill failed: {e}")
+                    continue
+                hist = self.signal_engine.get_history(symbol, tf)
+                for b in bars:
+                    vol = b.get("volume", 0.0)
+                    taker_buy = b.get("taker_buy")  # None on feeds without it (Bybit)
+                    if taker_buy is None:
+                        buy_vol = sell_vol = None  # -> 50/50 split in seed_candle
+                    else:
+                        buy_vol = taker_buy
+                        sell_vol = max(0.0, vol - taker_buy)
+                    hist.seed_candle(
+                        open_=b["open"], high=b["high"], low=b["low"],
+                        close=b["close"], volume=vol,
+                        timestamp=b.get("time", 0.0),
+                        buy_vol=buy_vol, sell_vol=sell_vol,
+                    )
+                seeded += len(bars)
+        logger.info(f"[Warmup] seeded {seeded} candles across {len(self._pairs)} pairs x {len(TIMEFRAMES)} TFs")
+
     # ── tick loop ───────────────────────────────────────
-    async def on_tick(self, symbol: str, price: float, volume: float, timestamp: float) -> None:
-        self.signal_engine.record_tick(symbol, price, volume, timestamp)
+    async def on_tick(self, symbol: str, price: float, volume: float,
+                      timestamp: float, is_buy: bool = True) -> None:
+        self.signal_engine.record_tick(symbol, price, volume, timestamp, is_buy)
         self._record_price(symbol, price)
         self._tick_count += 1
 
@@ -128,7 +162,7 @@ class CryptoAgentManager:
             self._account_equity = self._account_balance
 
             agent.record_trade_result(pnl, pnl_pct)
-            self.risk_guardian.on_position_closed(pnl)
+            self.risk_guardian.on_position_closed(agent.dna.symbol, pnl)
             self._order_history.insert(0, {
                 "timestamp": time.time(),
                 "agent": agent.dna.name,
@@ -157,7 +191,7 @@ class CryptoAgentManager:
                 continue
             # closed externally — record flat (PnL unknown without deal history)
             agent.record_trade_result(0.0, 0.0)
-            self.risk_guardian.on_position_closed(0.0)
+            self.risk_guardian.on_position_closed(agent.dna.symbol, 0.0)
             self._reset_agent(agent)
 
     async def _process_agents(self, symbol: str, price: float):
@@ -194,7 +228,7 @@ class CryptoAgentManager:
         agent._open_tp = risk.tp_price
         agent._open_qty = risk.qty
         agent._open_risk_amount = risk.risk_amount
-        self.risk_guardian.on_position_opened()
+        self.risk_guardian.on_position_opened(agent.dna.symbol)
         self._order_history.insert(0, {
             "timestamp": time.time(),
             "agent": agent.dna.name,
@@ -230,7 +264,7 @@ class CryptoAgentManager:
         agent._open_tp = risk.tp_price
         agent._open_qty = risk.qty
         agent._open_risk_amount = risk.risk_amount
-        self.risk_guardian.on_position_opened()
+        self.risk_guardian.on_position_opened(agent.dna.symbol)
         self._order_history.insert(0, {
             "timestamp": time.time(),
             "agent": agent.dna.name,
@@ -248,6 +282,17 @@ class CryptoAgentManager:
 
     def _run_evolution(self):
         logger.info("[Evolution] starting cycle")
+        # Release positions held by the outgoing agents so the risk guardian's
+        # open-position counter does not leak. The new agent objects start flat,
+        # so a stale counter would permanently block trading at the
+        # MAX_CONCURRENT_POSITIONS limit.
+        released = 0
+        for agent in self.agents:
+            if agent.is_in_trade:
+                self.risk_guardian.on_position_closed(agent.dna.symbol, 0.0)
+                released += 1
+        if released:
+            logger.warning(f"[Evolution] released {released} open positions before rebuild")
         stats = [a.to_dict() for a in self.agents]
         dnas = [a.dna for a in self.agents]
         new_dnas, self._next_agent_id = evolve(dnas, stats, self._next_agent_id, pairs=self._pairs)
@@ -256,6 +301,33 @@ class CryptoAgentManager:
             for dna in new_dnas
         ]
         logger.info(f"[Evolution] done — {len(self.agents)} agents")
+
+    def get_open_positions(self) -> list[dict]:
+        """Open paper positions, shaped for the dashboard order book.
+
+        Paper trades live on the agents (the exchange feed has none in paper
+        mode), so the /api/positions route must read them from here.
+        """
+        positions = []
+        for agent in self.agents:
+            if not agent.is_in_trade:
+                continue
+            symbol = agent.dna.symbol
+            current = self._latest_prices.get(symbol, {}).get("mid", agent._open_entry)
+            direction = 1 if agent._open_side == "BUY" else -1
+            profit = (current - agent._open_entry) * direction * agent._open_qty
+            positions.append({
+                "ticket": agent._open_ticket,
+                "symbol": symbol,
+                "type": agent._open_side,
+                "volume": round(agent._open_qty, 6),
+                "price_open": round(agent._open_entry, 4),
+                "price_current": round(current, 4),
+                "profit": round(profit, 2),
+                "sl": round(agent._open_sl, 4),
+                "tp": round(agent._open_tp, 4),
+            })
+        return positions
 
     # ── helpers ─────────────────────────────────────────
     def _reset_agent(self, agent: CryptoAgent):

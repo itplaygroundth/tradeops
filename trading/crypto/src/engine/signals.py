@@ -12,8 +12,11 @@ from typing import Dict, List
 import aiohttp
 
 from engine.price_history import PriceHistory
+from engine.dna import TIMEFRAMES, TF_SECONDS
 
 logger = logging.getLogger("signals")
+
+DEFAULT_TIMEFRAME = "M15"
 
 BCPROXY_URL = os.environ.get("BCPROXY_URL", "http://192.168.1.166:3333/v1/chat/completions")
 
@@ -27,17 +30,24 @@ class CryptoSignalEngine:
         self._llm_last_retry_time = 0
         self._llm_retry_interval = 300
 
-    def get_history(self, symbol: str) -> PriceHistory:
-        if symbol not in self._histories:
-            self._histories[symbol] = PriceHistory(maxlen=200)
-        return self._histories[symbol]
+    def get_history(self, symbol: str, timeframe: str = DEFAULT_TIMEFRAME) -> PriceHistory:
+        key = (symbol, timeframe)
+        if key not in self._histories:
+            self._histories[key] = PriceHistory(
+                maxlen=200, bucket_seconds=TF_SECONDS.get(timeframe, 900)
+            )
+        return self._histories[key]
 
-    def record_tick(self, symbol: str, price: float, volume: float = 0, timestamp: float = 0):
-        self.get_history(symbol).add(price, volume, timestamp or time.time())
+    def record_tick(self, symbol: str, price: float, volume: float = 0,
+                    timestamp: float = 0, is_buy: bool = True):
+        ts = timestamp or time.time()
+        # fan the tick into every timeframe bucket so any agent timeframe is ready
+        for tf in TIMEFRAMES:
+            self.get_history(symbol, tf).add(price, volume, ts, is_buy)
 
-    def technical_signal(self, symbol: str) -> dict:
+    def technical_signal(self, symbol: str, timeframe: str = DEFAULT_TIMEFRAME) -> dict:
         """Technical-only signal (no LLM, no session filter — crypto is 24/7)."""
-        hist = self.get_history(symbol)
+        hist = self.get_history(symbol, timeframe)
         if hist.count < 20:
             return {"action": "HOLD", "confidence": 0, "reason": "Insufficient data"}
 
@@ -48,20 +58,25 @@ class CryptoSignalEngine:
 
         sma5 = hist.sma(5)
         sma20 = hist.sma(20)
+        trend = hist.it_trend()  # 'up' | 'down' | 'flat' | None
 
         action = "HOLD"
         confidence = 30
         reason = f"Tech: RSI={rsi_val:.0f} Mom={mom:+.2f}%"
 
-        # RSI extreme bypass
-        if rsi_val < 20:
+        # RSI extreme bypass — but never counter-trade a CONFIRMED trend.
+        # Crypto RSI stays extended for hours; fading it bleeds money.
+        if rsi_val < 20 and trend != "down":
             action = "LONG"
             confidence = 80
             reason = f"RSI extreme oversold {rsi_val:.0f}"
-        elif rsi_val > 80:
+        elif rsi_val > 80 and trend != "up":
             action = "SHORT"
             confidence = 80
             reason = f"RSI extreme overbought {rsi_val:.0f}"
+        elif rsi_val < 20 or rsi_val > 80:
+            # extreme RSI but the trend confirms it -> stand aside, don't fade
+            reason = f"RSI {rsi_val:.0f} extreme but trend={trend} confirms; HOLD"
         elif mom > 0.5 and rsi_val < 65:
             action = "LONG"
             confidence = max(40, min(70, int(25 + abs(mom) * 10)))
@@ -105,7 +120,7 @@ class CryptoSignalEngine:
 
             symbol_contexts = []
             for sym in symbols:
-                hist = self.get_history(sym)
+                hist = self.get_history(sym, DEFAULT_TIMEFRAME)
                 if hist.count < 10:
                     continue
                 price = hist.current
@@ -127,7 +142,6 @@ Market snapshot:
 For each symbol, give a trading signal. Consider:
 - Trend vs range based on momentum + RSI
 - Volatility regime (HIGH_VOL = reduce conviction)
-- Funding/liquidation risk on extended moves
 
 Respond ONLY with JSON:
 {{"BTCUSDT": {{"action": "LONG", "confidence": 65, "reason": "momentum breakout"}}, ...}}
@@ -170,24 +184,16 @@ Confidence: 0-100"""
                 return fallback
 
     def _generate_technical_signals(self, symbols: list) -> dict:
-        return {sym: self.technical_signal(sym) for sym in symbols}
+        return {sym: self.technical_signal(sym, DEFAULT_TIMEFRAME) for sym in symbols}
 
-    def order_flow_signal(self, symbol: str) -> dict:
+    def order_flow_signal(self, symbol: str, timeframe: str = DEFAULT_TIMEFRAME) -> dict:
         """Order flow via CVD divergence approximation."""
-        hist = self.get_history(symbol)
+        hist = self.get_history(symbol, timeframe)
         if hist.count < 10:
             return {"action": "HOLD", "confidence": 0, "reason": "Insufficient data"}
 
-        prices = list(hist.prices)
-        vols = list(hist.volumes)
-        n = min(len(prices), 30)
-        cvd = 0.0
-        for i in range(-n + 1, 0):
-            prev = prices[i - 1]
-            curr = prices[i]
-            sign = 1 if curr > prev else (-1 if curr < prev else 0)
-            vol = vols[i] if i < len(vols) else 0
-            cvd += sign * vol
+        # CVD from the true aggressor side (is_buy flag), not price-direction proxy
+        cvd = hist.cvd(30)
 
         mom = hist.momentum(10) or 0.0
         avg_vol = hist.avg_volume(20) or 0.0
@@ -208,9 +214,9 @@ Confidence: 0-100"""
 
         return {"action": action, "confidence": confidence, "reason": reason}
 
-    def breakout_atr_signal(self, symbol: str) -> dict:
+    def breakout_atr_signal(self, symbol: str, timeframe: str = DEFAULT_TIMEFRAME) -> dict:
         """Breakout filtered by ATR to avoid false breakouts."""
-        hist = self.get_history(symbol)
+        hist = self.get_history(symbol, timeframe)
         if hist.count < 30:
             return {"action": "HOLD", "confidence": 0, "reason": "Insufficient data"}
 
@@ -235,9 +241,9 @@ Confidence: 0-100"""
 
         return {"action": action, "confidence": confidence, "reason": reason}
 
-    def market_structure_signal(self, symbol: str) -> dict:
+    def market_structure_signal(self, symbol: str, timeframe: str = DEFAULT_TIMEFRAME) -> dict:
         """Detect Break of Structure (BoS) using IT trend and support/resistance."""
-        hist = self.get_history(symbol)
+        hist = self.get_history(symbol, timeframe)
         if hist.count < 10:
             return {"action": "HOLD", "confidence": 0, "reason": "Insufficient data"}
 

@@ -36,6 +36,9 @@ class MockManager:
     def to_state_dict(self):
         return {"summary": {}, "agents": [], "prices": {}, "order_history": []}
 
+    def get_open_positions(self):
+        return []
+
     async def on_tick(self, symbol, price, volume, timestamp):
         return None
 
@@ -161,5 +164,5 @@ def test_api_ohlcv(server):
     status, body, cors = _get(f"{base}/api/ohlcv/BTCUSDT?timeframe=M15&count=3")
     assert status == 200
     assert len(body) == 3
-    assert set(body[0].keys()) == {"time", "open", "high", "low", "close", "volume"}
+    assert set(body[0].keys()) >= {"time", "open", "high", "low", "close", "volume"}
     assert cors == "*"

@@ -9,6 +9,7 @@ from typing import Dict
 
 CRYPTO_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
 TIMEFRAMES = ["M5", "M15", "H1"]
+TF_SECONDS = {"M5": 300, "M15": 900, "H1": 3600}
 
 STRATEGY_METHODS = [
     "momentum", "mean_reversion", "grid_scalp",

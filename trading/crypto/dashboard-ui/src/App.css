@@ -2366,12 +2366,16 @@ body {
 }
 .order-book-table tr:last-child td { border-bottom: none; }
 .order-book-table tr:hover td { background: rgba(255,255,255,0.025); }
-.ob-symbol { color: var(--text-primary); font-weight: 600; }
-.ob-side   {}
-.ob-buy  { color: #34c759; font-weight: 700; }
-.ob-sell { color: #ff453a; font-weight: 700; }
-.ob-profit { color: #34c759; font-weight: 600; }
-.ob-loss   { color: #ff453a; font-weight: 600; }
+.order-book-table td.ob-symbol { color: var(--gold); font-weight: 700; }
+.order-book-table td.ob-buy  { color: #34c759; font-weight: 700; }
+.order-book-table td.ob-sell { color: #ff453a; font-weight: 700; }
+.order-book-table td.ob-lots    { color: #5ac8fa; font-weight: 600; }
+.order-book-table td.ob-open    { color: var(--text-muted); }
+.order-book-table td.ob-current { color: var(--text-primary); font-weight: 600; }
+.order-book-table td.ob-pnl.ob-profit { color: #34c759; font-weight: 700; }
+.order-book-table td.ob-pnl.ob-loss   { color: #ff453a; font-weight: 700; }
+.order-book-table td.ob-sl  { color: rgba(255,69,58,0.75); }
+.order-book-table td.ob-tp  { color: rgba(52,199,89,0.75); }
 .ob-muted  { color: var(--text-muted); }
 
 /* ── Chart Tabs ─────────────────────────────────────────── */
