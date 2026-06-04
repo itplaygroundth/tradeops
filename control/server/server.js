@@ -308,38 +308,130 @@ async function checkPriceAlert(asset, currentSettings) {
   }
 }
 
-// 7. Live Price Simulation Loop
-setInterval(() => {
+// 7. Live Price Feed — real data where available, stable mock for funds NAV
+const FOREX_MT5_MAP = {
+  'EUR_USD': 'EURUSDm',
+  'USD_JPY': 'USDJPYm',
+  'GBP_USD': 'GBPUSDm',
+  'AUD_USD': 'AUDUSDm',
+  'USD_CAD': 'USDCADm',
+  'USD_CHF': 'USDCHFm',
+  'NZD_USD': 'NZDUSDm',
+  'XAU_USD': 'XAUUSDm',
+};
+const CRYPTO_CG_MAP = {
+  'BTC': 'bitcoin',
+  'ETH': 'ethereum',
+  'SOL': 'solana',
+  'BNB': 'binancecoin',
+  'XRP': 'ripple',
+};
+
+let cryptoPriceCache = {};
+let lastCryptoFetch = 0;
+
+async function fetchCryptoPrices() {
+  const ids = Object.values(CRYPTO_CG_MAP).join(',');
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
+    const data = await res.json();
+    for (const [sym, cgId] of Object.entries(CRYPTO_CG_MAP)) {
+      if (data[cgId]?.usd) cryptoPriceCache[sym] = data[cgId].usd;
+    }
+    lastCryptoFetch = Date.now();
+  } catch (err) {
+    console.warn('⚠️ CoinGecko fetch failed:', err.message);
+  }
+}
+
+async function updateLivePrices() {
   try {
     const settings = getSettings();
     const dbAssets = db.prepare('SELECT * FROM portfolio').all();
     const updatePriceStmt = db.prepare('UPDATE portfolio SET currentPrice = ? WHERE id = ?');
-    
-    dbAssets.forEach(asset => {
-      let changePct = 0;
-      if (asset.type === 'funds') {
-        changePct = (Math.random() * 0.16 - 0.08) / 100;
+
+    // Fetch crypto prices once per cycle (rate-limit friendly: ~30s interval)
+    const cryptoAssets = dbAssets.filter(a => a.type === 'crypto');
+    if (cryptoAssets.length && Date.now() - lastCryptoFetch > 25000) {
+      await fetchCryptoPrices();
+    }
+
+    for (const asset of dbAssets) {
+      let newPrice = null;
+
+      if (asset.type === 'forex') {
+        const mt5Symbol = FOREX_MT5_MAP[asset.id];
+        if (mt5Symbol) {
+          const tick = await fetchMT5(`/price/${mt5Symbol}`);
+          if (tick.mt5_status === 'online' && tick.last) {
+            newPrice = parseFloat(tick.last.toFixed(asset.id === 'USD_JPY' ? 2 : 4));
+          } else if (tick.bid && tick.ask) {
+            newPrice = parseFloat(((tick.bid + tick.ask) / 2).toFixed(asset.id === 'USD_JPY' ? 2 : 4));
+          }
+        }
       } else if (asset.type === 'crypto') {
-        changePct = (Math.random() * 0.8 - 0.4) / 100;
-      } else if (asset.type === 'forex') {
-        changePct = (Math.random() * 0.1 - 0.05) / 100;
+        const sym = asset.code_symbol_pair || asset.id;
+        if (cryptoPriceCache[sym]) {
+          newPrice = parseFloat(cryptoPriceCache[sym].toFixed(2));
+        }
       }
-      
-      let newPrice = asset.currentPrice * (1 + changePct);
-      const decimals = asset.id === 'USD_JPY' ? 2 : asset.type === 'forex' ? 4 : 2;
-      newPrice = parseFloat(newPrice.toFixed(decimals));
-      
-      updatePriceStmt.run(newPrice, asset.id);
-      
-      const updatedAsset = { ...asset, currentPrice: newPrice };
-      checkPriceAlert(updatedAsset, settings);
-    });
+      // funds: no real-time API — keep currentPrice stable (NAV updates daily)
+
+      if (newPrice !== null && newPrice > 0) {
+        updatePriceStmt.run(newPrice, asset.id);
+        checkPriceAlert({ ...asset, currentPrice: newPrice }, settings);
+      }
+    }
   } catch (err) {
-    console.error('⚠️ Price simulation error:', err.message);
+    console.error('⚠️ Price update error:', err.message);
   }
-}, 3000);
+}
+
+// Forex updates every 5s, crypto piggybacks on same loop but CoinGecko fetched every ~30s
+setInterval(updateLivePrices, 5000);
+// Initial fetch on startup
+updateLivePrices();
 
 // --- API ENDPOINTS ---
+
+// GET /api/health - dashboard dependency health for UI diagnostics
+app.get('/api/health', async (req, res) => {
+  const startedAt = new Date().toISOString();
+  let portfolioOk = false;
+  let assetCount = 0;
+  try {
+    const row = db.prepare('SELECT COUNT(*) as count FROM portfolio').get();
+    assetCount = row.count;
+    portfolioOk = true;
+  } catch (err) {
+    return res.status(500).json({
+      status: 'degraded',
+      startedAt,
+      portfolio: { status: 'down', error: err.message },
+      mt5: { status: 'unknown' },
+    });
+  }
+
+  const mt5 = await fetchMT5('/account');
+  const mt5Online = mt5.mt5_status === 'online' && !mt5.error;
+  res.json({
+    status: portfolioOk && mt5Online ? 'ok' : 'degraded',
+    startedAt,
+    portfolio: { status: 'ok', assetCount },
+    mt5: {
+      status: mt5.mt5_status || 'offline',
+      cachedAt: mt5.cached_at || null,
+      error: mt5.error || null,
+      account: mt5.login || null,
+      currency: mt5.currency || null,
+    },
+    prices: {
+      cryptoCacheAgeSeconds: lastCryptoFetch ? Math.round((Date.now() - lastCryptoFetch) / 1000) : null,
+      cryptoSymbols: Object.keys(cryptoPriceCache),
+    },
+  });
+});
 
 // GET /api/portfolio - active portfolio valuation
 app.get('/api/portfolio', (req, res) => {

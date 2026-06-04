@@ -19,7 +19,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || `${window.location.protocol}//${window.location.hostname}:5001`;
+const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 function MT5PriceTag({ symbol, apiBase }) {
   const [price, setPrice] = React.useState(null);
@@ -43,6 +43,26 @@ function MT5PriceTag({ symbol, apiBase }) {
       <span style={{ color: '#34d399' }}>{price.bid?.toFixed(5)}</span>
       <span style={{ color: '#6b7280', margin: '0 4px' }}>/</span>
       <span style={{ color: '#f87171' }}>{price.ask?.toFixed(5)}</span>
+    </div>
+  );
+}
+
+function HealthPill({ health, mt5Status }) {
+  const serverStatus = health?.status || 'loading';
+  const portfolioStatus = health?.portfolio?.status || 'loading';
+  const mt5 = health?.mt5?.status || mt5Status || 'unknown';
+  const isHealthy = serverStatus === 'ok' && portfolioStatus === 'ok' && mt5 === 'online';
+  return (
+    <div className={`health-strip ${isHealthy ? 'ok' : 'degraded'}`}>
+      <span className="health-dot" />
+      <span>API {serverStatus}</span>
+      <span>Portfolio {portfolioStatus}</span>
+      <span>MT5 {mt5}</span>
+      {health?.mt5?.cachedAt && (
+        <span className="health-muted">
+          cache {new Date(health.mt5.cachedAt).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}
+        </span>
+      )}
     </div>
   );
 }
@@ -106,6 +126,7 @@ export default function App() {
   const [mt5Positions, setMt5Positions] = useState([]);
   const [mt5Status, setMt5Status] = useState('unknown'); // 'online' | 'offline' | 'unknown'
   const [mt5CachedAt, setMt5CachedAt] = useState(null);
+  const [health, setHealth] = useState(null);
 
   // 1. Fetch initial configuration & data
   useEffect(() => {
@@ -160,6 +181,22 @@ export default function App() {
     };
     pollMT5();
     const id = setInterval(pollMT5, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const pollHealth = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/health`);
+        const data = await res.json();
+        if (!cancelled) setHealth(data);
+      } catch {
+        if (!cancelled) setHealth({ status: 'down', portfolio: { status: 'unknown' }, mt5: { status: 'unknown' } });
+      }
+    };
+    pollHealth();
+    const id = setInterval(pollHealth, 10000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
@@ -672,13 +709,15 @@ export default function App() {
 
       {/* SIDEBAR NAVIGATION */}
       <aside className="sidebar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2.5rem', paddingLeft: '0.5rem' }}>
-          <div style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)', borderRadius: '10px', padding: '0.6rem', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 0 15px rgba(139, 92, 246, 0.4)' }}>
-            <Cpu size={24} style={{ color: 'white' }} />
-          </div>
-          <div>
-            <h2 style={{ fontSize: '1.25rem', fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '0.01em', background: 'linear-gradient(to right, #ffffff, #94a3b8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>ANTIGRAVITY</h2>
-            <span style={{ fontSize: '0.65rem', color: 'var(--accent-cyan)', fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase' }}>AI Wealth Hub</span>
+        <div className="sidebar-logo">
+          <img src="/fox_logo.jpg" alt="Fox" className="sidebar-fox-icon" />
+          <div className="sidebar-logo-text">
+            <div className="sidebar-logo-main">
+              <span className="sidebar-logo-ai">Ai</span>
+              <span className="sidebar-logo-trade"> เทรด </span>
+              <span className="sidebar-logo-deo">..เด้อ</span>
+            </div>
+            <div className="sidebar-logo-sub">Wealth Hub</div>
           </div>
         </div>
 
@@ -704,7 +743,7 @@ export default function App() {
                   gap: '1rem',
                   width: '100%',
                   padding: '0.9rem 1.2rem',
-                  background: active ? 'rgba(139, 92, 246, 0.12)' : 'transparent',
+                  background: active ? 'rgba(240, 185, 11, 0.08)' : 'transparent',
                   border: 'none',
                   borderLeft: active ? '3px solid var(--accent-purple)' : '3px solid transparent',
                   color: active ? '#ffffff' : 'var(--text-secondary)',
@@ -749,15 +788,16 @@ export default function App() {
               </div>
               <div className="glass-panel" style={{ padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(16, 185, 129, 0.08)', borderColor: 'rgba(16, 185, 129, 0.2)' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--accent-emerald)', boxShadow: '0 0 10px #10b981', animation: 'pulseGlow 2s infinite' }} />
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-emerald)', letterSpacing: '0.05em' }}>LIVE SIMULATION FEEDS</span>
+                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-emerald)', letterSpacing: '0.05em' }}>LIVE FEEDS</span>
               </div>
+              <HealthPill health={health} mt5Status={mt5Status} />
             </header>
 
             {/* Total Net Worth Glow Card */}
-            <section className="glass-panel glow-purple" style={{ padding: '2.5rem', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.08) 0%, rgba(13, 18, 30, 0.45) 100%)' }}>
+            <section className="glass-panel glow-purple" style={{ padding: '2.5rem', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'radial-gradient(circle at 10% 20%, rgba(240, 185, 11, 0.06) 0%, rgba(18, 18, 30, 0.35) 100%)' }}>
               <div>
                 <span style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.15em' }}>มูลค่าพอร์ตทรัพย์สินสุทธิ (Net Worth)</span>
-                <h1 style={{ fontSize: '3.5rem', fontWeight: 800, fontFamily: 'var(--font-display)', margin: '0.5rem 0 0.8rem 0', letterSpacing: '-0.02em', background: 'linear-gradient(to right, #ffffff 30%, #c084fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                <h1 style={{ fontSize: '3.5rem', fontWeight: 800, fontFamily: 'var(--font-display)', margin: '0.5rem 0 0.8rem 0', letterSpacing: '-0.02em', background: 'linear-gradient(to right, #f0f0f5 30%, #f0b90b)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
                   {fmt(totalValue)}
                 </h1>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
