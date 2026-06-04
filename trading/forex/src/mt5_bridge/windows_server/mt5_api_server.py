@@ -199,6 +199,32 @@ def place_order(req: OrderRequest):
         
     price = tick.ask if req.action == "BUY" else tick.bid
     order_type = mt5.ORDER_TYPE_BUY if req.action == "BUY" else mt5.ORDER_TYPE_SELL
+
+    # ── Stale-stop preflight ─────────────────────────────────────────
+    # SL/TP are computed by the agent from the quote at decision time. If the
+    # market gapped before the order reached here (reconnect, weekend open),
+    # those levels can land on the wrong side of the live price or inside the
+    # broker's minimum stop distance. Validate against the fresh tick and
+    # reject rather than letting MT5 silently drop/clamp the stop.
+    point = symbol_info.point or 0.0
+    spread = max(tick.ask - tick.bid, 0.0)
+    stops_level = float(getattr(symbol_info, "trade_stops_level", 0)) * point
+    floor = max(stops_level, spread * 3, point * 50)
+    # Broker fills the stop against the opposite side of entry.
+    stop_ref = tick.bid if req.action == "BUY" else tick.ask
+    if req.sl and req.sl > 0:
+        sl_gap = (stop_ref - req.sl) if req.action == "BUY" else (req.sl - stop_ref)
+        if sl_gap <= 0:
+            raise HTTPException(400, f"Stale SL wrong side: sl={req.sl} ref={stop_ref:.5f} action={req.action}")
+        if sl_gap < floor:
+            raise HTTPException(400, f"Stale SL too close: gap={sl_gap:.5f} < floor={floor:.5f} (bid={tick.bid} ask={tick.ask})")
+    if req.tp and req.tp > 0:
+        tp_gap = (req.tp - stop_ref) if req.action == "BUY" else (stop_ref - req.tp)
+        if tp_gap <= 0:
+            raise HTTPException(400, f"Stale TP wrong side: tp={req.tp} ref={stop_ref:.5f} action={req.action}")
+        if tp_gap < floor:
+            raise HTTPException(400, f"Stale TP too close: gap={tp_gap:.5f} < floor={floor:.5f} (bid={tick.bid} ask={tick.ask})")
+
     filling_mode = get_filling_mode(req.symbol)
 
     request = {
