@@ -23,6 +23,7 @@ from engine.leader_asset_supervisor import LeaderAssetSupervisor
 from engine.performance_guard import PerformanceGuard
 from engine.position_dedup_guard import PositionDedupGuard
 from engine.timeframe_filter import MultiTimeframeFilter
+from engine.weekend_reopen_guard import WeekendReopenGuard
 from storage.trading_journal import is_exit_deal, deal_reason_label
 
 logger = logging.getLogger("agent_manager")
@@ -75,6 +76,7 @@ class ForexAgentManager:
         from storage.history_db import last_open_ts_by_symbol
         self.position_dedup_guard = PositionDedupGuard(managed_magic=MANAGED_MAGIC, db_lookup=last_open_ts_by_symbol)
         self.timeframe_filter = MultiTimeframeFilter()
+        self.weekend_reopen_guard = WeekendReopenGuard()
 
         dnas = create_population(agent_count)
         self.agents: List[ForexAgent] = [
@@ -556,10 +558,43 @@ class ForexAgentManager:
                     agent._open_tp = 0.0
                     agent._open_risk_amount = 0.0
 
+    async def _apply_weekend_reopen_guard(self, positions: List[dict]):
+        if self.paper_mode or not positions:
+            return
+        managed = self._managed_positions(positions)
+        symbols = sorted({str(pos.get("symbol") or "") for pos in managed if pos.get("symbol")})
+        for symbol in symbols:
+            try:
+                tick = await self.mt5.get_price(symbol)
+            except Exception as e:
+                logger.warning(f"[WeekendReopenGuard] Failed to get tick for {symbol}: {e}")
+                continue
+
+            decision = self.weekend_reopen_guard.evaluate_symbol(
+                symbol=symbol,
+                bid=tick.bid,
+                ask=tick.ask,
+                positions=managed,
+                now=time.time(),
+                market_ts=tick.timestamp,
+            )
+            if decision.status != "ok":
+                logger.warning(
+                    f"[WeekendReopenGuard] {symbol} {decision.status}: {decision.reason} "
+                    f"spread={decision.spread} gap={decision.gap} adverse_gap={decision.adverse_gap}"
+                )
+            for ticket in decision.close_tickets:
+                try:
+                    result = await self.mt5.close_position(ticket)
+                    logger.error(f"[WeekendReopenGuard] auto-closed ticket={ticket} result={result}")
+                except Exception as e:
+                    logger.warning(f"[WeekendReopenGuard] failed to auto-close ticket={ticket}: {e}")
+
     async def _sync_positions(self):
         """Syncs active live positions on MT5 to update agent states."""
         try:
             positions = await self.mt5.get_positions()
+            await self._apply_weekend_reopen_guard(positions)
             await self._apply_live_exit_management(positions)
             await self._refresh_account_risk(positions=positions)
             active_tickets = {pos["ticket"] for pos in positions}
@@ -686,6 +721,11 @@ class ForexAgentManager:
                 return
 
         for agent in agents_for_symbol[:max_agents]:
+            if not self.paper_mode:
+                blocked, reason = self.weekend_reopen_guard.blocks_entries(symbol)
+                if blocked:
+                    logger.warning(f"[WeekendReopenGuard] {agent.dna.name} {symbol} blocked: {reason}")
+                    continue
             perf = self.performance_guard.evaluate(symbol, agent.dna.name)
             if not perf.allowed:
                 logger.warning(f"[PerformanceGuard] {agent.dna.name} {symbol} blocked: {perf.reason}")
@@ -973,6 +1013,7 @@ class ForexAgentManager:
         summary["performance_guard"] = self.performance_guard.summary()
         summary["position_dedup_guard"] = self.position_dedup_guard.summary()
         summary["timeframe_filter"] = self.timeframe_filter.summary()
+        summary["weekend_reopen_guard"] = self.weekend_reopen_guard.summary()
 
         state = {
             "timestamp": time.time(),
