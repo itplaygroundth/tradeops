@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { DatabaseSync } from 'node:sqlite';
+import { installTradingControlRoutes } from './services/tradingControl.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
@@ -113,8 +114,17 @@ const INITIAL_PORTFOLIO = {
 const DEFAULT_SETTINGS = {
   telegramBotToken: "",
   telegramChatId: "",
+  lineChannelAccessToken: "",
+  lineTargetId: "",
+  lineNotifyToken: "",
   riskProfile: "Balanced",
   mt5BridgeUrl: 'http://192.168.1.107:8888',
+  tradingControl: {
+    mtaiUrl: "http://127.0.0.1:3003",
+    cryptoUrl: "http://127.0.0.1:3006",
+    dailyReportTime: "23:55",
+    autoSendDailyReport: false
+  },
   alerts: [
     { id: "alert-1", assetId: "BTC", condition: "above", value: 70000, active: true },
     { id: "alert-2", assetId: "SOL", condition: "below", value: 150, active: true }
@@ -828,16 +838,31 @@ app.get('/api/settings', (req, res) => {
 // POST /api/settings - save configuration
 app.post('/api/settings', (req, res) => {
   try {
-    const { telegramBotToken, telegramChatId, riskProfile, alerts, llmConfig, mcpConfig } = req.body;
+    const {
+      telegramBotToken,
+      telegramChatId,
+      lineChannelAccessToken,
+      lineTargetId,
+      lineNotifyToken,
+      riskProfile,
+      alerts,
+      llmConfig,
+      mcpConfig,
+      tradingControl
+    } = req.body;
     
     const currentSettings = getSettings();
     
     if (telegramBotToken !== undefined) currentSettings.telegramBotToken = telegramBotToken;
     if (telegramChatId !== undefined) currentSettings.telegramChatId = telegramChatId;
+    if (lineChannelAccessToken !== undefined) currentSettings.lineChannelAccessToken = lineChannelAccessToken;
+    if (lineTargetId !== undefined) currentSettings.lineTargetId = lineTargetId;
+    if (lineNotifyToken !== undefined) currentSettings.lineNotifyToken = lineNotifyToken;
     if (riskProfile !== undefined) currentSettings.riskProfile = riskProfile;
     if (alerts !== undefined) currentSettings.alerts = alerts;
     if (llmConfig !== undefined) currentSettings.llmConfig = { ...currentSettings.llmConfig, ...llmConfig };
     if (mcpConfig !== undefined) currentSettings.mcpConfig = { ...currentSettings.mcpConfig, ...mcpConfig };
+    if (tradingControl !== undefined) currentSettings.tradingControl = { ...currentSettings.tradingControl, ...tradingControl };
 
     saveSettings(currentSettings);
     res.json({ success: true, settings: currentSettings });
@@ -1152,6 +1177,8 @@ app.post('/api/mt5/order', async (req, res) => {
   if (data.mt5_status === 'offline') return res.status(503).json(data);
   res.json(data);
 });
+
+installTradingControlRoutes(app, { db, getSettings, sendTelegramMessage });
 
 app.listen(PORT, () => {
   console.log(`🚀 AI Hedgefund API Server running on http://localhost:${PORT}`);

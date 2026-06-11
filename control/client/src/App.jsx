@@ -100,7 +100,15 @@ export default function App() {
   // Telegram Settings State
   const [botToken, setBotToken] = useState('');
   const [chatId, setChatId] = useState('');
+  const [lineChannelAccessToken, setLineChannelAccessToken] = useState('');
+  const [lineTargetId, setLineTargetId] = useState('');
+  const [lineNotifyToken, setLineNotifyToken] = useState('');
   const [teleStatus, setTeleStatus] = useState({ loading: false, msg: '', type: '' }); // type: success | error
+
+  // Trading Control Plane State
+  const [tradingOverview, setTradingOverview] = useState(null);
+  const [tradingRecommendations, setTradingRecommendations] = useState([]);
+  const [tradingReportStatus, setTradingReportStatus] = useState({ loading: false, msg: '', type: '' });
 
   // LLM Settings State
   const [llmProvider, setLlmProvider] = useState('Gemini');
@@ -200,6 +208,64 @@ export default function App() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const pollTradingControl = async () => {
+      try {
+        const [overviewRes, recRes] = await Promise.all([
+          fetch(`${API_BASE}/api/trading/overview`),
+          fetch(`${API_BASE}/api/trading/recommendations`)
+        ]);
+        const overviewData = await overviewRes.json();
+        const recData = await recRes.json();
+        if (!cancelled) {
+          if (overviewRes.ok) setTradingOverview(overviewData);
+          if (recRes.ok) setTradingRecommendations(recData.items || []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setTradingReportStatus({ loading: false, msg: `Trading Control offline: ${err.message}`, type: 'error' });
+        }
+      }
+    };
+    pollTradingControl();
+    const id = setInterval(pollTradingControl, 10000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  const fetchTradingControl = async () => {
+    try {
+      const [overviewRes, recRes] = await Promise.all([
+        fetch(`${API_BASE}/api/trading/overview`),
+        fetch(`${API_BASE}/api/trading/recommendations`)
+      ]);
+      const overviewData = await overviewRes.json();
+      const recData = await recRes.json();
+      if (overviewRes.ok) setTradingOverview(overviewData);
+      if (recRes.ok) setTradingRecommendations(recData.items || []);
+    } catch (err) {
+      setTradingReportStatus({ loading: false, msg: `Refresh failed: ${err.message}`, type: 'error' });
+    }
+  };
+
+  const sendTradingReport = async () => {
+    setTradingReportStatus({ loading: true, msg: 'Sending hedge fund report...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/report`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Report failed');
+      setTradingOverview(data.overview);
+      setTradingReportStatus({
+        loading: false,
+        msg: `Report sent: Telegram ${data.telegram ? 'ok' : 'not configured'}, LINE ${data.line ? 'ok' : 'not configured'}`,
+        type: 'success'
+      });
+      setTimeout(() => setTradingReportStatus({ loading: false, msg: '', type: '' }), 5000);
+    } catch (err) {
+      setTradingReportStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
   const fetchPortfolio = async (isPoll = false) => {
     try {
       const res = await fetch(`${API_BASE}/api/portfolio`);
@@ -258,6 +324,9 @@ export default function App() {
       setSettings(data);
       setBotToken(data.telegramBotToken);
       setChatId(data.telegramChatId);
+      setLineChannelAccessToken(data.lineChannelAccessToken || '');
+      setLineTargetId(data.lineTargetId || '');
+      setLineNotifyToken(data.lineNotifyToken || '');
       if (data.llmConfig) {
         setLlmProvider(data.llmConfig.provider || 'Gemini');
         setLlmApiKey(data.llmConfig.apiKey || '');
@@ -363,7 +432,10 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           telegramBotToken: botToken,
-          telegramChatId: chatId
+          telegramChatId: chatId,
+          lineChannelAccessToken,
+          lineTargetId,
+          lineNotifyToken
         })
       });
       const data = await res.json();
@@ -728,6 +800,7 @@ export default function App() {
             { id: 'crypto', label: 'คริปโตเคอเรนซี', icon: Coins },
             { id: 'forex', label: 'ตลาด Forex', icon: DollarSign },
             { id: 'mt5', label: 'MT5 Positions', icon: Activity },
+            { id: 'trading-control', label: 'Trading Control', icon: ShieldCheck },
             { id: 'ai-advisor', label: 'AI Optimizer', icon: Cpu },
             { id: 'settings', label: 'ตั้งค่า & แจ้งเตือน', icon: Settings },
           ].map(tab => {
@@ -1608,6 +1681,148 @@ export default function App() {
           </div>
         )}
 
+        {/* TRADING CONTROL PLANE TAB */}
+        {activeTab === 'trading-control' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+              <div>
+                <h1 style={{ fontSize: '2.2rem', fontWeight: 800, fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <ShieldCheck style={{ color: 'var(--accent-emerald)' }} size={32} />
+                  Hedge Fund Trading Control
+                </h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: '0.2rem' }}>
+                  ศูนย์รวม MTAI Forex และ Crypto AI สำหรับดู guard, PnL, position และสรุปคำแนะนำรายวัน
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button onClick={fetchTradingControl} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <RefreshCw size={16} />
+                  Refresh
+                </button>
+                <button onClick={sendTradingReport} disabled={tradingReportStatus.loading} className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Send size={16} />
+                  {tradingReportStatus.loading ? 'Sending...' : 'Send LINE/Telegram'}
+                </button>
+              </div>
+            </header>
+
+            {tradingReportStatus.msg && (
+              <div className="glass-panel" style={{
+                padding: '1rem',
+                background: tradingReportStatus.type === 'success' ? 'rgba(16,185,129,0.08)' : tradingReportStatus.type === 'error' ? 'rgba(244,63,94,0.08)' : 'rgba(255,255,255,0.02)',
+                borderColor: tradingReportStatus.type === 'success' ? 'rgba(16,185,129,0.25)' : tradingReportStatus.type === 'error' ? 'rgba(244,63,94,0.25)' : 'var(--glass-border)'
+              }}>
+                {tradingReportStatus.msg}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+              {[
+                ['Guard Mode', tradingOverview?.portfolio?.guardMode || 'LOADING'],
+                ['Daily PnL', fmtUsd(tradingOverview?.portfolio?.dailyPnl || 0)],
+                ['Floating PnL', fmtUsd(tradingOverview?.portfolio?.floatingPnl || 0)],
+                ['Open Positions', tradingOverview?.portfolio?.openPositions ?? 0],
+                ['Recommendations', tradingOverview?.portfolio?.recommendationCount ?? 0],
+              ].map(([label, value]) => (
+                <div key={label} className="glass-panel" style={{ padding: '1.2rem' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', textTransform: 'uppercase' }}>{label}</div>
+                  <div style={{ fontSize: '1.45rem', fontWeight: 800, marginTop: '0.35rem' }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+              {(tradingOverview?.engines || []).map(engine => (
+                <section key={engine.id} className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                    <div>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>{engine.name}</h3>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{engine.type?.toUpperCase()} • {engine.status}</div>
+                    </div>
+                    <span style={{
+                      padding: '0.35rem 0.7rem',
+                      borderRadius: '999px',
+                      background: engine.guardMode === 'NORMAL' ? 'rgba(16,185,129,0.12)' : engine.guardMode === 'CAUTION' ? 'rgba(245,158,11,0.14)' : 'rgba(244,63,94,0.12)',
+                      color: engine.guardMode === 'NORMAL' ? 'var(--accent-emerald)' : engine.guardMode === 'CAUTION' ? '#f59e0b' : 'var(--accent-rose)',
+                      fontSize: '0.75rem',
+                      fontWeight: 700
+                    }}>
+                      {engine.guardMode || 'UNKNOWN'}
+                    </span>
+                  </div>
+                  {engine.error ? (
+                    <div style={{ color: 'var(--accent-rose)', fontSize: '0.9rem' }}>{engine.error}</div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                        <div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Daily</div>
+                          <div style={{ color: (engine.daily?.value || 0) >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontWeight: 700 }}>
+                            {fmtUsd(engine.daily?.value || 0)}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Floating</div>
+                          <div style={{ color: (engine.floatingPnl || 0) >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontWeight: 700 }}>
+                            {fmtUsd(engine.floatingPnl || 0)}
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Open</div>
+                          <div style={{ fontWeight: 700 }}>{engine.openPositions || 0}</div>
+                        </div>
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        Recent W/L: <strong>{engine.recentWins || 0}/{engine.recentLosses || 0}</strong>
+                        {' '}Net: <strong>{fmtUsd(engine.recentNetPnl || 0)}</strong>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {(engine.recommendations || []).slice(0, 3).map((rec, idx) => (
+                          <div key={`${engine.id}-${rec.action}-${idx}`} style={{ padding: '0.75rem', border: '1px solid var(--glass-border)', borderRadius: '8px', background: 'rgba(255,255,255,0.02)' }}>
+                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: rec.severity === 'high' || rec.severity === 'critical' ? 'var(--accent-rose)' : 'var(--accent-cyan)' }}>{rec.action}</div>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.25rem' }}>{rec.reason}</div>
+                          </div>
+                        ))}
+                        {(engine.recommendations || []).length === 0 && (
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No active recommendations.</div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </section>
+              ))}
+            </div>
+
+            <section className="glass-panel" style={{ padding: '1.25rem' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>Agent Recommendation Log</h3>
+              {tradingRecommendations.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '1rem' }}>No recommendations stored yet.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+                  <thead>
+                    <tr style={{ color: 'var(--text-muted)', borderBottom: '1px solid var(--glass-border)' }}>
+                      {['Time', 'Engine', 'Severity', 'Action', 'Reason'].map(h => (
+                        <th key={h} style={{ padding: '0.65rem', textAlign: 'left', fontWeight: 600 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tradingRecommendations.slice(0, 12).map(rec => (
+                      <tr key={rec.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <td style={{ padding: '0.65rem', color: 'var(--text-muted)' }}>{new Date(rec.created_at).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })}</td>
+                        <td style={{ padding: '0.65rem' }}>{rec.engine_id}</td>
+                        <td style={{ padding: '0.65rem', color: rec.severity === 'high' || rec.severity === 'critical' ? 'var(--accent-rose)' : 'var(--accent-cyan)', fontWeight: 700 }}>{rec.severity}</td>
+                        <td style={{ padding: '0.65rem', fontWeight: 700 }}>{rec.action}</td>
+                        <td style={{ padding: '0.65rem', color: 'var(--text-secondary)' }}>{rec.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
+          </div>
+        )}
+
         {/* AI OPTIMIZER & WEALTH COACH */}
         {activeTab === 'ai-advisor' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -1839,6 +2054,40 @@ export default function App() {
                       placeholder="กรอก Chat ID ของคุณจาก @userinfobot" 
                       value={chatId}
                       onChange={(e) => setChatId(e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>LINE Channel Access Token</label>
+                      <input
+                        type="password"
+                        placeholder="Messaging API token"
+                        value={lineChannelAccessToken}
+                        onChange={(e) => setLineChannelAccessToken(e.target.value)}
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>LINE Target ID</label>
+                      <input
+                        type="text"
+                        placeholder="User / Group / Room ID"
+                        value={lineTargetId}
+                        onChange={(e) => setLineTargetId(e.target.value)}
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>LINE Notify Token (Legacy fallback)</label>
+                    <input
+                      type="password"
+                      placeholder="ใช้เมื่อยังไม่มี Messaging API target"
+                      value={lineNotifyToken}
+                      onChange={(e) => setLineNotifyToken(e.target.value)}
                       style={{ width: '100%' }}
                     />
                   </div>
