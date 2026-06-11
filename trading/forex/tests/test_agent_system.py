@@ -84,6 +84,72 @@ def test_agent_processing_uses_per_symbol_tick_counts():
     asyncio.run(_async_agent_processing_uses_per_symbol_tick_counts())
 
 
+def test_daily_profit_target_reached_uses_today_pnl():
+    client = MT5Client()
+    manager = ForexAgentManager(client, paper_mode=True, agent_count=8)
+    now = time.time()
+    today = time.strftime("%Y-%m-%d", time.localtime(now))
+    yesterday = time.strftime("%Y-%m-%d", time.localtime(now - 86400))
+
+    manager._daily_pnl = {yesterday: 100.0}
+    assert manager._daily_profit_target_reached(now) is False
+
+    manager._daily_pnl[today] = 19.99
+    assert manager._daily_profit_target_reached(now) is False
+
+    manager._daily_pnl[today] = 20.0
+    assert manager._daily_profit_target_reached(now) is True
+
+
+def test_recent_history_backfills_daily_realized_pnl(monkeypatch):
+    import asyncio
+    asyncio.run(_async_recent_history_backfills_daily_realized_pnl(monkeypatch))
+
+
+async def _async_recent_history_backfills_daily_realized_pnl(monkeypatch):
+    from storage import history_db
+
+    now = int(time.time())
+
+    class HistoryClient(MT5Client):
+        async def get_recent_deals(self, hours=24, limit=200):
+            return [
+                {
+                    "ticket": 101,
+                    "position": 5001,
+                    "time": now,
+                    "entry": 1,
+                    "comment": "MTAI",
+                    "symbol": "EURUSDm",
+                    "volume": 0.01,
+                    "price": 1.1,
+                    "profit": 12.5,
+                    "commission": -0.1,
+                    "swap": -0.05,
+                },
+                {
+                    "ticket": 102,
+                    "position": 5002,
+                    "time": now,
+                    "entry": 0,
+                    "comment": "MTAI",
+                    "symbol": "EURUSDm",
+                    "volume": 0.01,
+                    "price": 1.1,
+                    "profit": 99.0,
+                    "commission": 0.0,
+                    "swap": 0.0,
+                },
+            ]
+
+    monkeypatch.setattr(history_db, "upsert_order", lambda entry: True)
+    manager = ForexAgentManager(HistoryClient(), paper_mode=True, agent_count=8)
+    await manager._load_recent_history(hours=48, limit=10)
+
+    today = time.strftime("%Y-%m-%d", time.localtime(now))
+    assert manager._daily_pnl[today] == 12.35
+
+
 async def _async_agent_processing_uses_per_symbol_tick_counts():
     client = MT5Client()
     manager = ForexAgentManager(client, paper_mode=True, agent_count=8)

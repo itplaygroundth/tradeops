@@ -294,6 +294,16 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                     self.wfile.write(json.dumps({"error": str(e)}).encode())
                 return
 
+            if self.path.startswith("/api/control/status"):
+                if AGENT_MANAGER is None:
+                    self.send_response(503); self.end_headers(); return
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps(AGENT_MANAGER.control_status()).encode())
+                return
+
             # OHLCV chart data: /api/mt5/ohlcv/<symbol>?timeframe=M15&count=200
             if self.path.startswith("/api/mt5/ohlcv/"):
                 from urllib.parse import urlparse, parse_qs
@@ -571,6 +581,52 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
             return super().do_GET()
 
         def do_POST(self):
+            if self.path.startswith("/api/control/pause") or self.path.startswith("/api/control/resume"):
+                if AGENT_MANAGER is None:
+                    self.send_response(503); self.end_headers(); return
+                content_len = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_len) if content_len else b""
+                try:
+                    data = json.loads(body.decode() or "{}")
+                except Exception:
+                    self.send_response(400); self.end_headers(); return
+                action_type = "pause" if self.path.startswith("/api/control/pause") else "resume"
+                reason = data.get("reason") or "hedgefund control"
+                audit_payload = {
+                    "action": f"control_{action_type}",
+                    "source": "hedgefund-control",
+                    "reason": reason,
+                    "path": self.path,
+                }
+                try:
+                    if action_type == "pause":
+                        result = AGENT_MANAGER.pause_entries(reason)
+                    else:
+                        result = AGENT_MANAGER.resume_entries()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": True, "control": result}).encode())
+                    try:
+                        from storage.manual_audit import record_manual_action
+                        record_manual_action({**audit_payload, "status": "success", "result": result})
+                    except Exception:
+                        pass
+                except Exception as e:
+                    error_text = str(e)
+                    try:
+                        from storage.manual_audit import record_manual_action
+                        record_manual_action({**audit_payload, "status": "failed", "error": error_text})
+                    except Exception:
+                        pass
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": error_text}).encode())
+                return
+
             # MT5 position actions: modify SL/TP or close
             if self.path.startswith("/api/mt5/position/modify") or self.path.startswith("/api/mt5/position/close"):
                 if AGENT_MANAGER is None:

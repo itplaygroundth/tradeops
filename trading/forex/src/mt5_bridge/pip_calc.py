@@ -171,3 +171,64 @@ def calculate_lot_size(
     # Clamp: minimum 0.01 lots, maximum 10.0 lots
     clamped_lot = max(0.01, min(10.0, round(lot_size, 2)))
     return clamped_lot
+
+
+def calculate_lot_size_for_profit_target(
+    target_profit_usd: float,
+    tp_price_distance: float,
+    symbol: str,
+    get_price_func: Optional[Callable[[str], Optional[float]]] = None,
+    account_currency: Optional[str] = None,
+) -> float:
+    """Return lot size that would make roughly target_profit_usd at TP.
+
+    The returned lot is expressed in broker lots and rounded/clamped to the
+    platform's broad 0.01..10.0 range. target_profit_usd is always treated as
+    USD-equivalent, including cent accounts, because contract value and pip
+    value calculations are USD-denominated.
+    """
+    if target_profit_usd <= 0 or tp_price_distance <= 0:
+        return 0.01
+
+    target_profit = float(target_profit_usd)
+
+    contract_size = get_contract_size(symbol)
+    quote_curr = "USD"
+    if len(symbol) >= 6:
+        quote_curr = symbol[3:6].upper()
+
+    quote_to_usd = 1.0
+    if quote_curr != "USD":
+        converted = False
+        if get_price_func:
+            usd_quote_pair = f"USD{quote_curr}"
+            usd_quote_price = get_price_func(usd_quote_pair)
+            if usd_quote_price:
+                quote_to_usd = 1.0 / usd_quote_price
+                converted = True
+            else:
+                quote_usd_pair = f"{quote_curr}USD"
+                quote_usd_price = get_price_func(quote_usd_pair)
+                if quote_usd_price:
+                    quote_to_usd = quote_usd_price
+                    converted = True
+        if not converted:
+            fallbacks = {
+                "JPY": 150.0,
+                "CAD": 1.36,
+                "CHF": 0.91,
+                "GBP": 1.25,
+                "EUR": 1.08,
+            }
+            fb_rate = fallbacks.get(quote_curr)
+            if fb_rate:
+                quote_to_usd = 1.0 / fb_rate if quote_curr in ["JPY", "CAD", "CHF"] else fb_rate
+            else:
+                logger.warning(f"Could not convert quote currency {quote_curr} to USD. Using 1.0.")
+
+    profit_per_lot = tp_price_distance * contract_size * quote_to_usd
+    if profit_per_lot <= 0:
+        return 0.01
+
+    lot_size = target_profit / profit_per_lot
+    return max(0.01, min(10.0, round(lot_size, 2)))

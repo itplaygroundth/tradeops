@@ -42,7 +42,7 @@ def _atomic_write_state(state: dict, *, indent=None) -> None:
     atomic rename on POSIX, so readers always see a complete old-or-new file.
     """
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = STATE_FILE.with_suffix(STATE_FILE.suffix + ".tmp")
+    tmp_path = STATE_FILE.with_name(f"{STATE_FILE.name}.{os.getpid()}.{time.time_ns()}.tmp")
     tmp_path.write_text(json.dumps(state, indent=indent))
     os.replace(tmp_path, STATE_FILE)
 
@@ -63,6 +63,17 @@ TRAILING_MIN_STEP = {
     "FX": float(os.getenv("TRAILING_MIN_STEP_FX", "0.00005")),
 }
 MANAGED_MAGIC = int(os.getenv("MTAI_MAGIC", "20260101"))
+DAILY_PROFIT_TARGET_USD = float(os.getenv("MTAI_DAILY_PROFIT_TARGET_USD", "20.0"))
+ADAPTIVE_CAUTION_DD = float(os.getenv("ADAPTIVE_CAUTION_DD", "0.015"))
+ADAPTIVE_DEFENSE_DD = float(os.getenv("ADAPTIVE_DEFENSE_DD", "0.03"))
+ADAPTIVE_FLOATING_LOSS_CAUTION_USD = float(os.getenv("ADAPTIVE_FLOATING_LOSS_CAUTION_USD", "5.0"))
+ADAPTIVE_FLOATING_LOSS_DEFENSE_USD = float(os.getenv("ADAPTIVE_FLOATING_LOSS_DEFENSE_USD", "10.0"))
+ADAPTIVE_LOT_MULTIPLIERS = {
+    "NORMAL": float(os.getenv("ADAPTIVE_LOT_NORMAL", "1.0")),
+    "CAUTION": float(os.getenv("ADAPTIVE_LOT_CAUTION", "0.5")),
+    "DEFENSE": float(os.getenv("ADAPTIVE_LOT_DEFENSE", "0.25")),
+    "HARD_STOP": 0.0,
+}
 
 class ForexAgentManager:
     def __init__(self, mt5_client: MT5Client, paper_mode: bool = True, agent_count: int = 25):
@@ -99,6 +110,9 @@ class ForexAgentManager:
         self._daily_pnl = {}
         self._order_history = []
         self._hard_stop_closed_tickets = set()
+        self._manual_entries_paused = False
+        self._manual_pause_reason = ""
+        self._last_block_log = {}
         # initialize history DB
         try:
             from storage.history_db import init_db, query_orders
@@ -291,20 +305,23 @@ class ForexAgentManager:
             deals = await self.mt5.get_recent_deals(hours=hours, limit=limit)
             inserted_count = 0
             updated_count = 0
+            daily_pnl_backfill = {}
             for d in deals:
                 entry_code = d.get("entry")
                 is_exit = is_exit_deal(entry_code)
                 ticket = d.get("position") or d.get("ticket")
                 comment = d.get("comment", "MT5")
+                ts = d.get("time", int(time.time()))
+                pnl = float(d.get("profit") or 0.0) + float(d.get("commission") or 0.0) + float(d.get("swap") or 0.0)
                 entry = {
                     "deal_ticket": d.get("ticket"),
-                    "timestamp": d.get("time", int(time.time())),
+                    "timestamp": ts,
                     "agent": comment,
                     "symbol": d.get("symbol"),
                     "ticket": ticket,
                     "volume": d.get("volume"),
                     "price": d.get("price"),
-                    "pnl": d.get("profit"),
+                    "pnl": pnl,
                     "commission": d.get("commission"),
                     "swap": d.get("swap"),
                     "type": "closed" if is_exit else "live",
@@ -327,9 +344,15 @@ class ForexAgentManager:
                         updated_count += 1
                 except Exception:
                     pass
+                if is_exit:
+                    day = time.strftime("%Y-%m-%d", time.localtime(ts))
+                    daily_pnl_backfill[day] = round(daily_pnl_backfill.get(day, 0.0) + pnl, 2)
+            for day, pnl in daily_pnl_backfill.items():
+                self._daily_pnl[day] = pnl
             if deals:
                 logger.info(
-                    f"[HistoryBackfill] processed={len(deals)} inserted={inserted_count} updated={updated_count}"
+                    f"[HistoryBackfill] processed={len(deals)} inserted={inserted_count} "
+                    f"updated={updated_count} daily_pnl={daily_pnl_backfill}"
                 )
             # write initial state so UI can show history immediately
             try:
@@ -699,18 +722,48 @@ class ForexAgentManager:
 
     async def _process_agents(self, symbol: str, price: float):
         """Evaluates entry signals and executes trades for idle agents assigned to a symbol."""
+        if self._manual_entries_paused:
+            logger.warning(f"[Control] {symbol} entries paused: {self._manual_pause_reason or 'manual pause'}")
+            return
         agents_for_symbol = [a for a in self.agents if a.dna.symbol == symbol and not a.is_in_trade]
         gate = self._leader_asset_gate(symbol)
         account_risk = await self._refresh_account_risk() if not self.paper_mode else self.account_risk_monitor.current
         if account_risk.blocks_entries:
-            logger.warning(f"[AccountRisk] entries blocked: {account_risk.mode} {account_risk.reason}")
+            self._log_blocked(
+                f"account_risk:{account_risk.mode}:{account_risk.reason}",
+                f"[AccountRisk] entries blocked: {account_risk.mode} {account_risk.reason}",
+            )
+            return
+        if not self.paper_mode and account_risk.mode == "WARNING":
+            self._log_blocked(
+                f"account_risk_warning:{account_risk.reason}",
+                f"[AccountRisk] entries blocked on WARNING: {account_risk.reason}",
+            )
+            return
+        if self._daily_profit_target_reached():
+            today = time.strftime("%Y-%m-%d", time.localtime())
+            pnl = self._daily_pnl.get(today, 0.0)
+            logger.warning(
+                f"[DailyTarget] entries blocked: daily realized PnL ${pnl:.2f} "
+                f">= target ${DAILY_PROFIT_TARGET_USD:.2f}"
+            )
+            return
+
+        adaptive = self._adaptive_guard(account_risk)
+        if adaptive["mode"] == "HARD_STOP":
+            self._log_blocked(
+                f"adaptive:{adaptive['mode']}:{adaptive['reason']}",
+                f"[AdaptiveGuard] entries blocked: {adaptive['reason']}",
+            )
             return
 
         max_agents = gate["max_agents"]
         min_confidence = gate["min_confidence"]
-        if account_risk.mode == "WARNING":
+        if adaptive["mode"] == "DEFENSE":
             max_agents = min(max_agents, 1)
             min_confidence = min(95, min_confidence + 10)
+        elif adaptive["mode"] == "CAUTION":
+            min_confidence = min(95, min_confidence + 5)
         live_open_positions = account_risk.open_positions
         live_positions = []
         if not self.paper_mode:
@@ -747,6 +800,8 @@ class ForexAgentManager:
 
             # Risk validation
             today = int(time.time() / 86400)
+            day_key = time.strftime("%Y-%m-%d", time.localtime())
+            target_profit_remaining = max(DAILY_PROFIT_TARGET_USD - self._daily_pnl.get(day_key, 0.0), 0.0)
             
             # Simple mock lookup to pass to dynamic risk / lot sizing without server dependency in tests
             async def get_price_func(sym):
@@ -766,6 +821,8 @@ class ForexAgentManager:
                 open_positions=live_open_positions if not self.paper_mode else None,
                 account_margin_free=self._account_margin_free if not self.paper_mode else None,
                 account_leverage=self._account_leverage if not self.paper_mode else None,
+                target_profit_remaining=target_profit_remaining,
+                risk_multiplier=adaptive["lot_multiplier"],
             )
 
             if not risk_result.allowed:
@@ -786,6 +843,34 @@ class ForexAgentManager:
                         "magic": MANAGED_MAGIC,
                     })
                     self.position_dedup_guard.record_open(symbol)
+
+    def control_status(self) -> Dict:
+        return {
+            "entries_paused": self._manual_entries_paused,
+            "pause_reason": self._manual_pause_reason,
+            "paper_mode": self.paper_mode,
+            "account_risk_mode": self.account_risk_monitor.current.mode,
+            "account_risk_reason": self.account_risk_monitor.current.reason,
+        }
+
+    def pause_entries(self, reason: str = "manual control") -> Dict:
+        self._manual_entries_paused = True
+        self._manual_pause_reason = reason or "manual control"
+        logger.warning(f"[Control] entries paused: {self._manual_pause_reason}")
+        return self.control_status()
+
+    def resume_entries(self) -> Dict:
+        self._manual_entries_paused = False
+        self._manual_pause_reason = ""
+        logger.warning("[Control] entries resumed")
+        return self.control_status()
+
+    def _log_blocked(self, key: str, message: str, interval_seconds: int = 60):
+        now = time.time()
+        last = self._last_block_log.get(key, 0.0)
+        if now - last >= interval_seconds:
+            self._last_block_log[key] = now
+            logger.warning(message)
 
     async def _paper_execute(self, agent: ForexAgent, signal: dict, price: float, risk: RiskResult):
         """Simulates order execution for paper mode."""
@@ -1010,10 +1095,12 @@ class ForexAgentManager:
         }
         summary.update(previous_competition_summary)
         summary["account_risk"] = self.account_risk_monitor.current.to_dict()
+        summary["adaptive_guard"] = self._adaptive_guard(self.account_risk_monitor.current)
         summary["performance_guard"] = self.performance_guard.summary()
         summary["position_dedup_guard"] = self.position_dedup_guard.summary()
         summary["timeframe_filter"] = self.timeframe_filter.summary()
         summary["weekend_reopen_guard"] = self.weekend_reopen_guard.summary()
+        summary["control"] = self.control_status()
 
         state = {
             "timestamp": time.time(),
@@ -1070,3 +1157,33 @@ class ForexAgentManager:
     def _record_trade_pnl(self, ts: float, pnl: float):
         day = time.strftime("%Y-%m-%d", time.localtime(ts))
         self._daily_pnl[day] = round(self._daily_pnl.get(day, 0.0) + pnl, 2)
+
+    def _daily_profit_target_reached(self, now: Optional[float] = None) -> bool:
+        ts = time.time() if now is None else now
+        day = time.strftime("%Y-%m-%d", time.localtime(ts))
+        return self._daily_pnl.get(day, 0.0) >= DAILY_PROFIT_TARGET_USD
+
+    def _adaptive_guard(self, account_risk=None) -> Dict:
+        account_risk = account_risk or self.account_risk_monitor.current
+        mode = "NORMAL"
+        reason = "OK"
+        if getattr(account_risk, "blocks_entries", False) or getattr(account_risk, "mode", "") == "HARD_STOP":
+            mode = "HARD_STOP"
+            reason = getattr(account_risk, "reason", "") or getattr(account_risk, "mode", "HARD_STOP")
+        elif getattr(account_risk, "mode", "") == "WARNING":
+            mode = "DEFENSE"
+            reason = getattr(account_risk, "reason", "") or "account warning"
+        else:
+            peak_dd = float(getattr(account_risk, "peak_drawdown_pct", 0.0) or 0.0) / 100.0
+            floating_pnl = float(getattr(account_risk, "floating_pnl", 0.0) or 0.0)
+            if peak_dd >= ADAPTIVE_DEFENSE_DD or floating_pnl <= -ADAPTIVE_FLOATING_LOSS_DEFENSE_USD:
+                mode = "DEFENSE"
+                reason = "drawdown/floating loss reached defense threshold"
+            elif peak_dd >= ADAPTIVE_CAUTION_DD or floating_pnl <= -ADAPTIVE_FLOATING_LOSS_CAUTION_USD:
+                mode = "CAUTION"
+                reason = "drawdown/floating loss reached caution threshold"
+        return {
+            "mode": mode,
+            "reason": reason,
+            "lot_multiplier": ADAPTIVE_LOT_MULTIPLIERS.get(mode, 1.0),
+        }

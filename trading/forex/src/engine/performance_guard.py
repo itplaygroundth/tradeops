@@ -16,6 +16,11 @@ EXPECTANCY_SYMBOL_BLOCK_THRESHOLD = float(os.getenv("EXPECTANCY_SYMBOL_BLOCK_THR
 # After this cooldown elapses since the symbol's last closed trade, allow a
 # probation trade so its expectancy can refresh.
 EXPECTANCY_SYMBOL_COOLDOWN_SECONDS = int(os.getenv("EXPECTANCY_SYMBOL_COOLDOWN_SECONDS", "14400"))
+MANUAL_PAUSED_SYMBOLS = {
+    item.strip()
+    for item in os.getenv("MANUAL_PAUSED_SYMBOLS", "AUDUSDm").split(",")
+    if item.strip()
+}
 
 
 @dataclass
@@ -63,6 +68,7 @@ class PerformanceGuard:
             "paused_symbols": {},
             "paused_agents": {},
             "expectancy_blocked_symbols": {},
+            "manual_paused_symbols": sorted(MANUAL_PAUSED_SYMBOLS),
             "symbol_stats": {},
             "agent_stats": {},
         }
@@ -189,6 +195,7 @@ class PerformanceGuard:
             "paused_symbols": paused_symbols,
             "paused_agents": paused_agents,
             "expectancy_blocked_symbols": expectancy_blocked_symbols,
+            "manual_paused_symbols": sorted(MANUAL_PAUSED_SYMBOLS),
             "symbol_stats": symbol_stats,
             "agent_stats": agent_stats,
             "cooldown_seconds": self.cooldown_seconds,
@@ -202,6 +209,8 @@ class PerformanceGuard:
 
     def evaluate(self, symbol: str, agent: str, now: Optional[float] = None) -> PerformanceDecision:
         summary = self.refresh(now=now)
+        if symbol in MANUAL_PAUSED_SYMBOLS:
+            return PerformanceDecision(False, f"{symbol} manually paused")
         symbol_pause = summary["paused_symbols"].get(symbol)
         if symbol_pause:
             return PerformanceDecision(False, symbol_pause["reason"], symbol_streak=symbol_pause["loss_streak"])

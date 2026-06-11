@@ -11,6 +11,7 @@ from typing import Optional
 from mt5_bridge.pip_calc import (
     CENT_ACCOUNT_DIVISOR,
     calculate_lot_size,
+    calculate_lot_size_for_profit_target,
     get_contract_size,
     get_pip_size,
     is_cent_currency,
@@ -236,6 +237,8 @@ class ForexRiskGuardian:
         open_positions: Optional[int] = None,
         account_margin_free: Optional[float] = None,
         account_leverage: Optional[float] = None,
+        target_profit_remaining: Optional[float] = None,
+        risk_multiplier: float = 1.0,
     ) -> RiskResult:
         """
         Validates signal + calculates lot size.
@@ -283,10 +286,13 @@ class ForexRiskGuardian:
         if spread_pips > 0 and sl_pips < spread_pips * 2:
             return RiskResult(False, reason=f"SL ({sl_pips:.1f}pip) too tight vs spread ({spread_pips:.1f}pip)")
 
-        # Calculate lot size (1% risk)
         pip_size = get_pip_size(symbol)
         sl_price_distance = sl_pips * pip_size
-        lot_size = calculate_lot_size(
+        tp_price_distance = tp_pips * pip_size
+
+        # Calculate lot size (1% risk), then cap it to the remaining daily
+        # profit target so a TP aims to finish near the configured daily goal.
+        risk_lot_size = calculate_lot_size(
             account_balance=account_balance,
             risk_pct=MAX_RISK_PCT,
             sl_price_distance=sl_price_distance,
@@ -294,6 +300,30 @@ class ForexRiskGuardian:
             get_price_func=get_price_func,
             account_currency=account_currency,
         )
+        lot_size = risk_lot_size
+        if target_profit_remaining is not None and target_profit_remaining > 0:
+            target_lot_size = calculate_lot_size_for_profit_target(
+                target_profit_usd=float(target_profit_remaining),
+                tp_price_distance=tp_price_distance,
+                symbol=symbol,
+                get_price_func=get_price_func,
+                account_currency=account_currency,
+            )
+            lot_size = min(risk_lot_size, target_lot_size)
+            logger.info(
+                f"[RiskGuardian] {symbol} target lot sizing: remaining=${target_profit_remaining:.2f} "
+                f"target_lot={target_lot_size:.2f} risk_lot={risk_lot_size:.2f} final_lot={lot_size:.2f}"
+            )
+        risk_multiplier = max(0.0, min(1.0, float(risk_multiplier or 0.0)))
+        if risk_multiplier <= 0:
+            return RiskResult(False, reason="Adaptive guard hard stop")
+        if risk_multiplier < 1.0:
+            original_lot = lot_size
+            lot_size = max(0.01, round(lot_size * risk_multiplier, 2))
+            logger.info(
+                f"[RiskGuardian] adaptive lot multiplier={risk_multiplier:.2f} "
+                f"lot {original_lot:.2f}->{lot_size:.2f}"
+            )
 
         if account_margin_free is not None and account_leverage:
             required_margin = self._estimate_required_margin(
@@ -329,8 +359,8 @@ class ForexRiskGuardian:
                 )
 
         # Calculate SL/TP prices
-        sl_distance = sl_pips * pip_size
-        tp_distance = tp_pips * pip_size
+        sl_distance = sl_price_distance
+        tp_distance = tp_price_distance
 
         if action == "BUY":
             sl_price = entry_price - sl_distance
@@ -339,7 +369,7 @@ class ForexRiskGuardian:
             sl_price = entry_price + sl_distance
             tp_price = entry_price - tp_distance
 
-        risk_amount = account_balance * MAX_RISK_PCT
+        risk_amount = min(account_balance * MAX_RISK_PCT, sl_distance * get_contract_size(symbol) * lot_size)
 
         logger.info(
             f"[RiskGuardian] ALLOW {action} {symbol} lot={lot_size} "

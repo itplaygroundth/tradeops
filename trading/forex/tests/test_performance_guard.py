@@ -55,6 +55,7 @@ def test_performance_guard_blocks_symbol_with_bad_expectancy(monkeypatch):
     monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_GUARD_ENABLED", True)
     monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_MIN_TRADES", 3)
     monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_BLOCK_THRESHOLD", -0.25)
+    monkeypatch.setattr(perf_mod, "MANUAL_PAUSED_SYMBOLS", set())
 
     guard = PerformanceGuard(symbol_loss_limit=10, agent_loss_limit=10, cooldown_seconds=3600)
     rows = [
@@ -71,6 +72,22 @@ def test_performance_guard_blocks_symbol_with_bad_expectancy(monkeypatch):
     assert guard.summary()["expectancy_blocked_symbols"]["AUDUSDm"]["trades"] == 3
 
 
+def test_manual_paused_symbol_blocks_entries(monkeypatch):
+    import engine.performance_guard as perf_mod
+
+    monkeypatch.setattr(perf_mod, "MANUAL_PAUSED_SYMBOLS", {"AUDUSDm"})
+
+    guard = PerformanceGuard(symbol_loss_limit=10, agent_loss_limit=10, cooldown_seconds=3600)
+    monkeypatch.setattr(guard, "_load_journal", lambda: [])
+
+    decision = guard.evaluate("AUDUSDm", "FX-AUD-001", now=1780359000)
+
+    assert decision.allowed is False
+    assert "manually paused" in decision.reason
+    assert guard.evaluate("NZDUSDm", "FX-NZD-001", now=1780359000).allowed is True
+    assert guard.summary()["manual_paused_symbols"] == ["AUDUSDm"]
+
+
 def test_expectancy_block_expires_after_cooldown(monkeypatch):
     """Bad expectancy must not be a permanent ban: once the cooldown since the
     last trade elapses, the symbol is allowed a probation trade so its
@@ -81,6 +98,7 @@ def test_expectancy_block_expires_after_cooldown(monkeypatch):
     monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_MIN_TRADES", 3)
     monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_BLOCK_THRESHOLD", -0.25)
     monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_COOLDOWN_SECONDS", 3600)
+    monkeypatch.setattr(perf_mod, "MANUAL_PAUSED_SYMBOLS", set())
 
     guard = PerformanceGuard(symbol_loss_limit=10, agent_loss_limit=10, cooldown_seconds=3600)
     # last trade at 2026-06-02T00:03:00Z -> ts 1780358580

@@ -52,6 +52,85 @@ def test_risk_guardian_allows_when_cent_account_margin_buffer_is_enough():
     assert res.lot_size == 0.01
 
 
+def test_risk_guardian_caps_lot_to_remaining_daily_profit_target():
+    guardian = ForexRiskGuardian()
+
+    res = guardian.validate(
+        symbol="EURUSD",
+        action="BUY",
+        entry_price=1.0850,
+        sl_pips=15,
+        tp_pips=35,
+        account_balance=1000.0,
+        account_equity=1000.0,
+        current_day=28,
+        target_profit_remaining=20.0,
+    )
+
+    assert res.allowed is True
+    # Risk lot would be 0.07, but $20 / (35 pips * $10 per pip per lot)
+    # is ~0.057 lots, rounded to 0.06.
+    assert res.lot_size == 0.06
+    assert res.risk_amount == pytest.approx(9.0)
+
+
+def test_risk_guardian_target_lot_does_not_exceed_risk_lot():
+    guardian = ForexRiskGuardian()
+
+    res = guardian.validate(
+        symbol="EURUSD",
+        action="BUY",
+        entry_price=1.0850,
+        sl_pips=15,
+        tp_pips=35,
+        account_balance=1000.0,
+        account_equity=1000.0,
+        current_day=28,
+        target_profit_remaining=1000.0,
+    )
+
+    assert res.allowed is True
+    assert res.lot_size == 0.07
+
+
+def test_risk_guardian_applies_adaptive_lot_multiplier():
+    guardian = ForexRiskGuardian()
+
+    res = guardian.validate(
+        symbol="EURUSD",
+        action="BUY",
+        entry_price=1.0850,
+        sl_pips=15,
+        tp_pips=35,
+        account_balance=1000.0,
+        account_equity=1000.0,
+        current_day=28,
+        risk_multiplier=0.5,
+    )
+
+    assert res.allowed is True
+    assert res.lot_size == 0.04
+
+
+def test_risk_guardian_blocks_when_adaptive_multiplier_zero():
+    guardian = ForexRiskGuardian()
+
+    res = guardian.validate(
+        symbol="EURUSD",
+        action="BUY",
+        entry_price=1.0850,
+        sl_pips=15,
+        tp_pips=35,
+        account_balance=1000.0,
+        account_equity=1000.0,
+        current_day=28,
+        risk_multiplier=0.0,
+    )
+
+    assert res.allowed is False
+    assert "adaptive guard" in res.reason.lower()
+
+
 def test_risk_guardian_rejects_when_required_margin_exceeds_buffer():
     guardian = ForexRiskGuardian()
 
