@@ -11,6 +11,7 @@ import {
   recordControlAction,
 } from './services/tradingControl.js';
 import { installAiAnalystRoutes } from './services/aiAnalyst.js';
+import { createNotificationService, installNotificationRoutes } from './services/notifications.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
@@ -256,93 +257,9 @@ function saveSettings(updatedSettings) {
 // Global active notification cooldowns keyed by alert id.
 const ALERT_COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS || 30 * 60 * 1000);
 const triggeredAlerts = new Map();
-
-// 5. Telegram Helper
-async function sendTelegramMessage(text, customToken = null, customChatId = null) {
-  let token = customToken;
-  let chatId = customChatId;
-  
-  if (!token || !chatId) {
-    try {
-      const currentSettings = getSettings();
-      token = currentSettings.telegramBotToken;
-      chatId = currentSettings.telegramChatId;
-    } catch (_) {}
-  }
-
-  if (!token || !chatId) {
-    console.log("Telegram not configured. Log: ", text);
-    return false;
-  }
-
-  try {
-    const url = `https://api.telegram.org/bot${token}/sendMessage`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: text,
-        parse_mode: 'Markdown'
-      })
-    });
-    const result = await response.json();
-    return result.ok;
-  } catch (error) {
-    console.error("Error sending Telegram message:", error);
-    return false;
-  }
-}
-
-async function sendLineMessage(text, customChannelAccessToken = null, customTargetId = null, customNotifyToken = null) {
-  let channelAccessToken = customChannelAccessToken;
-  let targetId = customTargetId;
-  let notifyToken = customNotifyToken;
-
-  if ((!channelAccessToken || !targetId) && !notifyToken) {
-    try {
-      const currentSettings = getSettings();
-      channelAccessToken = currentSettings.lineChannelAccessToken;
-      targetId = currentSettings.lineTargetId;
-      notifyToken = currentSettings.lineNotifyToken;
-    } catch (_) {}
-  }
-
-  try {
-    if (channelAccessToken && targetId) {
-      const response = await fetch('https://api.line.me/v2/bot/message/push', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${channelAccessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          to: targetId,
-          messages: [{ type: 'text', text }]
-        })
-      });
-      return response.ok;
-    }
-
-    if (notifyToken) {
-      const response = await fetch('https://notify-api.line.me/api/notify', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${notifyToken}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({ message: text })
-      });
-      return response.ok;
-    }
-  } catch (error) {
-    console.error("Error sending LINE message:", error);
-    return false;
-  }
-
-  console.log("LINE not configured. Log: ", text);
-  return false;
-}
+const notifications = createNotificationService({ db, getSettings });
+const sendTelegramMessage = (...args) => notifications.sendTelegramMessage(...args);
+const sendLineMessage = (...args) => notifications.sendLineMessage(...args);
 
 // 6. Price Alerts Checker
 async function checkPriceAlert(asset, currentSettings) {
@@ -371,7 +288,18 @@ async function checkPriceAlert(asset, currentSettings) {
       const condText = alert.condition === 'above' ? 'ทะลุสูงกว่า' : 'ดิ่งต่ำกว่า';
       const text = `🚨 *AI INVESTMENT ALERT* 🚨\n\nสินทรัพย์: *${asset.name} (${asset.id})*\nแจ้งเตือน: ราคา ${condText} *${alert.value}*\nราคาปัจจุบัน: *${asset.currentPrice}*\n\n🤖 *คำแนะนำจาก AI:* สินทรัพย์มีพฤติกรรมราคาที่น่าสนใจ แนะนำเข้าตรวจสอบพอร์ตของท่านเพื่อบริหารความเสี่ยงทันทีครับ`;
       
-      await sendTelegramMessage(text, currentSettings.telegramBotToken, currentSettings.telegramChatId);
+      await notifications.sendChannels({
+        text,
+        settings: currentSettings,
+        type: 'price_alert',
+        meta: {
+          alertId: alert.id,
+          assetId: asset.id,
+          condition: alert.condition,
+          value: alert.value,
+          currentPrice: asset.currentPrice,
+        },
+      });
     }
   }
 }
@@ -627,7 +555,7 @@ app.post('/api/portfolio/transaction', (req, res) => {
 
     const actionText = action === 'buy' ? '🟢 ซื้อเพิ่ม' : '🔴 ขายออก';
     const txMsg = `🔔 *AI PORTFOLIO UPDATE* 🔔\n\nทำธุรกรรม: *${actionText}*\nสินทรัพย์: *${asset.name} (${asset.id})*\nจำนวน: *${inputUnits}* หน่วย\nราคา: *${inputPrice}*\n\n🤖 *ระบบ AI* ได้บันทึกรายการธุรกรรมลงใน SQLite และปรับปรุงการวิเคราะห์สัดส่วนพอร์ตเรียบร้อยแล้ว`;
-    sendTelegramMessage(txMsg);
+    sendTelegramMessage(txMsg, null, null, { type: 'transaction_alert', meta: { assetId, action, type } });
 
     res.json({ success: true, asset: { ...asset, units: newUnits, avgBuyPrice: newAvgPrice } });
   } catch (err) {
@@ -1123,7 +1051,7 @@ app.post('/api/telegram/test', async (req, res) => {
 
   const testText = `🔔 *AI HEDGEFUND TELEGRAM ALERT* 🔔\n\n🚀 ยินดีด้วย! การเชื่อมต่อระบบบริหารพอร์ตการลงทุน AI ของคุณเสร็จสมบูรณ์\n\nบอทอัจฉริยะระบบแจ้งเตือนพร้อมสนับสนุนการบริหาร กองทุน, คริปโต และ Forex ของคุณแล้ว\n\n💡 _ระบบจะส่งรายงานพอร์ตและแจ้งเตือนราคาตัดระดับผ่านแชทนี้ทันทีเมื่อตรวจพบสัญญาณครับ!_`;
   
-  const ok = await sendTelegramMessage(testText, telegramBotToken, telegramChatId);
+  const ok = await sendTelegramMessage(testText, telegramBotToken, telegramChatId, { type: 'manual_test', meta: { channel: 'telegram' } });
   
   if (ok) {
     res.json({ success: true, message: "Test alert dispatched successfully!" });
@@ -1145,7 +1073,7 @@ app.post('/api/line/test', async (req, res) => {
   }
 
   const testText = `AI HEDGEFUND LINE ALERT\n\nทดสอบส่ง Alert สำเร็จ ระบบ Hedgefund พร้อมส่งสัญญาณ Trading, Risk Guard และ Daily AI Report ผ่าน LINE แล้ว`;
-  const ok = await sendLineMessage(testText, lineChannelAccessToken, lineTargetId, lineNotifyToken);
+  const ok = await sendLineMessage(testText, lineChannelAccessToken, lineTargetId, lineNotifyToken, { type: 'manual_test', meta: { channel: 'line' } });
 
   if (ok) {
     res.json({ success: true, message: "LINE test alert dispatched successfully!" });
@@ -1258,8 +1186,9 @@ app.post('/api/mt5/order', async (req, res) => {
   res.json(data);
 });
 
-installTradingControlRoutes(app, { db, getSettings, sendTelegramMessage });
-installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction, sendTelegramMessage });
+installNotificationRoutes(app, { notifications });
+installTradingControlRoutes(app, { db, getSettings, notifications, sendTelegramMessage });
+installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction, notifications, sendTelegramMessage });
 
 app.listen(PORT, () => {
   console.log(`🚀 AI Hedgefund API Server running on http://localhost:${PORT}`);

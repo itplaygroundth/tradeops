@@ -342,33 +342,6 @@ function buildReportText(overview) {
   return lines.join('\n');
 }
 
-async function sendLineMessage(settings, text) {
-  const token = settings.lineChannelAccessToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  const to = settings.lineTargetId || process.env.LINE_TARGET_ID;
-  if (token && to) {
-    const res = await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, messages: [{ type: 'text', text }] }),
-    });
-    return res.ok;
-  }
-
-  const legacyToken = settings.lineNotifyToken || process.env.LINE_NOTIFY_TOKEN;
-  if (legacyToken) {
-    const res = await fetch('https://notify-api.line.me/api/notify', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${legacyToken}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ message: text }),
-    });
-    return res.ok;
-  }
-  return false;
-}
-
 async function collectOverview(getSettings) {
   const settings = getSettings();
   const trading = settings.tradingControl || {};
@@ -448,7 +421,7 @@ export async function dispatchControlCommand(getSettings, command) {
   return { ok: false, status: 501, error: 'MTAI control action is not available yet' };
 }
 
-export function installTradingControlRoutes(app, { db, getSettings, sendTelegramMessage }) {
+export function installTradingControlRoutes(app, { db, getSettings, notifications, sendTelegramMessage }) {
   ensureTradingSchema(db);
 
   app.get('/api/trading/overview', async (req, res) => {
@@ -533,8 +506,13 @@ export function installTradingControlRoutes(app, { db, getSettings, sendTelegram
       persistOverview(db, overview);
       const text = buildReportText(overview);
       const settings = getSettings();
-      const telegram = await sendTelegramMessage(text, settings.telegramBotToken, settings.telegramChatId);
-      const line = await sendLineMessage(settings, text);
+      const sent = notifications
+        ? await notifications.sendChannels({ text, settings, type: 'trading_control_report' })
+        : {
+            telegram: await sendTelegramMessage(text, settings.telegramBotToken, settings.telegramChatId),
+            line: false,
+          };
+      const { telegram, line } = sent;
       res.json({ success: true, telegram, line, overview });
     } catch (err) {
       res.status(500).json({ error: err.message });

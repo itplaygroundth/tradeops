@@ -104,6 +104,7 @@ export default function App() {
   const [lineTargetId, setLineTargetId] = useState('');
   const [lineNotifyToken, setLineNotifyToken] = useState('');
   const [teleStatus, setTeleStatus] = useState({ loading: false, msg: '', type: '' }); // type: success | error
+  const [notificationStatus, setNotificationStatus] = useState(null);
 
   // Trading Control Plane State
   const [tradingOverview, setTradingOverview] = useState(null);
@@ -144,6 +145,7 @@ export default function App() {
     fetchPortfolio();
     fetchSettings();
     fetchAIRecommendations();
+    fetchNotificationStatus();
 
     // 3-second interval to fetch live simulation ticks
     const interval = setInterval(() => {
@@ -151,6 +153,11 @@ export default function App() {
     }, 3000);
 
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(fetchNotificationStatus, 10000);
+    return () => clearInterval(id);
   }, []);
 
   // Sync transactional asset selector
@@ -287,6 +294,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Report failed');
       setTradingOverview(data.overview);
+      fetchNotificationStatus();
       setTradingReportStatus({
         loading: false,
         msg: `Report sent: Telegram ${data.telegram ? 'ok' : 'not configured'}, LINE ${data.line ? 'ok' : 'not configured'}`,
@@ -361,6 +369,7 @@ export default function App() {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Send report failed');
       setAiAnalystReport(data.report);
+      fetchNotificationStatus();
       setAiAnalystStatus({
         loading: false,
         msg: `AI report sent: Telegram ${data.telegram ? 'ok' : 'not configured'}, LINE ${data.line ? 'ok' : 'not configured'}`,
@@ -447,6 +456,14 @@ export default function App() {
     } catch (err) {
       console.error("Error fetching settings:", err);
     }
+  };
+
+  const fetchNotificationStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications/status`);
+      const data = await res.json();
+      if (res.ok) setNotificationStatus(data);
+    } catch (_) {}
   };
 
   const fetchAIRecommendations = async () => {
@@ -573,6 +590,7 @@ export default function App() {
 
       const data = await res.json();
       if (res.ok) {
+        fetchNotificationStatus();
         setTeleStatus({ loading: false, msg: 'ส่งสัญญาณแจ้งเตือนสำเร็จ! กรุณาเช็คห้องแชท Telegram ของคุณ', type: 'success' });
       } else {
         setTeleStatus({ loading: false, msg: data.error || 'การเชื่อมต่อล้มเหลว กรุณาเช็คความถูกต้องของ Token', type: 'error' });
@@ -602,6 +620,7 @@ export default function App() {
 
       const data = await res.json();
       if (res.ok) {
+        fetchNotificationStatus();
         setTeleStatus({ loading: false, msg: 'ส่งสัญญาณแจ้งเตือนไปยัง LINE สำเร็จ! กรุณาเช็ค LINE target ของคุณ', type: 'success' });
       } else {
         setTeleStatus({ loading: false, msg: data.error || 'การเชื่อมต่อ LINE ล้มเหลว กรุณาเช็ค token และ target', type: 'error' });
@@ -970,15 +989,21 @@ export default function App() {
           })}
         </nav>
 
-        {/* Telegram mini indicator */}
+        {/* Notification mini indicator */}
         <div className="glass-panel" style={{ padding: '1rem', borderRadius: '12px', background: 'rgba(255, 255, 255, 0.02)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
-            <Bell size={14} style={{ color: settings.telegramBotToken ? 'var(--accent-emerald)' : 'var(--accent-rose)' }} />
-            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#f8fafc' }}>Telegram Notification</span>
+            <Bell size={14} style={{ color: notificationStatus?.configured?.telegram || notificationStatus?.configured?.line ? 'var(--accent-emerald)' : 'var(--accent-rose)' }} />
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#f8fafc' }}>Notifications</span>
           </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-            สถานะ: {settings.telegramBotToken ? <span style={{ color: 'var(--accent-emerald)', fontWeight: 600 }}>เปิดใช้งาน</span> : <span style={{ color: 'var(--accent-rose)' }}>ปิดใช้งาน</span>}
-          </span>
+          <div style={{ display: 'grid', gap: '0.25rem', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+            <span>Telegram: {notificationStatus?.configured?.telegram ? <span style={{ color: 'var(--accent-emerald)', fontWeight: 600 }}>ready</span> : <span style={{ color: 'var(--accent-rose)' }}>off</span>}</span>
+            <span>LINE: {notificationStatus?.configured?.line ? <span style={{ color: 'var(--accent-emerald)', fontWeight: 600 }}>ready</span> : <span style={{ color: 'var(--accent-rose)' }}>off</span>}</span>
+            {notificationStatus?.latest && (
+              <span style={{ color: 'var(--text-muted)' }}>
+                Last: {notificationStatus.latest.channel} {notificationStatus.latest.status}
+              </span>
+            )}
+          </div>
         </div>
       </aside>
 
@@ -2399,6 +2424,25 @@ export default function App() {
                     <button onClick={handleTestLine} disabled={teleStatus.loading} className="btn-primary" style={{ justifyContent: 'center', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)' }}>
                       {teleStatus.loading ? 'กำลังส่ง...' : 'Test LINE'}
                     </button>
+                  </div>
+
+                  <div className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.015)', display: 'grid', gap: '0.65rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                      <strong style={{ color: '#fff', fontSize: '0.85rem' }}>Notification Audit</strong>
+                      <button onClick={fetchNotificationStatus} className="btn-secondary" style={{ padding: '0.35rem 0.65rem', fontSize: '0.72rem' }}>
+                        Refresh
+                      </button>
+                    </div>
+                    {(notificationStatus?.recent || []).slice(0, 5).map((item) => (
+                      <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '90px 80px 1fr', gap: '0.6rem', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-secondary)', borderTop: '1px solid var(--glass-border)', paddingTop: '0.55rem' }}>
+                        <span style={{ color: item.status === 'success' ? 'var(--accent-emerald)' : item.status === 'failed' ? 'var(--accent-rose)' : 'var(--text-muted)', fontWeight: 700 }}>{item.status}</span>
+                        <span>{item.channel}</span>
+                        <span style={{ color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.type}</span>
+                      </div>
+                    ))}
+                    {(notificationStatus?.recent || []).length === 0 && (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>No notification audit yet.</div>
+                    )}
                   </div>
 
                 </div>

@@ -254,40 +254,18 @@ function buildOutboundReport(report) {
   return lines.join('\n');
 }
 
-async function sendLineMessage(settings, text) {
-  const token = settings.lineChannelAccessToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
-  const to = settings.lineTargetId || process.env.LINE_TARGET_ID;
-  if (token && to) {
-    const res = await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, messages: [{ type: 'text', text }] }),
-    });
-    return res.ok;
-  }
-
-  const legacyToken = settings.lineNotifyToken || process.env.LINE_NOTIFY_TOKEN;
-  if (legacyToken) {
-    const res = await fetch('https://notify-api.line.me/api/notify', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${legacyToken}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ message: text }),
-    });
-    return res.ok;
-  }
-  return false;
-}
-
-async function sendAnalystReport({ db, getSettings, sendTelegramMessage, forceAnalyze = false }) {
+async function sendAnalystReport({ db, getSettings, notifications, sendTelegramMessage, forceAnalyze = false }) {
   let report = forceAnalyze ? await analyze({ db, getSettings }) : readLatest(db)?.payload;
   if (!report) report = await analyze({ db, getSettings });
   const settings = getSettings();
   const text = buildOutboundReport(report);
-  const telegram = await sendTelegramMessage(text, settings.telegramBotToken, settings.telegramChatId);
-  const line = await sendLineMessage(settings, text);
+  const sent = notifications
+    ? await notifications.sendChannels({ text, settings, type: 'ai_analyst_report', meta: { reportId: report.id || null } })
+    : {
+        telegram: await sendTelegramMessage(text, settings.telegramBotToken, settings.telegramChatId),
+        line: false,
+      };
+  const { telegram, line } = sent;
   return { telegram, line, report };
 }
 
@@ -366,7 +344,7 @@ function readReports(db) {
   return rows.map((row) => ({ ...row, payload: JSON.parse(row.payload) }));
 }
 
-export function installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction, sendTelegramMessage }) {
+export function installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction, notifications, sendTelegramMessage }) {
   ensureAiSchema(db);
 
   app.post('/api/trading/ai/analyze', async (req, res) => {
@@ -398,6 +376,7 @@ export function installAiAnalystRoutes(app, { db, getSettings, dispatchControlCo
       const result = await sendAnalystReport({
         db,
         getSettings,
+        notifications,
         sendTelegramMessage,
         forceAnalyze: Boolean(req.body?.forceAnalyze),
       });
@@ -442,7 +421,7 @@ export function installAiAnalystRoutes(app, { db, getSettings, dispatchControlCo
         const sendKey = shouldSendDaily(getSettings());
         if (!sendKey || sendKey === lastDailyReportKey) return;
         lastDailyReportKey = sendKey;
-        await sendAnalystReport({ db, getSettings, sendTelegramMessage, forceAnalyze: true });
+        await sendAnalystReport({ db, getSettings, notifications, sendTelegramMessage, forceAnalyze: true });
       } catch (err) {
         console.warn(`AI analyst daily report failed: ${err.message}`);
       }
