@@ -171,13 +171,55 @@ export function createNotificationService({ db, getSettings }) {
     return rows.map((row) => ({ ...row, meta: JSON.parse(row.meta || '{}') }));
   }
 
+  function nextBangkokDailyTime(time) {
+    const target = time || '23:55';
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(now).reduce((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+    let candidate = new Date(`${parts.year}-${parts.month}-${parts.day}T${target}:00+07:00`);
+    if (Number.isNaN(candidate.getTime())) return null;
+    if (candidate <= now) candidate = new Date(candidate.getTime() + 24 * 60 * 60 * 1000);
+    return candidate.toISOString();
+  }
+
+  function findLatestByType(rows, type, status = null) {
+    return rows.find((row) => row.type === type && (!status || row.status === status)) || null;
+  }
+
   function status() {
     const settings = getSettings();
     const rows = recent(20);
+    const trading = settings.tradingControl || {};
+    const dailyTime = trading.dailyReportTime || '23:55';
+    const lastDaily = findLatestByType(rows, 'ai_analyst_report') || findLatestByType(rows, 'trading_control_report');
+    const lastDailySuccess = findLatestByType(rows, 'ai_analyst_report', 'success')
+      || findLatestByType(rows, 'trading_control_report', 'success');
+    const lastDailyFailure = findLatestByType(rows, 'ai_analyst_report', 'failed')
+      || findLatestByType(rows, 'trading_control_report', 'failed');
     return {
       configured: {
         telegram: Boolean(settings.telegramBotToken && settings.telegramChatId),
         line: Boolean((settings.lineChannelAccessToken && settings.lineTargetId) || settings.lineNotifyToken),
+      },
+      dailyReport: {
+        enabled: Boolean(trading.autoSendDailyReport),
+        time: dailyTime,
+        timezone: 'Asia/Bangkok',
+        nextDueAt: trading.autoSendDailyReport ? nextBangkokDailyTime(dailyTime) : null,
+        last: lastDaily,
+        lastSuccess: lastDailySuccess,
+        lastFailure: lastDailyFailure,
       },
       latest: rows[0] || null,
       recent: rows,

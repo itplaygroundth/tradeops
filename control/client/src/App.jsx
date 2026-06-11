@@ -2449,6 +2449,24 @@ export default function App() {
                         {autoSendDailyReport ? 'AUTO ON' : 'AUTO OFF'}
                       </span>
                     </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', borderTop: '1px solid var(--glass-border)', paddingTop: '0.75rem' }}>
+                      <div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.2rem' }}>Next due</div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', fontWeight: 600 }}>
+                          {notificationStatus?.dailyReport?.nextDueAt
+                            ? new Date(notificationStatus.dailyReport.nextDueAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })
+                            : 'Not scheduled'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginBottom: '0.2rem' }}>Last daily send</div>
+                        <div style={{ color: notificationStatus?.dailyReport?.last?.status === 'success' ? 'var(--accent-emerald)' : notificationStatus?.dailyReport?.last ? 'var(--accent-rose)' : 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 600 }}>
+                          {notificationStatus?.dailyReport?.last
+                            ? `${notificationStatus.dailyReport.last.channel} ${notificationStatus.dailyReport.last.status}`
+                            : 'No report yet'}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Flow Steps instructions */}
