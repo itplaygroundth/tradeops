@@ -105,6 +105,8 @@ export default function App() {
   const [lineNotifyToken, setLineNotifyToken] = useState('');
   const [teleStatus, setTeleStatus] = useState({ loading: false, msg: '', type: '' }); // type: success | error
   const [notificationStatus, setNotificationStatus] = useState(null);
+  const [autoSendDailyReport, setAutoSendDailyReport] = useState(false);
+  const [dailyReportTime, setDailyReportTime] = useState('23:55');
 
   // Trading Control Plane State
   const [tradingOverview, setTradingOverview] = useState(null);
@@ -442,6 +444,10 @@ export default function App() {
       setLineChannelAccessToken(data.lineChannelAccessToken || '');
       setLineTargetId(data.lineTargetId || '');
       setLineNotifyToken(data.lineNotifyToken || '');
+      if (data.tradingControl) {
+        setAutoSendDailyReport(Boolean(data.tradingControl.autoSendDailyReport));
+        setDailyReportTime(data.tradingControl.dailyReportTime || '23:55');
+      }
       if (data.llmConfig) {
         setLlmProvider(data.llmConfig.provider || 'Gemini');
         setLlmApiKey(data.llmConfig.apiKey || '');
@@ -558,7 +564,11 @@ export default function App() {
           telegramChatId: chatId,
           lineChannelAccessToken,
           lineTargetId,
-          lineNotifyToken
+          lineNotifyToken,
+          tradingControl: {
+            autoSendDailyReport,
+            dailyReportTime
+          }
         })
       });
       const data = await res.json();
@@ -2403,6 +2413,42 @@ export default function App() {
                       onChange={(e) => setLineNotifyToken(e.target.value)}
                       style={{ width: '100%' }}
                     />
+                  </div>
+
+                  <div className="glass-panel" style={{ padding: '1rem', background: 'rgba(255,255,255,0.015)', display: 'grid', gap: '0.85rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                      <div>
+                        <strong style={{ color: '#fff', fontSize: '0.88rem' }}>Daily AI Analyst Report</strong>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '0.2rem' }}>
+                          ส่งสรุปภาพรวม trading, guard mode และ recommendation ทุกวันตามเวลาที่ตั้งไว้
+                        </div>
+                      </div>
+                      <label className="switch-container" style={{ position: 'relative', display: 'inline-block', width: '44px', height: '24px', flexShrink: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={autoSendDailyReport}
+                          onChange={(e) => setAutoSendDailyReport(e.target.checked)}
+                          style={{ opacity: 0, width: 0, height: 0 }}
+                        />
+                        <span style={{ position: 'absolute', cursor: 'pointer', inset: 0, background: autoSendDailyReport ? 'var(--accent-emerald)' : 'rgba(255,255,255,0.12)', borderRadius: '999px', transition: '0.2s' }}>
+                          <span style={{ position: 'absolute', height: '18px', width: '18px', left: autoSendDailyReport ? '23px' : '3px', top: '3px', background: '#fff', borderRadius: '50%', transition: '0.2s' }} />
+                        </span>
+                      </label>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'end' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                        <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>Report Time (Bangkok)</label>
+                        <input
+                          type="time"
+                          value={dailyReportTime}
+                          onChange={(e) => setDailyReportTime(e.target.value)}
+                          style={{ width: '100%' }}
+                        />
+                      </div>
+                      <span style={{ color: autoSendDailyReport ? 'var(--accent-emerald)' : 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 700, paddingBottom: '0.65rem' }}>
+                        {autoSendDailyReport ? 'AUTO ON' : 'AUTO OFF'}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Flow Steps instructions */}
