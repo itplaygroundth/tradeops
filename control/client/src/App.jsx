@@ -360,13 +360,13 @@ export default function App() {
     }
   };
 
-  const sendAiAnalystReport = async () => {
+  const sendAiAnalystReport = async ({ forceAnalyze = false } = {}) => {
     setAiAnalystStatus({ loading: true, msg: 'Sending AI analyst report...', type: '' });
     try {
       const res = await fetch(`${API_BASE}/api/trading/ai/send-report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ forceAnalyze: false })
+        body: JSON.stringify({ forceAnalyze })
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Send report failed');
@@ -2466,6 +2466,17 @@ export default function App() {
                             : 'No report yet'}
                         </div>
                       </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--glass-border)', paddingTop: '0.75rem' }}>
+                      <button
+                        onClick={() => sendAiAnalystReport({ forceAnalyze: true })}
+                        disabled={aiAnalystStatus.loading}
+                        className="btn-secondary"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', justifyContent: 'center' }}
+                      >
+                        <Send size={14} />
+                        {aiAnalystStatus.loading ? 'Sending...' : 'Send Now'}
+                      </button>
                     </div>
                   </div>
 
