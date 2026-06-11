@@ -20,6 +20,21 @@ _TF_MAP = {
     "D1": "1d",
 }
 
+_TF_ALIASES = {
+    "1m": "M1",
+    "5m": "M5",
+    "15m": "M15",
+    "30m": "M30",
+    "1h": "H1",
+    "4h": "H4",
+    "1d": "D1",
+}
+
+
+def normalize_timeframe(timeframe: str) -> str:
+    raw = str(timeframe or "M15").strip()
+    return _TF_ALIASES.get(raw.lower(), raw.upper())
+
 
 class BinanceFeed(ExchangeFeed):
     def __init__(self, paper_mode: bool = True):
@@ -43,7 +58,7 @@ class BinanceFeed(ExchangeFeed):
 
     # ---- REST ----------------------------------------------------------
     async def get_ohlcv(self, symbol: str, timeframe: str = "M15", count: int = 200) -> list[dict]:
-        interval = _TF_MAP.get(timeframe, "15m")
+        interval = _TF_MAP.get(normalize_timeframe(timeframe), "15m")
         url = f"{_REST}/api/v3/klines"
         params = {"symbol": symbol.upper(), "interval": interval, "limit": count}
         session = await self._get_session()

@@ -14,8 +14,9 @@ def test_random_dna_weights_sum_to_one():
 def test_random_dna_sl_tp_ranges():
     for i in range(50):
         dna = random_dna(i, "ETHUSDT")
-        assert 0.01 <= dna.sl_pct <= 0.03
+        assert 0.006 <= dna.sl_pct <= 0.018
         assert dna.tp_pct > dna.sl_pct  # TP wider than SL
+        assert dna.tp_pct <= dna.sl_pct * 1.9
 
 
 def test_random_dna_name_format():

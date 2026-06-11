@@ -1,7 +1,7 @@
 import pytest
 
 from exchange.base import Tick
-from exchange.bybit import BybitFeed, _TF_MAP
+from exchange.bybit import BybitFeed, _TF_MAP, normalize_timeframe
 
 
 def test_name():
@@ -16,6 +16,16 @@ def test_timeframe_map():
     assert _TF_MAP["H1"] == "60"
     assert _TF_MAP["H4"] == "240"
     assert _TF_MAP["D1"] == "D"
+
+
+def test_timeframe_aliases_from_ui():
+    assert normalize_timeframe("1m") == "M1"
+    assert normalize_timeframe("5m") == "M5"
+    assert normalize_timeframe("15m") == "M15"
+    assert normalize_timeframe("1h") == "H1"
+    assert normalize_timeframe("4h") == "H4"
+    assert normalize_timeframe("1d") == "D1"
+    assert normalize_timeframe("h1") == "H1"
 
 
 @pytest.mark.asyncio

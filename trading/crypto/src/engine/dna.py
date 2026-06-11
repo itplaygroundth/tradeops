@@ -8,8 +8,8 @@ from dataclasses import dataclass, field
 from typing import Dict
 
 CRYPTO_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
-TIMEFRAMES = ["M5", "M15", "H1"]
-TF_SECONDS = {"M5": 300, "M15": 900, "H1": 3600}
+TIMEFRAMES = ["M5", "M15", "H1", "H4"]
+TF_SECONDS = {"M5": 300, "M15": 900, "H1": 3600, "H4": 14400}
 
 STRATEGY_METHODS = [
     "momentum", "mean_reversion", "grid_scalp",
@@ -43,9 +43,10 @@ def random_dna(agent_id: int, symbol: str = None, regime: str = "MIXED") -> Cryp
     if symbol is None:
         symbol = random.choice(CRYPTO_SYMBOLS)
 
-    # sl 1%-3%, tp = sl * 1.5-3.0
-    sl_pct = random.uniform(0.01, 0.03)
-    tp_pct = sl_pct * random.uniform(1.5, 3.0)
+    # Intraday crypto targets should be reachable; strategy caps in the
+    # manager tighten these further for scalp/timeframe-specific entries.
+    sl_pct = random.uniform(0.006, 0.018)
+    tp_pct = sl_pct * random.uniform(1.3, 1.8)
 
     # Strategy weights (normalized to sum 1.0)
     weights = {m: random.random() for m in STRATEGY_METHODS}

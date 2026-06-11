@@ -7,15 +7,18 @@ Risk is USDT %-based (not pips). Position sizing:
 Tracks daily loss + open position counts with a daily circuit breaker.
 """
 import logging
+import os
 from dataclasses import dataclass
 
 logger = logging.getLogger("risk_guardian")
 
 # ── Hard Rules ───────────────────────────────────────────
 MAX_RISK_PCT = 0.01           # 1% of balance risked per trade
-MIN_RR_RATIO = 2.0            # TP must be >= 2x SL distance
-MAX_CONCURRENT_POSITIONS = 3  # max open trades per pair
+MIN_RR_RATIO = 1.3            # TP must be >= 1.3x SL distance
+MAX_CONCURRENT_POSITIONS = int(os.getenv("CRYPTO_MAX_CONCURRENT_POSITIONS", "1"))  # max open trades per pair
 DAILY_DRAWDOWN_LIMIT = 0.05   # 5% daily loss → stop all
+DAILY_REALIZED_LOSS_LIMIT_USDT = 20.0  # fixed daily stop loss in USDT
+DAILY_PROFIT_TARGET_USDT = 20.0  # stop opening new trades after +$20 realized PnL
 MIN_SL_PCT = 0.001            # 0.1% floor on stop distance
 
 
@@ -33,8 +36,11 @@ class RiskResult:
 class CryptoRiskGuardian:
     def __init__(self):
         self._daily_loss = 0.0
+        self._daily_realized_pnl = 0.0
         self._daily_reset_day = -1
         self._is_paused = False
+        self._profit_target_hit = False
+        self._day_start_balance = 0.0
         # Per-pair open-position counts. The cap is per pair, so one busy
         # symbol must not starve the others.
         self._open_positions: dict[str, int] = {}
@@ -50,17 +56,41 @@ class CryptoRiskGuardian:
         account_equity: float,
         current_day: int,
     ) -> RiskResult:
-        # Reset daily tracker on a new day
+        # Reset daily tracker on a new day; snapshot the day-start balance so
+        # the realized-loss breaker measures against a fixed baseline.
         if current_day != self._daily_reset_day:
             self._daily_reset_day = current_day
             self._daily_loss = 0.0
+            self._daily_realized_pnl = 0.0
             self._is_paused = False
+            self._profit_target_hit = False
+            self._day_start_balance = account_balance
 
         # Circuit breaker
         if self._is_paused:
             return RiskResult(False, reason="Circuit breaker: daily loss limit hit")
 
-        # Daily drawdown
+        # Daily profit target: once the day's realized net PnL reaches the
+        # target, stop opening new positions. Existing positions are left to
+        # their SL/TP management; this is an entry gate, not a forced close.
+        if self._profit_target_hit or self._daily_realized_pnl >= DAILY_PROFIT_TARGET_USDT:
+            self._profit_target_hit = True
+            return RiskResult(False, reason=f"Daily profit target ${DAILY_PROFIT_TARGET_USDT:.2f} reached — entries paused")
+
+        # Realized-loss breaker: halt once the day's closed losses reach the
+        # limit. Drives the breaker off _daily_loss (fed by on_position_closed)
+        # because production reports equity == balance, leaving the equity
+        # check below inert.
+        if self._day_start_balance > 0 and self._daily_loss >= self._day_start_balance * DAILY_DRAWDOWN_LIMIT:
+            self._is_paused = True
+            return RiskResult(False, reason=f"Daily realized loss >={DAILY_DRAWDOWN_LIMIT*100:.0f}% of day-start balance — all trading stopped")
+
+        if self._daily_loss >= DAILY_REALIZED_LOSS_LIMIT_USDT:
+            self._is_paused = True
+            return RiskResult(False, reason=f"Daily realized loss >= ${DAILY_REALIZED_LOSS_LIMIT_USDT:.2f} — all trading stopped")
+
+        # Daily drawdown (unrealized): fires only when callers report live
+        # equity below the balance baseline.
         if account_equity < account_balance * (1 - DAILY_DRAWDOWN_LIMIT):
             self._is_paused = True
             return RiskResult(False, reason=f"Daily drawdown >{DAILY_DRAWDOWN_LIMIT*100:.0f}% — all trading stopped")
@@ -118,5 +148,6 @@ class CryptoRiskGuardian:
 
     def on_position_closed(self, symbol: str, pnl: float):
         self._open_positions[symbol] = max(0, self._open_positions.get(symbol, 0) - 1)
+        self._daily_realized_pnl += pnl
         if pnl < 0:
             self._daily_loss += abs(pnl)

@@ -112,6 +112,13 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
                     self._json({"balance": 0.0, "equity": 0.0})
                 return
 
+            if path == "/api/control/status":
+                if manager is None:
+                    self._json({"error": "manager unavailable"}, status=503)
+                    return
+                self._json(manager.control_status())
+                return
+
             if path == "/api/positions":
                 # Paper positions live on the manager's agents, not the exchange
                 # feed (which is empty in paper mode).
@@ -194,6 +201,37 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
                 if manager is not None:
                     manager.add_pair(symbol.upper())
                 self._json({"pairs": list(manager.pairs) if manager else []})
+                return
+
+            if path == "/api/control/pause":
+                if manager is None:
+                    self._json({"error": "manager unavailable"}, status=503)
+                    return
+                reason = data.get("reason") or "hedgefund control"
+                self._json({"success": True, "control": manager.pause_entries(reason)})
+                return
+
+            if path == "/api/control/resume":
+                if manager is None:
+                    self._json({"error": "manager unavailable"}, status=503)
+                    return
+                self._json({"success": True, "control": manager.resume_entries()})
+                return
+
+            if path == "/api/control/close-position":
+                if manager is None:
+                    self._json({"error": "manager unavailable"}, status=503)
+                    return
+                ticket = data.get("ticket")
+                if ticket is None:
+                    self._json({"error": "ticket required"}, status=400)
+                    return
+                if not router.paper_mode:
+                    self._json({"error": "live close-position is not implemented for this exchange adapter"}, status=501)
+                    return
+                reason = data.get("reason") or "hedgefund control"
+                result = manager.close_paper_position(int(ticket), reason)
+                self._json(result, status=200 if result.get("closed") else 404)
                 return
 
             self._json({"error": "not found"}, status=404)

@@ -15,9 +15,9 @@ def _make_agent(dominant, symbol="BTCUSDT"):
 
 def _feed(agent, prices, vol=10.0):
     # space ticks by a large interval so each price forms its own candle
-    # across every timeframe bucket (H1 = 3600s is the coarsest)
+    # across every timeframe bucket (H4 = 14400s is the coarsest)
     for i, p in enumerate(prices):
-        agent.signal_engine.record_tick(agent.dna.symbol, p, vol, timestamp=float((i + 1) * 3600))
+        agent.signal_engine.record_tick(agent.dna.symbol, p, vol, timestamp=float((i + 1) * 14400))
 
 
 def test_generate_signal_momentum_dispatch():
@@ -50,6 +50,28 @@ def test_mean_reversion_inverts_in_sideways_regime():
         assert sig["action"] == "LONG"
     elif tech_action == "LONG":
         assert sig["action"] == "SHORT"
+
+
+def test_grid_scalp_does_not_buy_confirmed_downtrend():
+    grid = _make_agent("grid_scalp", symbol="BNBUSDT")
+    _feed(grid, [120.0 - i for i in range(60)])
+
+    sig = grid.generate_signal(60.0)
+
+    assert sig["action"] == "HOLD"
+    assert "trend guard" in sig["reason"].lower()
+    assert "LONG" in sig["reason"]
+
+
+def test_grid_scalp_does_not_short_confirmed_uptrend():
+    grid = _make_agent("grid_scalp", symbol="XRPUSDT")
+    _feed(grid, [1.0 + i * 0.01 for i in range(60)])
+
+    sig = grid.generate_signal(1.6)
+
+    assert sig["action"] == "HOLD"
+    assert "trend guard" in sig["reason"].lower()
+    assert "SHORT" in sig["reason"]
 
 
 def test_generate_signal_order_flow_dispatch():

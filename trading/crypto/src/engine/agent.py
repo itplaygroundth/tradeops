@@ -96,10 +96,42 @@ class CryptoAgent:
         deviation = vwap_dev if vwap_dev is not None else ((price - sma20) / sma20) * 100
         spacing = 0.08  # 0.08% threshold
         if deviation > spacing:
+            trend_block = self._grid_trend_block(symbol, "SHORT")
+            if trend_block:
+                return trend_block
             return {"action": "SHORT", "confidence": 55, "reason": f"Grid: {deviation:.2f}% above mean"}
         elif deviation < -spacing:
+            trend_block = self._grid_trend_block(symbol, "LONG")
+            if trend_block:
+                return trend_block
             return {"action": "LONG", "confidence": 55, "reason": f"Grid: {abs(deviation):.2f}% below mean"}
         return {"action": "HOLD", "confidence": 25, "reason": f"Grid: {deviation:+.2f}%"}
+
+    def _grid_trend_block(self, symbol: str, action: str) -> Optional[dict]:
+        """Keep grid from fading confirmed directional markets."""
+        checks = []
+        for tf in (self.dna.timeframe, "H1", "H4"):
+            if tf not in checks:
+                checks.append(tf)
+
+        trends = []
+        for tf in checks:
+            trend = self.signal_engine.get_history(symbol, tf).it_trend()
+            if trend in ("up", "down"):
+                trends.append((tf, trend))
+
+        if action == "LONG":
+            blockers = [f"{tf}:{trend}" for tf, trend in trends if trend == "down"]
+        else:
+            blockers = [f"{tf}:{trend}" for tf, trend in trends if trend == "up"]
+
+        if not blockers:
+            return None
+        return {
+            "action": "HOLD",
+            "confidence": 0,
+            "reason": f"Grid trend guard: {action} blocked by {', '.join(blockers)}",
+        }
 
     def record_trade_result(self, pnl: float, pnl_pct: float):
         """Called when a position for this agent is closed."""
