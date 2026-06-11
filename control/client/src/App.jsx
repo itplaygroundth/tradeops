@@ -266,6 +266,29 @@ export default function App() {
     }
   };
 
+  const sendTradingControl = async (engineId, action) => {
+    setTradingReportStatus({ loading: true, msg: `${action} ${engineId}...`, type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          engineId,
+          action,
+          reason: 'dashboard control',
+          payload: { reason: 'dashboard control' }
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.result?.error || data.error || 'Control command failed');
+      setTradingReportStatus({ loading: false, msg: `${engineId} ${action} command accepted`, type: 'success' });
+      await fetchTradingControl();
+      setTimeout(() => setTradingReportStatus({ loading: false, msg: '', type: '' }), 5000);
+    } catch (err) {
+      setTradingReportStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
   const fetchPortfolio = async (isPoll = false) => {
     try {
       const res = await fetch(`${API_BASE}/api/portfolio`);
@@ -1749,6 +1772,29 @@ export default function App() {
                     }}>
                       {engine.guardMode || 'UNKNOWN'}
                     </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                    <button
+                      onClick={() => sendTradingControl(engine.id, 'pause')}
+                      disabled={tradingReportStatus.loading || engine.id !== 'crypto-ai'}
+                      className="btn-secondary"
+                      style={{ padding: '0.55rem 0.85rem', fontSize: '0.8rem', opacity: engine.id === 'crypto-ai' ? 1 : 0.45 }}
+                    >
+                      Pause Entries
+                    </button>
+                    <button
+                      onClick={() => sendTradingControl(engine.id, 'resume')}
+                      disabled={tradingReportStatus.loading || engine.id !== 'crypto-ai'}
+                      className="btn-secondary"
+                      style={{ padding: '0.55rem 0.85rem', fontSize: '0.8rem', opacity: engine.id === 'crypto-ai' ? 1 : 0.45 }}
+                    >
+                      Resume Entries
+                    </button>
+                    {engine.control?.entries_paused && (
+                      <span style={{ alignSelf: 'center', color: 'var(--accent-rose)', fontSize: '0.8rem', fontWeight: 700 }}>
+                        Paused: {engine.control.pause_reason || 'manual'}
+                      </span>
+                    )}
                   </div>
                   {engine.error ? (
                     <div style={{ color: 'var(--accent-rose)', fontSize: '0.9rem' }}>{engine.error}</div>

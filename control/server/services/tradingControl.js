@@ -27,6 +27,26 @@ async function fetchJson(url) {
   }
 }
 
+async function postJson(url, payload) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+      signal: controller.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return { ok: true, status: res.status, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function normalizeDailyPnl(dailyPnl = {}) {
   const keys = Object.keys(dailyPnl).sort();
   const today = keys[keys.length - 1] || null;
@@ -184,6 +204,7 @@ function normalizeCryptoState(state, positions) {
     guard: {
       strategyPerformance: strategyGuard,
     },
+    control: summary.control || {},
     recentTrades: state?.order_history || [],
   };
 }
@@ -228,6 +249,18 @@ function ensureTradingSchema(db) {
       engine_id TEXT NOT NULL,
       guard_mode TEXT NOT NULL,
       reason TEXT NOT NULL
+    );
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS trading_control_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL,
+      engine_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      status TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      payload TEXT NOT NULL,
+      result TEXT NOT NULL
     );
   `);
 }
@@ -358,6 +391,52 @@ async function collectOverview(getSettings) {
   };
 }
 
+function recordControlAction(db, entry) {
+  db.prepare(`
+    INSERT INTO trading_control_actions (created_at, engine_id, action, status, reason, payload, result)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    entry.createdAt || nowIso(),
+    entry.engineId,
+    entry.action,
+    entry.status,
+    entry.reason || '',
+    JSON.stringify(entry.payload || {}),
+    JSON.stringify(entry.result || {}),
+  );
+}
+
+async function dispatchControlCommand(getSettings, command) {
+  const settings = getSettings();
+  const trading = settings.tradingControl || {};
+  const engineId = command.engineId;
+  const action = command.action;
+  const payload = command.payload || {};
+
+  if (!['crypto-ai', 'mtai'].includes(engineId)) {
+    return { ok: false, status: 400, error: 'engineId must be crypto-ai or mtai' };
+  }
+  if (!['pause', 'resume', 'close-position'].includes(action)) {
+    return { ok: false, status: 400, error: 'unsupported action' };
+  }
+  if (action === 'close-position' && payload.confirm !== true) {
+    return { ok: false, status: 400, error: 'close-position requires confirm=true' };
+  }
+
+  if (engineId === 'crypto-ai') {
+    const cryptoUrl = trading.cryptoUrl || DEFAULT_CRYPTO_URL;
+    if (action === 'pause') return postJson(`${cryptoUrl}/api/control/pause`, payload);
+    if (action === 'resume') return postJson(`${cryptoUrl}/api/control/resume`, payload);
+    return postJson(`${cryptoUrl}/api/control/close-position`, payload);
+  }
+
+  const mtaiUrl = trading.mtaiUrl || DEFAULT_MTAI_URL;
+  if (action === 'close-position') {
+    return postJson(`${mtaiUrl}/api/mt5/position/close`, { ticket: payload.ticket });
+  }
+  return { ok: false, status: 501, error: 'MTAI pause/resume control endpoint is not available yet' };
+}
+
 export function installTradingControlRoutes(app, { db, getSettings, sendTelegramMessage }) {
   ensureTradingSchema(db);
 
@@ -386,6 +465,54 @@ export function installTradingControlRoutes(app, { db, getSettings, sendTelegram
       res.json({ items: rows });
     } catch (err) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/trading/control/actions', (req, res) => {
+    try {
+      const rows = db.prepare('SELECT * FROM trading_control_actions ORDER BY created_at DESC LIMIT 100').all();
+      res.json({
+        items: rows.map((row) => ({
+          ...row,
+          payload: JSON.parse(row.payload),
+          result: JSON.parse(row.result),
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/trading/control', async (req, res) => {
+    const command = req.body || {};
+    const engineId = command.engineId;
+    const action = command.action;
+    const reason = command.reason || command.payload?.reason || 'hedgefund control';
+    const payload = { ...(command.payload || {}), reason };
+
+    try {
+      const result = await dispatchControlCommand(getSettings, { engineId, action, payload });
+      const status = result.ok ? 'success' : 'failed';
+      recordControlAction(db, {
+        engineId: engineId || 'unknown',
+        action: action || 'unknown',
+        status,
+        reason,
+        payload,
+        result,
+      });
+      res.status(result.ok ? 200 : (result.status || 502)).json({ success: result.ok, result });
+    } catch (err) {
+      const failed = { ok: false, error: err.message };
+      recordControlAction(db, {
+        engineId: engineId || 'unknown',
+        action: action || 'unknown',
+        status: 'failed',
+        reason,
+        payload,
+        result: failed,
+      });
+      res.status(500).json({ success: false, result: failed });
     }
   });
 
