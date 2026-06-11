@@ -248,8 +248,9 @@ function saveSettings(updatedSettings) {
   }
 }
 
-// Global active notification set
-const triggeredAlerts = new Set();
+// Global active notification cooldowns keyed by alert id.
+const ALERT_COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS || 30 * 60 * 1000);
+const triggeredAlerts = new Map();
 
 // 5. Telegram Helper
 async function sendTelegramMessage(text, customToken = null, customChatId = null) {
@@ -291,9 +292,8 @@ async function sendTelegramMessage(text, customToken = null, customChatId = null
 // 6. Price Alerts Checker
 async function checkPriceAlert(asset, currentSettings) {
   const activeAlerts = currentSettings.alerts.filter(a => a.assetId === asset.id && a.active);
+  const now = Date.now();
   for (const alert of activeAlerts) {
-    if (triggeredAlerts.has(alert.id)) continue;
-
     let isTriggered = false;
     if (alert.condition === 'above' && asset.currentPrice >= alert.value) {
       isTriggered = true;
@@ -301,19 +301,22 @@ async function checkPriceAlert(asset, currentSettings) {
       isTriggered = true;
     }
 
+    if (!isTriggered) {
+      triggeredAlerts.delete(alert.id);
+      continue;
+    }
+
+    const nextAllowedAt = triggeredAlerts.get(alert.id) || 0;
+    if (now < nextAllowedAt) continue;
+
     if (isTriggered) {
-      triggeredAlerts.add(alert.id);
+      triggeredAlerts.set(alert.id, now + ALERT_COOLDOWN_MS);
       
       const emoji = alert.condition === 'above' ? '📈' : '📉';
       const condText = alert.condition === 'above' ? 'ทะลุสูงกว่า' : 'ดิ่งต่ำกว่า';
       const text = `🚨 *AI INVESTMENT ALERT* 🚨\n\nสินทรัพย์: *${asset.name} (${asset.id})*\nแจ้งเตือน: ราคา ${condText} *${alert.value}*\nราคาปัจจุบัน: *${asset.currentPrice}*\n\n🤖 *คำแนะนำจาก AI:* สินทรัพย์มีพฤติกรรมราคาที่น่าสนใจ แนะนำเข้าตรวจสอบพอร์ตของท่านเพื่อบริหารความเสี่ยงทันทีครับ`;
       
       await sendTelegramMessage(text, currentSettings.telegramBotToken, currentSettings.telegramChatId);
-
-      // Reset alert status after 30 seconds
-      setTimeout(() => {
-        triggeredAlerts.delete(alert.id);
-      }, 30000);
     }
   }
 }
