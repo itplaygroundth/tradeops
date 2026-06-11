@@ -5,7 +5,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { DatabaseSync } from 'node:sqlite';
-import { installTradingControlRoutes } from './services/tradingControl.js';
+import {
+  dispatchControlCommand,
+  installTradingControlRoutes,
+  recordControlAction,
+} from './services/tradingControl.js';
+import { installAiAnalystRoutes } from './services/aiAnalyst.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
@@ -1182,6 +1187,7 @@ app.post('/api/mt5/order', async (req, res) => {
 });
 
 installTradingControlRoutes(app, { db, getSettings, sendTelegramMessage });
+installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction });
 
 app.listen(PORT, () => {
   console.log(`🚀 AI Hedgefund API Server running on http://localhost:${PORT}`);

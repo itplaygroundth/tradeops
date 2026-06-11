@@ -396,7 +396,11 @@ async function collectOverview(getSettings) {
   };
 }
 
-function recordControlAction(db, entry) {
+export async function collectTradingOverview(getSettings) {
+  return collectOverview(getSettings);
+}
+
+export function recordControlAction(db, entry) {
   db.prepare(`
     INSERT INTO trading_control_actions (created_at, engine_id, action, status, reason, payload, result)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -411,7 +415,7 @@ function recordControlAction(db, entry) {
   );
 }
 
-async function dispatchControlCommand(getSettings, command) {
+export async function dispatchControlCommand(getSettings, command) {
   const settings = getSettings();
   const trading = settings.tradingControl || {};
   const engineId = command.engineId;

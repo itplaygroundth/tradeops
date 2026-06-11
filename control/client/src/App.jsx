@@ -110,6 +110,8 @@ export default function App() {
   const [tradingRecommendations, setTradingRecommendations] = useState([]);
   const [tradingReportStatus, setTradingReportStatus] = useState({ loading: false, msg: '', type: '' });
   const [closeConfirmTicket, setCloseConfirmTicket] = useState(null);
+  const [aiAnalystReport, setAiAnalystReport] = useState(null);
+  const [aiAnalystStatus, setAiAnalystStatus] = useState({ loading: false, msg: '', type: '' });
 
   // LLM Settings State
   const [llmProvider, setLlmProvider] = useState('Gemini');
@@ -215,13 +217,16 @@ export default function App() {
       try {
         const [overviewRes, recRes] = await Promise.all([
           fetch(`${API_BASE}/api/trading/overview`),
-          fetch(`${API_BASE}/api/trading/recommendations`)
+          fetch(`${API_BASE}/api/trading/recommendations`),
+          fetch(`${API_BASE}/api/trading/ai/latest`)
         ]);
         const overviewData = await overviewRes.json();
         const recData = await recRes.json();
+        const aiData = await aiRes.json();
         if (!cancelled) {
           if (overviewRes.ok) setTradingOverview(overviewData);
           if (recRes.ok) setTradingRecommendations(recData.items || []);
+          if (aiRes.ok) setAiAnalystReport(aiData.report?.payload || aiData.report || null);
         }
       } catch (err) {
         if (!cancelled) {
@@ -238,12 +243,15 @@ export default function App() {
     try {
       const [overviewRes, recRes] = await Promise.all([
         fetch(`${API_BASE}/api/trading/overview`),
-        fetch(`${API_BASE}/api/trading/recommendations`)
+        fetch(`${API_BASE}/api/trading/recommendations`),
+        fetch(`${API_BASE}/api/trading/ai/latest`)
       ]);
       const overviewData = await overviewRes.json();
       const recData = await recRes.json();
+      const aiData = await aiRes.json();
       if (overviewRes.ok) setTradingOverview(overviewData);
       if (recRes.ok) setTradingRecommendations(recData.items || []);
+      if (aiRes.ok) setAiAnalystReport(aiData.report?.payload || aiData.report || null);
     } catch (err) {
       setTradingReportStatus({ loading: false, msg: `Refresh failed: ${err.message}`, type: 'error' });
     }
@@ -288,6 +296,34 @@ export default function App() {
       setTimeout(() => setTradingReportStatus({ loading: false, msg: '', type: '' }), 5000);
     } catch (err) {
       setTradingReportStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
+  const runAiAnalyst = async () => {
+    setAiAnalystStatus({ loading: true, msg: 'Analyzing trading systems...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/ai/analyze`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'AI analysis failed');
+      setAiAnalystReport(data.report);
+      setAiAnalystStatus({ loading: false, msg: `AI Analyst completed via ${data.report.source}`, type: 'success' });
+      setTimeout(() => setAiAnalystStatus({ loading: false, msg: '', type: '' }), 5000);
+    } catch (err) {
+      setAiAnalystStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
+  const applyAiSafeActions = async () => {
+    setAiAnalystStatus({ loading: true, msg: 'Applying safe AI actions...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/ai/apply`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'AI apply failed');
+      setAiAnalystStatus({ loading: false, msg: `Applied ${data.applied?.length || 0} safe actions`, type: 'success' });
+      await fetchTradingControl();
+      setTimeout(() => setAiAnalystStatus({ loading: false, msg: '', type: '' }), 5000);
+    } catch (err) {
+      setAiAnalystStatus({ loading: false, msg: err.message, type: 'error' });
     }
   };
 
@@ -1755,6 +1791,92 @@ export default function App() {
                 </div>
               ))}
             </div>
+
+            <section className="glass-panel" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Cpu size={18} style={{ color: 'var(--accent-purple)' }} />
+                    Hedge Fund AI Analyst
+                  </h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                    วิเคราะห์ภาพรวมจาก MTAI, crypto-ai, guard, positions และ control audit โดย LLM หรือ fallback policy
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <button onClick={runAiAnalyst} disabled={aiAnalystStatus.loading} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <RefreshCw size={15} />
+                    Analyze Now
+                  </button>
+                  <button
+                    onClick={applyAiSafeActions}
+                    disabled={aiAnalystStatus.loading || !(aiAnalystReport?.safe_actions || []).length}
+                    className="btn-primary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+                  >
+                    <ShieldCheck size={15} />
+                    Apply Safe Actions
+                  </button>
+                </div>
+              </div>
+
+              {aiAnalystStatus.msg && (
+                <div style={{
+                  padding: '0.85rem',
+                  border: '1px solid',
+                  borderColor: aiAnalystStatus.type === 'success' ? 'rgba(16,185,129,0.25)' : aiAnalystStatus.type === 'error' ? 'rgba(244,63,94,0.25)' : 'var(--glass-border)',
+                  borderRadius: '8px',
+                  color: aiAnalystStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)',
+                  background: aiAnalystStatus.type === 'success' ? 'rgba(16,185,129,0.08)' : aiAnalystStatus.type === 'error' ? 'rgba(244,63,94,0.08)' : 'rgba(255,255,255,0.02)',
+                  fontSize: '0.85rem'
+                }}>
+                  {aiAnalystStatus.msg}
+                </div>
+              )}
+
+              {aiAnalystReport ? (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.75rem' }}>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Mode</div>
+                      <div style={{ fontWeight: 800 }}>{aiAnalystReport.market_mode || 'UNKNOWN'}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Source</div>
+                      <div style={{ fontWeight: 800 }}>{aiAnalystReport.source || '-'}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Safe Actions</div>
+                      <div style={{ fontWeight: 800 }}>{(aiAnalystReport.safe_actions || []).length}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Rejected</div>
+                      <div style={{ fontWeight: 800 }}>{(aiAnalystReport.rejected_actions || []).length}</div>
+                    </div>
+                  </div>
+                  {aiAnalystReport.llm_error && (
+                    <div style={{ color: 'var(--accent-rose)', fontSize: '0.82rem' }}>
+                      LLM fallback: {aiAnalystReport.llm_error}
+                    </div>
+                  )}
+                  <div style={{ whiteSpace: 'pre-wrap', color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: 1.55 }}>
+                    {aiAnalystReport.report_th || aiAnalystReport.summary || 'No report text.'}
+                  </div>
+                  {(aiAnalystReport.safe_actions || []).length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                      {(aiAnalystReport.safe_actions || []).map((action, idx) => (
+                        <div key={`${action.engineId}-${action.action}-${idx}`} style={{ padding: '0.75rem', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '8px', background: 'rgba(16,185,129,0.06)' }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--accent-emerald)' }}>{action.engineId} • {action.action} • {(action.confidence * 100).toFixed(0)}%</div>
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.25rem' }}>{action.reason}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>No AI analyst report yet.</div>
+              )}
+            </section>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
               {(tradingOverview?.engines || []).map(engine => (
