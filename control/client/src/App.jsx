@@ -327,6 +327,28 @@ export default function App() {
     }
   };
 
+  const sendAiAnalystReport = async () => {
+    setAiAnalystStatus({ loading: true, msg: 'Sending AI analyst report...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/trading/ai/send-report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forceAnalyze: false })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Send report failed');
+      setAiAnalystReport(data.report);
+      setAiAnalystStatus({
+        loading: false,
+        msg: `AI report sent: Telegram ${data.telegram ? 'ok' : 'not configured'}, LINE ${data.line ? 'ok' : 'not configured'}`,
+        type: 'success'
+      });
+      setTimeout(() => setAiAnalystStatus({ loading: false, msg: '', type: '' }), 5000);
+    } catch (err) {
+      setAiAnalystStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
   const fetchPortfolio = async (isPoll = false) => {
     try {
       const res = await fetch(`${API_BASE}/api/portfolio`);
@@ -1816,6 +1838,10 @@ export default function App() {
                   >
                     <ShieldCheck size={15} />
                     Apply Safe Actions
+                  </button>
+                  <button onClick={sendAiAnalystReport} disabled={aiAnalystStatus.loading || !aiAnalystReport} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                    <Send size={15} />
+                    Send AI Report
                   </button>
                 </div>
               </div>

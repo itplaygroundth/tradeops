@@ -1187,7 +1187,7 @@ app.post('/api/mt5/order', async (req, res) => {
 });
 
 installTradingControlRoutes(app, { db, getSettings, sendTelegramMessage });
-installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction });
+installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction, sendTelegramMessage });
 
 app.listen(PORT, () => {
   console.log(`🚀 AI Hedgefund API Server running on http://localhost:${PORT}`);

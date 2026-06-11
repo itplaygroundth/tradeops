@@ -2,6 +2,8 @@ import fetch from 'node-fetch';
 import { collectTradingOverview } from './tradingControl.js';
 
 const ANALYST_TIMEOUT_MS = Number(process.env.AI_ANALYST_TIMEOUT_MS || 20000);
+let dailyReportTimer = null;
+let lastDailyReportKey = '';
 
 function nowIso() {
   return new Date().toISOString();
@@ -226,6 +228,92 @@ function persistReport(db, report) {
   return row.lastInsertRowid;
 }
 
+function buildOutboundReport(report) {
+  const overview = report.overview || {};
+  const portfolio = overview.portfolio || {};
+  const lines = [
+    '*Hedge Fund AI Analyst Report*',
+    `เวลา: ${new Date(report.created_at || nowIso()).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}`,
+    `Mode: ${report.market_mode || 'UNKNOWN'} | Source: ${report.source || '-'}`,
+    `Daily PnL: ${safeNumber(portfolio.dailyPnl).toFixed(2)} | Floating: ${safeNumber(portfolio.floatingPnl).toFixed(2)} | Open: ${safeNumber(portfolio.openPositions)}`,
+    '',
+    report.report_th || report.summary || 'No report text.',
+  ];
+  if ((report.safe_actions || []).length) {
+    lines.push('', '*Safe actions*');
+    for (const action of report.safe_actions) {
+      lines.push(`- ${action.engineId} ${action.action}: ${action.reason}`);
+    }
+  }
+  if ((report.rejected_actions || []).length) {
+    lines.push('', '*Rejected actions*');
+    for (const action of report.rejected_actions.slice(0, 5)) {
+      lines.push(`- ${action.engineId} ${action.action}: ${action.rejectedReason}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+async function sendLineMessage(settings, text) {
+  const token = settings.lineChannelAccessToken || process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const to = settings.lineTargetId || process.env.LINE_TARGET_ID;
+  if (token && to) {
+    const res = await fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to, messages: [{ type: 'text', text }] }),
+    });
+    return res.ok;
+  }
+
+  const legacyToken = settings.lineNotifyToken || process.env.LINE_NOTIFY_TOKEN;
+  if (legacyToken) {
+    const res = await fetch('https://notify-api.line.me/api/notify', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${legacyToken}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({ message: text }),
+    });
+    return res.ok;
+  }
+  return false;
+}
+
+async function sendAnalystReport({ db, getSettings, sendTelegramMessage, forceAnalyze = false }) {
+  let report = forceAnalyze ? await analyze({ db, getSettings }) : readLatest(db)?.payload;
+  if (!report) report = await analyze({ db, getSettings });
+  const settings = getSettings();
+  const text = buildOutboundReport(report);
+  const telegram = await sendTelegramMessage(text, settings.telegramBotToken, settings.telegramChatId);
+  const line = await sendLineMessage(settings, text);
+  return { telegram, line, report };
+}
+
+function shouldSendDaily(settings) {
+  const trading = settings.tradingControl || {};
+  if (!trading.autoSendDailyReport) return null;
+  const target = trading.dailyReportTime || '23:55';
+  const now = new Date();
+  const bangkok = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  const dateKey = `${bangkok.year}-${bangkok.month}-${bangkok.day}`;
+  const timeKey = `${bangkok.hour}:${bangkok.minute}`;
+  if (timeKey !== target) return null;
+  return `${dateKey}T${target}`;
+}
+
 function readRecentControlActions(db) {
   try {
     return db.prepare('SELECT * FROM trading_control_actions ORDER BY created_at DESC LIMIT 20').all();
@@ -278,7 +366,7 @@ function readReports(db) {
   return rows.map((row) => ({ ...row, payload: JSON.parse(row.payload) }));
 }
 
-export function installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction }) {
+export function installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction, sendTelegramMessage }) {
   ensureAiSchema(db);
 
   app.post('/api/trading/ai/analyze', async (req, res) => {
@@ -302,6 +390,20 @@ export function installAiAnalystRoutes(app, { db, getSettings, dispatchControlCo
       res.json({ items: readReports(db) });
     } catch (err) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/trading/ai/send-report', async (req, res) => {
+    try {
+      const result = await sendAnalystReport({
+        db,
+        getSettings,
+        sendTelegramMessage,
+        forceAnalyze: Boolean(req.body?.forceAnalyze),
+      });
+      res.json({ success: true, ...result });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
     }
   });
 
@@ -333,4 +435,17 @@ export function installAiAnalystRoutes(app, { db, getSettings, dispatchControlCo
       res.status(500).json({ success: false, error: err.message });
     }
   });
+
+  if (!dailyReportTimer) {
+    dailyReportTimer = setInterval(async () => {
+      try {
+        const sendKey = shouldSendDaily(getSettings());
+        if (!sendKey || sendKey === lastDailyReportKey) return;
+        lastDailyReportKey = sendKey;
+        await sendAnalystReport({ db, getSettings, sendTelegramMessage, forceAnalyze: true });
+      } catch (err) {
+        console.warn(`AI analyst daily report failed: ${err.message}`);
+      }
+    }, 60 * 1000);
+  }
 }
