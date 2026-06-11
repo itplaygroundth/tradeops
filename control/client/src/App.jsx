@@ -211,27 +211,55 @@ export default function App() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
+  const loadTradingControlSnapshot = async () => {
+    const [overviewResult, recResult, aiResult] = await Promise.allSettled([
+      fetch(`${API_BASE}/api/trading/overview`),
+      fetch(`${API_BASE}/api/trading/recommendations`),
+      fetch(`${API_BASE}/api/trading/ai/latest`)
+    ]);
+    const errors = [];
+    const readJson = async (result, label) => {
+      if (result.status === 'rejected') {
+        errors.push(`${label}: ${result.reason?.message || 'request failed'}`);
+        return null;
+      }
+      const res = result.value;
+      let data = null;
+      try {
+        data = await res.json();
+      } catch {
+        errors.push(`${label}: invalid response`);
+        return null;
+      }
+      if (!res.ok) {
+        errors.push(`${label}: ${data.error || `HTTP ${res.status}`}`);
+        return null;
+      }
+      return data;
+    };
+
+    const overviewData = await readJson(overviewResult, 'overview');
+    const recData = await readJson(recResult, 'recommendations');
+    const aiData = await readJson(aiResult, 'ai latest');
+    return { overviewData, recData, aiData, errors };
+  };
+
   useEffect(() => {
     let cancelled = false;
     const pollTradingControl = async () => {
-      try {
-        const [overviewRes, recRes] = await Promise.all([
-          fetch(`${API_BASE}/api/trading/overview`),
-          fetch(`${API_BASE}/api/trading/recommendations`),
-          fetch(`${API_BASE}/api/trading/ai/latest`)
-        ]);
-        const overviewData = await overviewRes.json();
-        const recData = await recRes.json();
-        const aiData = await aiRes.json();
-        if (!cancelled) {
-          if (overviewRes.ok) setTradingOverview(overviewData);
-          if (recRes.ok) setTradingRecommendations(recData.items || []);
-          if (aiRes.ok) setAiAnalystReport(aiData.report?.payload || aiData.report || null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setTradingReportStatus({ loading: false, msg: `Trading Control offline: ${err.message}`, type: 'error' });
-        }
+      const { overviewData, recData, aiData, errors } = await loadTradingControlSnapshot();
+      if (cancelled) return;
+      if (overviewData) setTradingOverview(overviewData);
+      if (recData) setTradingRecommendations(recData.items || []);
+      if (aiData) setAiAnalystReport(aiData.report?.payload || aiData.report || null);
+      if (overviewData) {
+        setTradingReportStatus((prev) => (
+          prev.type === 'error' && prev.msg.startsWith('Trading Control offline')
+            ? { loading: false, msg: '', type: '' }
+            : prev
+        ));
+      } else if (errors.length) {
+        setTradingReportStatus({ loading: false, msg: `Trading Control offline: ${errors.join('; ')}`, type: 'error' });
       }
     };
     pollTradingControl();
@@ -240,21 +268,16 @@ export default function App() {
   }, []);
 
   const fetchTradingControl = async () => {
-    try {
-      const [overviewRes, recRes] = await Promise.all([
-        fetch(`${API_BASE}/api/trading/overview`),
-        fetch(`${API_BASE}/api/trading/recommendations`),
-        fetch(`${API_BASE}/api/trading/ai/latest`)
-      ]);
-      const overviewData = await overviewRes.json();
-      const recData = await recRes.json();
-      const aiData = await aiRes.json();
-      if (overviewRes.ok) setTradingOverview(overviewData);
-      if (recRes.ok) setTradingRecommendations(recData.items || []);
-      if (aiRes.ok) setAiAnalystReport(aiData.report?.payload || aiData.report || null);
-    } catch (err) {
-      setTradingReportStatus({ loading: false, msg: `Refresh failed: ${err.message}`, type: 'error' });
-    }
+    const { overviewData, recData, aiData, errors } = await loadTradingControlSnapshot();
+    if (overviewData) setTradingOverview(overviewData);
+    if (recData) setTradingRecommendations(recData.items || []);
+    if (aiData) setAiAnalystReport(aiData.report?.payload || aiData.report || null);
+    setTradingReportStatus({
+      loading: false,
+      msg: errors.length ? `Refresh partial: ${errors.join('; ')}` : 'Trading Control refreshed',
+      type: errors.length ? 'error' : 'success'
+    });
+    setTimeout(() => setTradingReportStatus({ loading: false, msg: '', type: '' }), 4000);
   };
 
   const sendTradingReport = async () => {
