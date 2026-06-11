@@ -109,6 +109,7 @@ export default function App() {
   const [tradingOverview, setTradingOverview] = useState(null);
   const [tradingRecommendations, setTradingRecommendations] = useState([]);
   const [tradingReportStatus, setTradingReportStatus] = useState({ loading: false, msg: '', type: '' });
+  const [closeConfirmTicket, setCloseConfirmTicket] = useState(null);
 
   // LLM Settings State
   const [llmProvider, setLlmProvider] = useState('Gemini');
@@ -266,7 +267,7 @@ export default function App() {
     }
   };
 
-  const sendTradingControl = async (engineId, action) => {
+  const sendTradingControl = async (engineId, action, extraPayload = {}) => {
     setTradingReportStatus({ loading: true, msg: `${action} ${engineId}...`, type: '' });
     try {
       const res = await fetch(`${API_BASE}/api/trading/control`, {
@@ -276,12 +277,13 @@ export default function App() {
           engineId,
           action,
           reason: 'dashboard control',
-          payload: { reason: 'dashboard control' }
+          payload: { reason: 'dashboard control', ...extraPayload }
         })
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.result?.error || data.error || 'Control command failed');
       setTradingReportStatus({ loading: false, msg: `${engineId} ${action} command accepted`, type: 'success' });
+      setCloseConfirmTicket(null);
       await fetchTradingControl();
       setTimeout(() => setTradingReportStatus({ loading: false, msg: '', type: '' }), 5000);
     } catch (err) {
@@ -1776,17 +1778,17 @@ export default function App() {
                   <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
                     <button
                       onClick={() => sendTradingControl(engine.id, 'pause')}
-                      disabled={tradingReportStatus.loading || engine.id !== 'crypto-ai'}
+                      disabled={tradingReportStatus.loading}
                       className="btn-secondary"
-                      style={{ padding: '0.55rem 0.85rem', fontSize: '0.8rem', opacity: engine.id === 'crypto-ai' ? 1 : 0.45 }}
+                      style={{ padding: '0.55rem 0.85rem', fontSize: '0.8rem' }}
                     >
                       Pause Entries
                     </button>
                     <button
                       onClick={() => sendTradingControl(engine.id, 'resume')}
-                      disabled={tradingReportStatus.loading || engine.id !== 'crypto-ai'}
+                      disabled={tradingReportStatus.loading}
                       className="btn-secondary"
-                      style={{ padding: '0.55rem 0.85rem', fontSize: '0.8rem', opacity: engine.id === 'crypto-ai' ? 1 : 0.45 }}
+                      style={{ padding: '0.55rem 0.85rem', fontSize: '0.8rem' }}
                     >
                       Resume Entries
                     </button>
@@ -1818,6 +1820,46 @@ export default function App() {
                           <div style={{ fontWeight: 700 }}>{engine.openPositions || 0}</div>
                         </div>
                       </div>
+                      {(engine.positions || []).length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                          {(engine.positions || []).slice(0, 5).map(pos => {
+                            const ticket = pos.ticket;
+                            const confirmKey = `${engine.id}:${ticket}`;
+                            const side = typeof pos.type === 'number' ? (pos.type === 0 ? 'BUY' : 'SELL') : String(pos.type || '').toUpperCase();
+                            return (
+                              <div key={confirmKey} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.75rem', alignItems: 'center', padding: '0.7rem', border: '1px solid var(--glass-border)', borderRadius: '8px', background: 'rgba(255,255,255,0.02)' }}>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                                    {pos.symbol} <span style={{ color: side === 'BUY' ? 'var(--accent-emerald)' : 'var(--accent-rose)' }}>{side}</span>
+                                  </div>
+                                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: '0.25rem' }}>
+                                    Ticket {ticket} • Vol {pos.volume ?? pos.qty ?? '-'} • PnL {fmtUsd(pos.profit ?? pos.pnl ?? 0)}
+                                  </div>
+                                </div>
+                                {closeConfirmTicket === confirmKey ? (
+                                  <button
+                                    onClick={() => sendTradingControl(engine.id, 'close-position', { ticket, confirm: true })}
+                                    disabled={tradingReportStatus.loading}
+                                    className="btn-primary"
+                                    style={{ padding: '0.5rem 0.75rem', fontSize: '0.78rem', background: 'linear-gradient(135deg, #f43f5e 0%, #be123c 100%)' }}
+                                  >
+                                    Confirm Close
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => setCloseConfirmTicket(confirmKey)}
+                                    disabled={tradingReportStatus.loading}
+                                    className="btn-secondary"
+                                    style={{ padding: '0.5rem 0.75rem', fontSize: '0.78rem' }}
+                                  >
+                                    Close
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                       <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                         Recent W/L: <strong>{engine.recentWins || 0}/{engine.recentLosses || 0}</strong>
                         {' '}Net: <strong>{fmtUsd(engine.recentNetPnl || 0)}</strong>

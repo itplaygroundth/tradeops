@@ -153,10 +153,11 @@ function summarizePortfolio(engines) {
   };
 }
 
-function normalizeMtaiState(state, history) {
+function normalizeMtaiState(state, history, positions) {
   const summary = state?.summary || {};
   const accountRisk = summary.account_risk || {};
   const adaptive = summary.adaptive_guard || {};
+  const openPositions = positions?.positions || [];
   return {
     id: 'mtai',
     name: 'MTAI Forex',
@@ -169,7 +170,7 @@ function normalizeMtaiState(state, history) {
       equity: safeNumber(accountRisk.equity ?? state?.account?.equity),
       currency: state?.account?.currency || 'USD',
     },
-    openPositions: safeNumber(accountRisk.open_positions),
+    openPositions: safeNumber(accountRisk.open_positions ?? openPositions.length),
     floatingPnl: safeNumber(accountRisk.floating_pnl),
     dailyPnl: summary.trade_journal?.daily_pnl || {},
     guard: {
@@ -179,6 +180,8 @@ function normalizeMtaiState(state, history) {
       positionDedup: summary.position_dedup_guard || {},
       timeframeFilter: summary.timeframe_filter || {},
     },
+    control: summary.control || {},
+    positions: openPositions,
     recentTrades: history?.items || state?.order_history || [],
   };
 }
@@ -205,6 +208,7 @@ function normalizeCryptoState(state, positions) {
       strategyPerformance: strategyGuard,
     },
     control: summary.control || {},
+    positions: positions?.positions || [],
     recentTrades: state?.order_history || [],
   };
 }
@@ -371,15 +375,16 @@ async function collectOverview(getSettings) {
   const mtaiUrl = trading.mtaiUrl || DEFAULT_MTAI_URL;
   const cryptoUrl = trading.cryptoUrl || DEFAULT_CRYPTO_URL;
 
-  const [mtaiState, mtaiHistory, cryptoState, cryptoPositions] = await Promise.all([
+  const [mtaiState, mtaiHistory, mtaiPositions, cryptoState, cryptoPositions] = await Promise.all([
     fetchJson(`${mtaiUrl}/live_state.json`),
     fetchJson(`${mtaiUrl}/api/order_history?limit=200`),
+    fetchJson(`${mtaiUrl}/api/mt5/positions`),
     fetchJson(`${cryptoUrl}/live_state.json`),
     fetchJson(`${cryptoUrl}/api/positions`),
   ]);
 
   const engines = [];
-  if (mtaiState.ok) engines.push(analyzeEngine(normalizeMtaiState(mtaiState.data, mtaiHistory.data)));
+  if (mtaiState.ok) engines.push(analyzeEngine(normalizeMtaiState(mtaiState.data, mtaiHistory.data, mtaiPositions.data)));
   else engines.push({ id: 'mtai', name: 'MTAI Forex', type: 'forex', status: 'offline', error: mtaiState.error, recommendations: [] });
   if (cryptoState.ok) engines.push(analyzeEngine(normalizeCryptoState(cryptoState.data, cryptoPositions.data)));
   else engines.push({ id: 'crypto-ai', name: 'Crypto AI', type: 'crypto', status: 'offline', error: cryptoState.error, recommendations: [] });
@@ -431,10 +436,12 @@ async function dispatchControlCommand(getSettings, command) {
   }
 
   const mtaiUrl = trading.mtaiUrl || DEFAULT_MTAI_URL;
+  if (action === 'pause') return postJson(`${mtaiUrl}/api/control/pause`, payload);
+  if (action === 'resume') return postJson(`${mtaiUrl}/api/control/resume`, payload);
   if (action === 'close-position') {
     return postJson(`${mtaiUrl}/api/mt5/position/close`, { ticket: payload.ticket });
   }
-  return { ok: false, status: 501, error: 'MTAI pause/resume control endpoint is not available yet' };
+  return { ok: false, status: 501, error: 'MTAI control action is not available yet' };
 }
 
 export function installTradingControlRoutes(app, { db, getSettings, sendTelegramMessage }) {
