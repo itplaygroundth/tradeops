@@ -559,6 +559,35 @@ export default function App() {
     }
   };
 
+  const handleTestLine = async () => {
+    if ((!lineChannelAccessToken || !lineTargetId) && !lineNotifyToken) {
+      setTeleStatus({ loading: false, msg: 'กรุณากรอก LINE Channel Access Token + Target ID หรือ LINE Notify Token ก่อนทดสอบ', type: 'error' });
+      return;
+    }
+
+    setTeleStatus({ loading: true, msg: 'กำลังส่งข้อความทดสอบไปยัง LINE...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/line/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lineChannelAccessToken,
+          lineTargetId,
+          lineNotifyToken
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setTeleStatus({ loading: false, msg: 'ส่งสัญญาณแจ้งเตือนไปยัง LINE สำเร็จ! กรุณาเช็ค LINE target ของคุณ', type: 'success' });
+      } else {
+        setTeleStatus({ loading: false, msg: data.error || 'การเชื่อมต่อ LINE ล้มเหลว กรุณาเช็ค token และ target', type: 'error' });
+      }
+    } catch (err) {
+      setTeleStatus({ loading: false, msg: 'ล้มเหลวในการเชื่อมต่อ LINE API', type: 'error' });
+    }
+  };
+
   // Handle LLM Config saving
   const handleSaveLLM = async () => {
     setLlmVerifyStatus({ loading: true, msg: 'กำลังบันทึกการตั้งค่า LLM...', type: '' });
@@ -2337,12 +2366,15 @@ export default function App() {
                     4. <strong>สำคัญที่สุด:</strong> ต้องกดเริ่มใช้งาน (Start) บอทที่คุณเพิ่งสร้างขึ้นมาในแชทก่อนจะทำการทดสอบ!
                   </div>
 
-                  <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginTop: '0.5rem' }}>
                     <button onClick={handleSaveTelegram} className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }}>
                       บันทึกการตั้งค่า
                     </button>
-                    <button onClick={handleTestTelegram} disabled={teleStatus.loading} className="btn-primary" style={{ flex: 1.3, justifyContent: 'center', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', boxShadow: '0 4px 15px rgba(6, 182, 212, 0.3)' }}>
-                      {teleStatus.loading ? 'กำลังเชื่อมต่อ...' : '🚀 ทดสอบส่ง Alert จริง'}
+                    <button onClick={handleTestTelegram} disabled={teleStatus.loading} className="btn-primary" style={{ justifyContent: 'center', background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', boxShadow: '0 4px 15px rgba(6, 182, 212, 0.3)' }}>
+                      {teleStatus.loading ? 'กำลังส่ง...' : 'Test Telegram'}
+                    </button>
+                    <button onClick={handleTestLine} disabled={teleStatus.loading} className="btn-primary" style={{ justifyContent: 'center', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)' }}>
+                      {teleStatus.loading ? 'กำลังส่ง...' : 'Test LINE'}
                     </button>
                   </div>
 

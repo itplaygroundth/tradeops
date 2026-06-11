@@ -294,6 +294,56 @@ async function sendTelegramMessage(text, customToken = null, customChatId = null
   }
 }
 
+async function sendLineMessage(text, customChannelAccessToken = null, customTargetId = null, customNotifyToken = null) {
+  let channelAccessToken = customChannelAccessToken;
+  let targetId = customTargetId;
+  let notifyToken = customNotifyToken;
+
+  if ((!channelAccessToken || !targetId) && !notifyToken) {
+    try {
+      const currentSettings = getSettings();
+      channelAccessToken = currentSettings.lineChannelAccessToken;
+      targetId = currentSettings.lineTargetId;
+      notifyToken = currentSettings.lineNotifyToken;
+    } catch (_) {}
+  }
+
+  try {
+    if (channelAccessToken && targetId) {
+      const response = await fetch('https://api.line.me/v2/bot/message/push', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${channelAccessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          to: targetId,
+          messages: [{ type: 'text', text }]
+        })
+      });
+      return response.ok;
+    }
+
+    if (notifyToken) {
+      const response = await fetch('https://notify-api.line.me/api/notify', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${notifyToken}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({ message: text })
+      });
+      return response.ok;
+    }
+  } catch (error) {
+    console.error("Error sending LINE message:", error);
+    return false;
+  }
+
+  console.log("LINE not configured. Log: ", text);
+  return false;
+}
+
 // 6. Price Alerts Checker
 async function checkPriceAlert(asset, currentSettings) {
   const activeAlerts = currentSettings.alerts.filter(a => a.assetId === asset.id && a.active);
@@ -1079,6 +1129,28 @@ app.post('/api/telegram/test', async (req, res) => {
     res.json({ success: true, message: "Test alert dispatched successfully!" });
   } else {
     res.status(500).json({ error: "Failed to dispatch Telegram message. Verify Bot Token and Chat ID." });
+  }
+});
+
+// POST /api/line/test - verify LINE notification connection
+app.post('/api/line/test', async (req, res) => {
+  const {
+    lineChannelAccessToken,
+    lineTargetId,
+    lineNotifyToken
+  } = req.body || {};
+
+  if ((!lineChannelAccessToken || !lineTargetId) && !lineNotifyToken) {
+    return res.status(400).json({ error: "Missing LINE Channel Access Token + Target ID, or LINE Notify Token" });
+  }
+
+  const testText = `AI HEDGEFUND LINE ALERT\n\nทดสอบส่ง Alert สำเร็จ ระบบ Hedgefund พร้อมส่งสัญญาณ Trading, Risk Guard และ Daily AI Report ผ่าน LINE แล้ว`;
+  const ok = await sendLineMessage(testText, lineChannelAccessToken, lineTargetId, lineNotifyToken);
+
+  if (ok) {
+    res.json({ success: true, message: "LINE test alert dispatched successfully!" });
+  } else {
+    res.status(500).json({ error: "Failed to dispatch LINE message. Verify token and target settings." });
   }
 });
 
