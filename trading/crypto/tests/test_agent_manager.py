@@ -8,6 +8,7 @@ from engine.agent_manager import CryptoAgentManager
 class MockRouter:
     paper_mode = True
     exchange_name = "binance"
+    live_trading_supported = False
 
     def __init__(self):
         self.orders = []
@@ -73,6 +74,31 @@ async def test_on_tick_executes_via_router():
         await mgr.on_tick("BTCUSDT", 100.0 + i * 2, 50.0, float((i + 1) * 3600))
     # at least attempted some orders (live mode routes through router)
     assert isinstance(router.orders, list)
+
+
+@pytest.mark.asyncio
+async def test_live_unsupported_runs_signal_only_without_router_order():
+    router = MockRouter()
+    mgr = CryptoAgentManager(router, paper_mode=False, agent_count=1, pairs=["BTCUSDT"])
+    agent = mgr.agents[0]
+    agent.dna.symbol = "BTCUSDT"
+    agent.dna.timeframe = "M15"
+    _force_strategy(agent, "momentum")
+    agent.generate_signal = lambda price, **kw: {
+        "action": "LONG", "confidence": 90, "reason": "unit long"
+    }
+    _seed_manager_trend(mgr, "BTCUSDT", "up")
+
+    await mgr._process_agents("BTCUSDT", 100.0, regime="TREND_UP")
+
+    assert router.orders == []
+    assert not agent.is_in_trade
+    assert mgr.control_status()["execution_mode"] == "signal_only"
+    assert mgr.control_status()["signal_only_execution"] is True
+    assert mgr.to_state_dict()["summary"]["execution_mode"] == "signal_only"
+    assert mgr._order_history
+    assert mgr._order_history[0]["type"] == "signal_only"
+    assert mgr._order_history[0]["status"] == "blocked"
 
 
 @pytest.mark.asyncio

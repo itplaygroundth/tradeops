@@ -32,6 +32,10 @@ class ExchangeRouter:
     def paper_mode(self) -> bool:
         return self._paper_mode
 
+    @property
+    def live_trading_supported(self) -> bool:
+        return bool(getattr(self._feed, "supports_live_trading", False))
+
     # ---- control -------------------------------------------------------
     async def switch_exchange(self, exchange: str) -> None:
         exchange = exchange.lower()

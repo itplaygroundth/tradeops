@@ -64,6 +64,13 @@ TIMEFRAME_TP_CAPS = {
 }
 MIN_EFFECTIVE_SL_PCT = 0.003
 BLOCK_LOG_INTERVAL_SECONDS = int(os.getenv("CRYPTO_BLOCK_LOG_INTERVAL_SECONDS", "60"))
+SIGNAL_ONLY_EXECUTION_ENABLED = str(os.getenv("CRYPTO_SIGNAL_ONLY_EXECUTION_ENABLED", "true")).lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+SIGNAL_ONLY_HISTORY_INTERVAL_SECONDS = int(os.getenv("CRYPTO_SIGNAL_ONLY_HISTORY_INTERVAL_SECONDS", "300"))
 
 
 class CryptoAgentManager:
@@ -97,6 +104,7 @@ class CryptoAgentManager:
         self._manual_entries_paused = False
         self._manual_pause_reason = ""
         self._last_block_log: Dict[str, float] = {}
+        self._last_signal_only_record: Dict[str, float] = {}
 
         # exchange name for dashboard (duck-typed)
         self._exchange_name = getattr(router, "exchange_name", "binance")
@@ -305,6 +313,9 @@ class CryptoAgentManager:
             if self.paper_mode:
                 self._paper_execute(agent, signal, price, risk, strategy, sl_pct, tp_pct)
             else:
+                if self._blocks_live_execution():
+                    self._record_signal_only_block(agent, signal, price, risk, strategy, sl_pct, tp_pct)
+                    continue
                 await self._live_execute(agent, signal, price, risk, strategy, sl_pct, tp_pct)
 
     def _signal_with_trend_context(self, agent: CryptoAgent, price: float, strategy: str, regime: str = None) -> dict:
@@ -429,6 +440,64 @@ class CryptoAgentManager:
         })
         self._trim_history()
 
+    def _blocks_live_execution(self) -> bool:
+        if not SIGNAL_ONLY_EXECUTION_ENABLED:
+            return False
+        return not bool(getattr(self.router, "live_trading_supported", False))
+
+    def _execution_mode(self) -> str:
+        if self.paper_mode:
+            return "paper"
+        if self._blocks_live_execution():
+            return "signal_only"
+        return "live"
+
+    def _record_signal_only_block(
+        self,
+        agent: CryptoAgent,
+        signal: dict,
+        price: float,
+        risk: RiskResult,
+        strategy: str,
+        sl_pct: float,
+        tp_pct: float,
+    ) -> None:
+        action = "BUY" if signal["action"] == "LONG" else "SELL"
+        reason = f"{self._exchange_name} live order placement is not enabled"
+        key = f"signal_only:{agent.dna.symbol}:{action}:{agent.dna.name}"
+        self._log_blocked(
+            key,
+            f"[SignalOnly] {agent.dna.name} {agent.dna.symbol} {action} blocked: {reason}",
+        )
+
+        now = time.time()
+        last = self._last_signal_only_record.get(key, 0.0)
+        if now - last < SIGNAL_ONLY_HISTORY_INTERVAL_SECONDS:
+            return
+        self._last_signal_only_record[key] = now
+        self._order_history.insert(0, {
+            "timestamp": now,
+            "agent": agent.dna.name,
+            "symbol": agent.dna.symbol,
+            "action": action,
+            "qty": round(risk.qty, 6),
+            "volume": round(risk.qty, 6),
+            "price": price,
+            "sl": risk.sl_price,
+            "tp": risk.tp_price,
+            "strategy": strategy,
+            "timeframe": agent.dna.timeframe,
+            "sl_pct": sl_pct,
+            "tp_pct": tp_pct,
+            "pnl": 0.0,
+            "pnl_pct": 0.0,
+            "type": "signal_only",
+            "status": "blocked",
+            "reason": reason,
+            "signal": dict(signal),
+        })
+        self._trim_history()
+
     def _run_evolution(self):
         logger.info("[Evolution] starting cycle")
         # Release positions held by the outgoing agents so the risk guardian's
@@ -483,6 +552,9 @@ class CryptoAgentManager:
             "entries_paused": self._manual_entries_paused,
             "pause_reason": self._manual_pause_reason,
             "paper_mode": self.paper_mode,
+            "execution_mode": self._execution_mode(),
+            "live_trading_supported": bool(getattr(self.router, "live_trading_supported", False)),
+            "signal_only_execution": self._blocks_live_execution(),
             "open_positions": len(self.get_open_positions()),
             "guard_mode": self.strategy_performance_guard.guard_mode(),
         }
@@ -688,6 +760,8 @@ class CryptoAgentManager:
             "open_positions": open_positions,
             "exchange": self._exchange_name,
             "mode": "paper" if self.paper_mode else "live",
+            "execution_mode": self._execution_mode(),
+            "live_trading_supported": bool(getattr(self.router, "live_trading_supported", False)),
             "total_agents": len(self.agents),
             "pairs": list(self._pairs),
             "strategy_performance_guard": self.strategy_performance_guard.summary(),
