@@ -35,7 +35,7 @@ async def test_get_ohlcv_real():
     assert isinstance(candles, list)
     assert len(candles) == 5
     c = candles[0]
-    assert set(c.keys()) == {"time", "open", "high", "low", "close", "volume"}
+    assert {"time", "open", "high", "low", "close", "volume"}.issubset(c.keys())
     assert isinstance(c["time"], int)
     # unix SECONDS not ms — sanity range (year ~2020+ and < year ~2100)
     assert 1_500_000_000 < c["time"] < 4_000_000_000

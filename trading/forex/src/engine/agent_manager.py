@@ -22,6 +22,7 @@ from engine.hermes_client import HermesClient, HermesError
 from engine.leader_asset_supervisor import LeaderAssetSupervisor
 from engine.performance_guard import PerformanceGuard
 from engine.position_dedup_guard import PositionDedupGuard
+from engine.strategy_performance_guard import StrategyPerformanceGuard
 from engine.timeframe_filter import MultiTimeframeFilter
 from engine.weekend_reopen_guard import WeekendReopenGuard
 from engine.xau_pullback_short import XauPullbackShortFilter
@@ -88,6 +89,7 @@ class ForexAgentManager:
         self.performance_guard = PerformanceGuard()
         from storage.history_db import last_open_ts_by_symbol
         self.position_dedup_guard = PositionDedupGuard(managed_magic=MANAGED_MAGIC, db_lookup=last_open_ts_by_symbol)
+        self.strategy_performance_guard = StrategyPerformanceGuard()
         self.timeframe_filter = MultiTimeframeFilter()
         self.weekend_reopen_guard = WeekendReopenGuard()
         self.xau_pullback_short = XauPullbackShortFilter()
@@ -543,6 +545,7 @@ class ForexAgentManager:
             fallback["refresh_error"] = str(exc)
             summary["performance_guard"] = fallback
         summary["position_dedup_guard"] = self.position_dedup_guard.summary()
+        summary["strategy_performance_guard"] = self.strategy_performance_guard.summary()
         summary["timeframe_filter"] = self.timeframe_filter.summary()
         summary["xau_pullback_short"] = self.xau_pullback_short.summary()
         summary["weekend_reopen_guard"] = self.weekend_reopen_guard.summary()
@@ -589,6 +592,11 @@ class ForexAgentManager:
 
                     agent.record_trade_result(pnl, pnl_pct)
                     self.risk_guardian.on_position_closed(pnl)
+                    try:
+                        _strat = max(agent.dna.strategy_weights, key=lambda k: agent.dna.strategy_weights[k])
+                        self.strategy_performance_guard.record(_strat, pnl)
+                    except Exception:
+                        pass
 
                     logger.info(
                         f"[PAPER CLOSE] {agent.dna.name} closed trade on {symbol}. "
@@ -669,6 +677,11 @@ class ForexAgentManager:
                 pnl_pct = (pnl / self._account_balance) * 100 if self._account_balance else 0.0
                 agent.record_trade_result(pnl, pnl_pct)
                 self.risk_guardian.on_position_closed(pnl)
+                try:
+                    _strat = max(agent.dna.strategy_weights, key=lambda k: agent.dna.strategy_weights[k])
+                    self.strategy_performance_guard.record(_strat, pnl)
+                except Exception:
+                    pass
                 logger.info(
                     f"[LIVE CLOSE] {agent.dna.name} closed trade on {agent.dna.symbol} (ticket {ticket}). "
                     f"PnL=${pnl:.2f} ({pnl_pct:+.2f}%)"
@@ -830,6 +843,13 @@ class ForexAgentManager:
             if not perf.allowed:
                 logger.warning(f"[PerformanceGuard] {agent.dna.name} {symbol} blocked: {perf.reason}")
                 audit.update({"status": "blocked", "block_stage": "performance_guard", "reason": perf.reason})
+                self._record_entry_audit(audit)
+                continue
+            strat_guard = self.strategy_performance_guard.evaluate(dominant_strategy)
+            audit["strategy_performance_guard"] = {"allowed": strat_guard.allowed, "reason": strat_guard.reason, "cooldown_remaining_seconds": strat_guard.cooldown_remaining_seconds}
+            if not strat_guard.allowed:
+                logger.warning(f"[StrategyPerfGuard] {agent.dna.name} {symbol} {dominant_strategy} blocked: {strat_guard.reason}")
+                audit.update({"status": "blocked", "block_stage": "strategy_performance_guard", "reason": strat_guard.reason})
                 self._record_entry_audit(audit)
                 continue
             signal = agent.generate_signal(price)

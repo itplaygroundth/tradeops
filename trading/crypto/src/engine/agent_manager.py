@@ -23,6 +23,8 @@ from engine.signals import CryptoSignalEngine
 from engine.risk_guardian import CryptoRiskGuardian, RiskResult, MIN_RR_RATIO
 from engine.evolution import evolve, EVOLUTION_INTERVAL
 from engine.strategy_performance_guard import StrategyPerformanceGuard
+from engine.performance_guard import PairPerformanceGuard
+from engine.position_dedup_guard import PositionDedupGuard
 
 logger = logging.getLogger("agent_manager")
 
@@ -72,6 +74,8 @@ class CryptoAgentManager:
         self.signal_engine = CryptoSignalEngine()
         self.risk_guardian = CryptoRiskGuardian()
         self.strategy_performance_guard = StrategyPerformanceGuard()
+        self.pair_performance_guard = PairPerformanceGuard()
+        self.position_dedup_guard = PositionDedupGuard()
 
         dnas = create_population(agent_count, pairs=self._pairs)
         self.agents: List[CryptoAgent] = [
@@ -247,6 +251,10 @@ class CryptoAgentManager:
         if guard_mode == "HARD_STOP":
             logger.warning(f"[AdaptiveGuard] {symbol} entries blocked: HARD_STOP")
             return
+        perf = self.pair_performance_guard.evaluate(symbol, "", self._order_history)
+        if not perf.allowed:
+            self._log_blocked(f"pair_perf:{symbol}", f"[PairPerfGuard] {symbol} blocked: {perf.reason}")
+            return
         allowed_strategies = DEFENSE_STRATEGY_ALLOWLIST if guard_mode == "DEFENSE" else ENTRY_STRATEGY_ALLOWLIST
         for agent in idle:
             strategy = self._agent_strategy(agent)
@@ -285,6 +293,11 @@ class CryptoAgentManager:
             )
             if not risk.allowed:
                 logger.debug(f"[{agent.dna.name}] blocked: {risk.reason}")
+                continue
+            action = "BUY" if signal["action"] == "LONG" else "SELL"
+            dedup = self.position_dedup_guard.evaluate(symbol, action, self.get_open_positions())
+            if not dedup.allowed:
+                self._log_blocked(f"dedup:{symbol}:{action}", f"[PositionDedup] {agent.dna.name} {symbol} {action} blocked: {dedup.reason}")
                 continue
             if self.paper_mode:
                 self._paper_execute(agent, signal, price, risk, strategy, sl_pct, tp_pct)
@@ -336,6 +349,7 @@ class CryptoAgentManager:
         agent._open_qty = risk.qty
         agent._open_risk_amount = risk.risk_amount
         self.risk_guardian.on_position_opened(agent.dna.symbol)
+        self.position_dedup_guard.record_open(agent.dna.symbol)
         self._order_history.insert(0, {
             "timestamp": time.time(),
             "agent": agent.dna.name,
@@ -389,6 +403,7 @@ class CryptoAgentManager:
         agent._open_qty = risk.qty
         agent._open_risk_amount = risk.risk_amount
         self.risk_guardian.on_position_opened(agent.dna.symbol)
+        self.position_dedup_guard.record_open(agent.dna.symbol)
         self._order_history.insert(0, {
             "timestamp": time.time(),
             "agent": agent.dna.name,

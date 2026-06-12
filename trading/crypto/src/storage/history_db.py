@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-DB_PATH = Path(os.getenv("CRYPTO_AI_ROOT", "/home/alfred/crypto-ai")) / "data" / "history.db"
+DB_PATH = Path(os.getenv("CRYPTO_AI_ROOT", "/home/alfred/tradeops/trading/crypto")) / "data" / "history.db"
 
 
 def init_db() -> None:

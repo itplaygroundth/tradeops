@@ -4,7 +4,7 @@
 include config/services.env
 export
 
-FOREX_PY := /home/alfred/mtai/.venv/bin/python
+FOREX_PY := /home/alfred/tradeops/trading/forex/.venv/bin/python
 
 .PHONY: help forex crypto control all stop test install
 
@@ -28,6 +28,7 @@ control:
 	cd control/server && node server.js
 
 all:
+	tmux kill-session -t tradeops 2>/dev/null || true
 	tmux new-session -d -s tradeops -n forex 'make forex'
 	tmux new-window -t tradeops -n crypto 'make crypto'
 	tmux new-window -t tradeops -n control 'make control'

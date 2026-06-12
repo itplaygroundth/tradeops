@@ -6,8 +6,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=alfred
-WorkingDirectory=/home/alfred/mtai/src
-ExecStart=/usr/bin/python3 /home/alfred/mtai/src/run.py --mode paper
+WorkingDirectory=/home/alfred/tradeops/trading/forex/src
+ExecStart=/home/alfred/tradeops/trading/forex/.venv/bin/python3 /home/alfred/tradeops/trading/forex/src/run.py --mode paper
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
