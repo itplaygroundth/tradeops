@@ -2,7 +2,18 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-DB_PATH = Path("data") / "history.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "history.db"
+
+EXTRA_COLUMNS = {
+    "deal_ticket": "INTEGER",
+    "commission": "REAL DEFAULT 0",
+    "swap": "REAL DEFAULT 0",
+    "fees": "REAL DEFAULT 0",
+    "deal_entry": "INTEGER",
+    "deal_reason": "INTEGER",
+    "exit_reason": "TEXT",
+    "magic": "INTEGER",
+}
 
 
 def init_db() -> None:
@@ -29,33 +40,58 @@ def init_db() -> None:
         )
         """
     )
+    cur.execute("PRAGMA table_info(orders)")
+    existing = {row[1] for row in cur.fetchall()}
+    for column, spec in EXTRA_COLUMNS.items():
+        if column not in existing:
+            cur.execute(f"ALTER TABLE orders ADD COLUMN {column} {spec}")
+    cur.execute("DROP INDEX IF EXISTS idx_orders_deal_ticket")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_deal_ticket ON orders(deal_ticket)")
     conn.commit()
     conn.close()
 
 
+def _order_values(entry: Dict[str, Any]) -> tuple:
+    return (
+        entry.get("deal_ticket"),
+        float(entry.get("timestamp", 0)),
+        entry.get("agent"),
+        entry.get("symbol"),
+        entry.get("action"),
+        float(entry.get("volume") or 0),
+        float(entry.get("price") or 0),
+        float(entry.get("sl") or 0),
+        float(entry.get("tp") or 0),
+        entry.get("type"),
+        entry.get("status"),
+        entry.get("ticket"),
+        float(entry.get("pnl") or 0),
+        entry.get("comment"),
+        float(entry.get("commission") or 0),
+        float(entry.get("swap") or 0),
+        float(entry.get("fees") or 0),
+        entry.get("deal_entry"),
+        entry.get("deal_reason"),
+        entry.get("exit_reason"),
+        entry.get("magic"),
+    )
+
+
+ORDER_COLUMNS = """
+    deal_ticket, ts, agent, symbol, action, volume, price, sl, tp, type, status, ticket, pnl, comment,
+    commission, swap, fees, deal_entry, deal_reason, exit_reason, magic
+"""
+
+
 def insert_order(entry: Dict[str, Any]) -> None:
+    init_db()
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
+    cur.execute("SELECT 1 FROM orders WHERE deal_ticket = ?", (entry.get("deal_ticket"),))
+    exists = cur.fetchone() is not None
     cur.execute(
-        """
-        INSERT INTO orders (ts, agent, symbol, action, volume, price, sl, tp, type, status, ticket, pnl, comment)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            float(entry.get("timestamp", 0)),
-            entry.get("agent"),
-            entry.get("symbol"),
-            entry.get("action"),
-            float(entry.get("volume") or 0),
-            float(entry.get("price") or 0),
-            float(entry.get("sl") or 0),
-            float(entry.get("tp") or 0),
-            entry.get("type"),
-            entry.get("status"),
-            entry.get("ticket"),
-            float(entry.get("pnl") or 0),
-            entry.get("comment"),
-        ),
+        f"INSERT INTO orders ({ORDER_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        _order_values(entry),
     )
     conn.commit()
     conn.close()
@@ -67,8 +103,60 @@ def insert_order(entry: Dict[str, Any]) -> None:
         pass
 
 
+def upsert_order(entry: Dict[str, Any]) -> bool:
+    """Insert or update a deal-backed row. Returns True when inserted."""
+    if entry.get("deal_ticket") in (None, ""):
+        insert_order(entry)
+        return True
+
+    init_db()
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM orders WHERE deal_ticket = ?", (entry.get("deal_ticket"),))
+    exists = cur.fetchone() is not None
+    cur.execute(
+        f"""
+        INSERT INTO orders ({ORDER_COLUMNS})
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(deal_ticket) DO UPDATE SET
+            ts=excluded.ts,
+            agent=excluded.agent,
+            symbol=excluded.symbol,
+            action=excluded.action,
+            volume=excluded.volume,
+            price=excluded.price,
+            sl=excluded.sl,
+            tp=excluded.tp,
+            type=excluded.type,
+            status=excluded.status,
+            ticket=excluded.ticket,
+            pnl=excluded.pnl,
+            comment=excluded.comment,
+            commission=excluded.commission,
+            swap=excluded.swap,
+            fees=excluded.fees,
+            deal_entry=excluded.deal_entry,
+            deal_reason=excluded.deal_reason,
+            exit_reason=excluded.exit_reason,
+            magic=excluded.magic
+        """,
+        _order_values(entry),
+    )
+    inserted = not exists
+    conn.commit()
+    conn.close()
+    if inserted:
+        try:
+            from storage import pubsub
+            pubsub.publish(entry)
+        except Exception:
+            pass
+    return inserted
+
+
 def delete_by_ticket(ticket: int) -> int:
     """Delete orders matching ticket. Returns number deleted."""
+    init_db()
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
     cur.execute("DELETE FROM orders WHERE ticket = ?", (int(ticket),))
@@ -79,6 +167,7 @@ def delete_by_ticket(ticket: int) -> int:
 
 
 def query_orders(offset: int = 0, limit: int = 100, symbol: Optional[str] = None, agent: Optional[str] = None, status: Optional[str] = None, q: Optional[str] = None) -> Dict[str, Any]:
+    init_db()
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
     where = []
@@ -102,7 +191,11 @@ def query_orders(offset: int = 0, limit: int = 100, symbol: Optional[str] = None
     cur.execute(total_q, params)
     total = cur.fetchone()[0]
 
-    sql = f"SELECT ts,agent,symbol,action,volume,price,sl,tp,type,status,ticket,pnl,comment FROM orders {where_sql} ORDER BY ts DESC LIMIT ? OFFSET ?"
+    sql = (
+        "SELECT ts,agent,symbol,action,volume,price,sl,tp,type,status,ticket,pnl,comment,"
+        f"deal_ticket,commission,swap,fees,deal_entry,deal_reason,exit_reason,magic FROM orders {where_sql} "
+        "ORDER BY ts DESC LIMIT ? OFFSET ?"
+    )
     params2 = list(params) + [limit, offset]
     cur.execute(sql, params2)
     rows = cur.fetchall()
@@ -122,6 +215,43 @@ def query_orders(offset: int = 0, limit: int = 100, symbol: Optional[str] = None
             "ticket": r[10],
             "pnl": r[11],
             "comment": r[12],
+            "deal_ticket": r[13],
+            "commission": r[14],
+            "swap": r[15],
+            "fees": r[16],
+            "deal_entry": r[17],
+            "deal_reason": r[18],
+            "exit_reason": r[19],
+            "magic": r[20],
         })
     conn.close()
     return {"total": total, "offset": offset, "limit": limit, "items": items}
+
+
+def query_orders_for_export(
+    symbol: Optional[str] = None,
+    agent: Optional[str] = None,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    limit: int = 10000,
+) -> List[Dict[str, Any]]:
+    """Return export-ready order rows in ascending time order."""
+    result = query_orders(offset=0, limit=limit, symbol=symbol, agent=agent, status=status, q=q)
+    return sorted(result.get("items", []), key=lambda item: float(item.get("timestamp") or 0))
+
+
+def last_open_ts_by_symbol() -> Dict[str, float]:
+    """Most recent live-entry open timestamp per symbol (for restart-safe dedup cooldown)."""
+    init_db()
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT symbol, MAX(ts) FROM orders "
+            "WHERE type = 'live' AND status = 'placed' AND action IN ('BUY','SELL') "
+            "GROUP BY symbol"
+        )
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+    return {r[0]: float(r[1]) for r in rows if r[0] and r[1] is not None}

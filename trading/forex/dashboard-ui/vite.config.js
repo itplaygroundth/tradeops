@@ -6,8 +6,16 @@ import { resolve } from 'path'
 
 export default defineConfig({
   server: {
+    host: '0.0.0.0',
     port: 3004,
     proxy: {
+      // MT5 bridge: /api/mt5/account|positions|ohlcv/... -> bridge /account|/positions|/ohlcv/...
+      '/api/mt5': {
+        target: 'http://192.168.1.107:8888',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/mt5/, ''),
+      },
+      // Everything else (order_history, mode, deal) -> python api server
       '/api': 'http://localhost:5001',
     },
   },

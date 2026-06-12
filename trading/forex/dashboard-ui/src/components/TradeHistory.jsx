@@ -21,7 +21,7 @@ function toCSV(rows) {
   return [header].concat(lines).join('\n')
 }
 
-export default function TradeHistory({ orderHistory }) {
+export default function TradeHistory({ orderHistory, positions = [] }) {
   const [rows, setRows] = useState(orderHistory || [])
   const [filter, setFilter] = useState({ q: '', symbol: '', agent: '', status: '' })
   const [detail, setDetail] = useState(null)
@@ -45,8 +45,7 @@ export default function TradeHistory({ orderHistory }) {
       }
     }
     loadInitial()
-    setRows(orderHistory || [])
-  }, [orderHistory])
+  }, [])
 
   useEffect(() => {
     // Setup SSE stream
@@ -142,6 +141,22 @@ export default function TradeHistory({ orderHistory }) {
   }
 
   const list = filtered()
+  const activeByTicket = new Map((positions || []).map(p => [String(p.ticket), p]))
+
+  function displayRow(row) {
+    const active = row.ticket ? activeByTicket.get(String(row.ticket)) : null
+    if (!active) return row
+    return {
+      ...row,
+      status: 'open',
+      pnl: active.profit,
+      price: active.price_open ?? row.price,
+      sl: active.sl ?? row.sl,
+      tp: active.tp ?? row.tp,
+      volume: active.volume ?? row.volume,
+      action: active.type ?? row.action,
+    }
+  }
 
   return (
     <div className="trade-history panel">
@@ -177,25 +192,34 @@ export default function TradeHistory({ orderHistory }) {
             </tr>
           </thead>
           <tbody>
-            {list.map((r, i) => (
-              <tr key={i} onClick={()=>showDetail(r)} style={{cursor: r.ticket ? 'pointer' : 'default'}}>
-                <td>{fmtTime(r.timestamp)}</td>
-                <td>{r.agent}</td>
-                <td>{r.symbol}</td>
-                <td>{r.action}</td>
-                <td>{r.volume}</td>
-                <td>{r.price ?? '-'}</td>
-                <td>{r.sl ?? '-'}</td>
-                <td>{r.tp ?? '-'}</td>
-                <td>{r.type}</td>
-                <td>{r.status ?? (r.type==='closed'? 'closed':'-')}</td>
-                <td>{r.pnl !== undefined ? r.pnl : '-'}</td>
+            {list.map((raw, i) => {
+              const r = displayRow(raw)
+              return (
+              <tr key={i} onClick={()=>showDetail(raw)} style={{cursor: raw.ticket ? 'pointer' : 'default'}}>
+                <td className="th-time">{fmtTime(r.timestamp)}</td>
+                <td className="th-agent">{r.agent}</td>
+                <td className="th-symbol">{r.symbol}</td>
+                <td className={`th-action ${/buy|long/i.test(r.action) ? 'up' : /sell|short/i.test(r.action) ? 'down' : ''}`}>{r.action}</td>
+                <td className="th-lots">{r.volume}</td>
+                <td className="th-price">{r.price ?? '-'}</td>
+                <td className="th-sl">{r.sl ?? '-'}</td>
+                <td className="th-tp">{r.tp ?? '-'}</td>
+                <td className="th-type">{r.type}</td>
+                <td>
+                  <span className={`th-status th-status-${String(r.status ?? (r.type==='closed'?'closed':'')).toLowerCase()}`}>
+                    {r.status ?? (r.type==='closed'? 'closed':'-')}
+                  </span>
+                </td>
+                <td className={r.pnl > 0 ? 'th-pnl up' : r.pnl < 0 ? 'th-pnl down' : 'th-pnl'}>
+                  {r.pnl !== undefined && r.pnl !== null ? (r.pnl > 0 ? '+' : '') + Number(r.pnl).toFixed(2) : '-'}
+                </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
-      <div style={{textAlign:'center', padding:'8px'}}>
+      <div className="load-more-row">
         <button onClick={loadMore} disabled={loadingMore}>{loadingMore ? 'Loading...' : 'Load more'}</button>
       </div>
 

@@ -63,7 +63,15 @@ def is_good_session(symbol: str) -> bool:
     active = get_active_sessions()
     if not active:
         return False
-    good_sessions = SESSION_SYMBOL_AFFINITY.get(symbol, ["LONDON", "NY"])
+    # Support lookup with/without suffix 'm' and case-insensitive
+    keys_to_try = [symbol, symbol.upper(), symbol + "m", symbol.upper() + "m"]
+    good_sessions = None
+    for k in keys_to_try:
+        if k in SESSION_SYMBOL_AFFINITY:
+            good_sessions = SESSION_SYMBOL_AFFINITY[k]
+            break
+    if good_sessions is None:
+        good_sessions = ["LONDON", "NY"]
     return any(s in good_sessions for s in active)
 
 class ForexSignalEngine:
@@ -231,3 +239,137 @@ Confidence: 0-100"""
 
     def _generate_technical_signals(self, symbols: list) -> dict:
         return {sym: self.technical_signal(sym) for sym in symbols}
+
+    def order_flow_signal(self, symbol: str) -> dict:
+        """Order flow via CVD divergence approximation.
+
+        Uses price changes sign * volume as a proxy for signed volume (CVD).
+        Detects divergence between momentum and CVD.
+        """
+        hist = self.get_history(symbol)
+        if hist.count < 10:
+            return {"action": "HOLD", "confidence": 0, "reason": "Insufficient data"}
+
+        prices = list(hist.prices)
+        vols = list(hist.volumes)
+        n = min(len(prices), 30)
+        cvd = 0.0
+        for i in range(-n + 1, 0):
+            prev = prices[i - 1]
+            curr = prices[i]
+            sign = 1 if curr > prev else (-1 if curr < prev else 0)
+            vol = vols[i] if i < len(vols) else 0
+            cvd += sign * vol
+
+        mom = hist.momentum(10) or 0.0
+        avg_vol = hist.avg_volume(20) or 0.0
+
+        # threshold scales with avg volume
+        thresh = max(1.0, avg_vol * 3)
+
+        action = "HOLD"
+        confidence = 30
+        reason = f"OrderFlow: CVD={cvd:.1f} Mom={mom:+.2f}%"
+
+        # divergence: price up (mom>0) but CVD strongly negative => bearish divergence
+        if mom > 0.5 and cvd < -thresh:
+            action = "SHORT"
+            confidence = 60
+            reason = "CVD bearish divergence"
+        elif mom < -0.5 and cvd > thresh:
+            action = "LONG"
+            confidence = 60
+            reason = "CVD bullish divergence"
+
+        return {"action": action, "confidence": confidence, "reason": reason}
+
+    def breakout_atr_signal(self, symbol: str) -> dict:
+        """Breakout filtered by ATR: confirm breakout then require ATR low to avoid false breakouts."""
+        hist = self.get_history(symbol)
+        if hist.count < 30:
+            return {"action": "HOLD", "confidence": 0, "reason": "Insufficient data"}
+
+        sr = hist.support_resistance(20)
+        price = hist.current
+        if price is None:
+            return {"action": "HOLD", "confidence": 0, "reason": "No price"}
+
+        atr_pct = hist.atr_percent(14) or 0.0
+        action = "HOLD"
+        confidence = 30
+        reason = f"Breakout: price={price:.5f} R={sr['resistance']} S={sr['support']} ATR%={atr_pct:.3f}"
+
+        # require ATR percent to be moderate (not too high) to reduce false breakouts
+        if sr.get("resistance") and price > sr["resistance"] and atr_pct < 0.6:
+            action = "LONG"
+            confidence = min(80, max(40, int(sr["room_to_resistance_pct"] + 40)))
+            reason = "Breakout above resistance with ATR filter"
+        elif sr.get("support") and price < sr["support"] and atr_pct < 0.6:
+            action = "SHORT"
+            confidence = min(80, max(40, int(sr["room_to_support_pct"] + 40)))
+            reason = "Breakout below support with ATR filter"
+
+        return {"action": action, "confidence": confidence, "reason": reason}
+
+    def session_open_signal(self, symbol: str) -> dict:
+        """Signal that focuses on session open momentum (first 30 minutes).
+
+        For London/NY opens, if symbol affinity matches, use short horizon momentum.
+        """
+        now = datetime.now(timezone.utc)
+        hour = now.hour
+        minute = now.minute
+        hist = self.get_history(symbol)
+        if hist.count < 6:
+            return {"action": "HOLD", "confidence": 0, "reason": "Insufficient data"}
+
+        # detect London open (07:00-07:30) and NY open (13:00-13:30)
+        session = None
+        if hour == 7 and minute < 30:
+            session = "LONDON"
+        elif hour == 13 and minute < 30:
+            session = "NY"
+
+        if session is None:
+            return {"action": "HOLD", "confidence": 0, "reason": "Not session open"}
+
+        good = SESSION_SYMBOL_AFFINITY.get(symbol, [])
+        if session not in good and "OVERLAP" not in good:
+            return {"action": "HOLD", "confidence": 0, "reason": f"Session {session} not relevant for {symbol}"}
+
+        mom = hist.momentum(3) or 0.0
+        action = "HOLD"
+        confidence = 30
+        reason = f"SessionOpen {session} Mom={mom:+.2f}%"
+        if mom > 0.2:
+            action = "LONG"
+            confidence = 60
+        elif mom < -0.2:
+            action = "SHORT"
+            confidence = 60
+
+        return {"action": action, "confidence": confidence, "reason": reason}
+
+    def market_structure_signal(self, symbol: str) -> dict:
+        """Detect Break of Structure (BoS) using IT trend and support/resistance structure."""
+        hist = self.get_history(symbol)
+        if hist.count < 10:
+            return {"action": "HOLD", "confidence": 0, "reason": "Insufficient data"}
+
+        it = hist.it_trend()
+        price = hist.current
+        sr = hist.support_resistance(30)
+        action = "HOLD"
+        confidence = 35
+        reason = f"MS: IT={it} R={sr.get('resistance')} S={sr.get('support')}"
+
+        if it == "up" and price and sr.get("resistance") and price > sr.get("resistance"):
+            action = "LONG"
+            confidence = 60
+            reason = "Break of Structure bullish"
+        elif it == "down" and price and sr.get("support") and price < sr.get("support"):
+            action = "SHORT"
+            confidence = 60
+            reason = "Break of Structure bearish"
+
+        return {"action": action, "confidence": confidence, "reason": reason}

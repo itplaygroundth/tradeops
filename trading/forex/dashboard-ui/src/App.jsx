@@ -1,24 +1,16 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useLiveState } from './hooks/useLiveState.js'
 import Header from './components/Header.jsx'
 import StatCards from './components/StatCards.jsx'
 
-// ⚡ Lazy-loaded components — split into separate chunks, loaded on demand
-const SentimentGauges = lazy(() => import('./components/SentimentGauges.jsx'))
-const SignalCards = lazy(() => import('./components/SignalCards.jsx'))
+// ⚡ Lazy-loaded components
 const AgentGrid = lazy(() => import('./components/AgentGrid.jsx'))
 const TickerPanel = lazy(() => import('./components/TickerPanel.jsx'))
-const StrategyPanel = lazy(() => import('./components/StrategyPanel.jsx'))
-const TopAgents = lazy(() => import('./components/TopAgents.jsx'))
-const AiAdvisor = lazy(() => import('./components/AiAdvisor.jsx'))
 const ProbabilityCard = lazy(() => import('./components/ProbabilityCard.jsx'))
 const Infrastructure = lazy(() => import('./components/Infrastructure.jsx'))
 const WalletCard = lazy(() => import('./components/WalletCard.jsx'))
-const EquityCurveChart = lazy(() => import('./components/EquityCurveChart.jsx'))
-const DailyPnLChart = lazy(() => import('./components/DailyPnLChart.jsx'))
-const AssetGraphTabs = lazy(() => import('./components/AssetGraphTabs.jsx'))
 const TradeHistory = lazy(() => import('./components/TradeHistory.jsx'))
-const TradingPanel = lazy(() => import('./components/TradingPanel.jsx'))
+const ChartTabs = lazy(() => import('./components/ChartTabs.jsx'))
 
 function LazyBox({ children }) {
   return (
@@ -29,7 +21,8 @@ function LazyBox({ children }) {
 }
 
 export default function App() {
-  const { state, error, mt5 } = useLiveState()
+  const { state, error, mt5, manualActions, refreshMT5 } = useLiveState()
+  const [actionAlert, setActionAlert] = useState(null)
 
   if (error && !state) {
     return (
@@ -56,52 +49,110 @@ export default function App() {
 
   const { summary, agents } = state
   const tickerPrices = summary?.prices || {}
-  const strategies = summary?.by_strategy || {}
-  const topAgents = summary?.top5 || []
-  const tradeJournal = summary?.trade_journal || {}
   const orderHistory = state?.order_history || []
 
   return (
     <div className="app">
-      <Header summary={summary} />
+      <Header summary={summary} mt5={mt5} />
+      {actionAlert && (
+        <div className={`global-action-alert ${actionAlert.type || 'error'}`}>
+          <span>{actionAlert.message}</span>
+          <button onClick={() => setActionAlert(null)}>Dismiss</button>
+        </div>
+      )}
 
       {/* Top Stat Cards — loaded eagerly, always above fold */}
       <StatCards summary={summary} mt5={mt5} />
 
-      {/* Middle: everything below the fold is lazy-loaded */}
       <div className="main">
-        <div className="middle-left fox-panel-bg">
-          <LazyBox><SentimentGauges /></LazyBox>
-          <LazyBox><ProbabilityCard summary={summary} /></LazyBox>
+        {/* LEFT: Market Watch & Gauges */}
+        <div className="left-panel fox-panel-bg">
           <LazyBox><WalletCard summary={summary} mt5={mt5} /></LazyBox>
-          <LazyBox><SignalCards strategies={strategies} summary={summary} /></LazyBox>
-        </div>
-
-        <div className="agents-panel">
-          <LazyBox><TradingPanel /></LazyBox>
-          <div className="panel-title">
-            <span>🤖 AI Trading Agents</span>
-            <span>{(agents || []).length} / {summary?.total_agents || 100}</span>
-          </div>
-          <LazyBox><AgentGrid agents={agents} /></LazyBox>
-          <LazyBox><Infrastructure summary={summary} /></LazyBox>
-        </div>
-
-        <div className="details-panel">
+          <div className="panel-title"><span>📈 Market Watch</span></div>
           <LazyBox><TickerPanel prices={tickerPrices} /></LazyBox>
-          <LazyBox><StrategyPanel strategies={strategies} /></LazyBox>
-          <LazyBox><AssetGraphTabs prices={tickerPrices} agents={agents} summary={summary} /></LazyBox>
-          <div className="chart-section">
-            <LazyBox><EquityCurveChart data={tradeJournal.equity_curve} /></LazyBox>
-            <LazyBox><DailyPnLChart dailyPnl={tradeJournal.daily_pnl} /></LazyBox>
+          <LazyBox><ProbabilityCard summary={summary} /></LazyBox>
+        </div>
+
+        {/* CENTER: Chart & Terminal */}
+        <div className="center-panel">
+          <div className="chart-area">
+            <LazyBox><ChartTabs positions={mt5?.positions ?? []} refreshMT5={refreshMT5} onAlert={setActionAlert} /></LazyBox>
           </div>
-          <LazyBox><TopAgents agents={topAgents} /></LazyBox>
-          <LazyBox><AiAdvisor summary={summary} /></LazyBox>
-          <LazyBox><TradeHistory orderHistory={orderHistory} /></LazyBox>
+          
+          {/* BOTTOM TERMINAL */}
+          <BottomTerminal orderHistory={orderHistory} agents={agents} summary={summary} mt5={mt5} manualActions={manualActions} />
         </div>
       </div>
 
       <Footer />
+    </div>
+  )
+}
+
+function BottomTerminal({ orderHistory, agents, summary, mt5, manualActions = [] }) {
+  const [tab, setTab] = useState('history')
+  const tabs = [
+    { id: 'history', label: '📜 Trade History', count: orderHistory.length },
+    { id: 'agents', label: '🤖 AI Agents', count: agents?.length || 0 },
+    { id: 'manual', label: '🧾 Manual Actions', count: manualActions.length },
+    { id: 'infra', label: '🛰️ Infrastructure' },
+  ]
+  return (
+    <div className="bottom-terminal">
+      <div className="terminal-tabs">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            className={`terminal-tab ${tab === t.id ? 'active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+            {t.count != null && <span className="terminal-tab-count">{t.count}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="terminal-panel">
+        {tab === 'history' && <LazyBox><TradeHistory orderHistory={orderHistory} positions={mt5?.positions ?? []} /></LazyBox>}
+        {tab === 'agents' && <LazyBox><AgentGrid agents={agents} /></LazyBox>}
+        {tab === 'manual' && <ManualActions actions={manualActions} />}
+        {tab === 'infra' && <LazyBox><Infrastructure summary={summary} /></LazyBox>}
+      </div>
+    </div>
+  )
+}
+
+function ManualActions({ actions }) {
+  if (!actions.length) {
+    return <div className="manual-actions-empty">No manual actions recorded</div>
+  }
+  return (
+    <div className="manual-actions">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Action</th>
+            <th>Ticket</th>
+            <th>Status</th>
+            <th>SL</th>
+            <th>TP</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          {actions.map((a, idx) => (
+            <tr key={`${a.timestamp}-${idx}`}>
+              <td>{a.timestamp ? new Date(a.timestamp * 1000).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' }) : '—'}</td>
+              <td>{a.action}</td>
+              <td>{a.ticket}</td>
+              <td className={a.status === 'success' ? 'ma-success' : 'ma-failed'}>{a.status}</td>
+              <td>{a.sl ?? '—'}</td>
+              <td>{a.tp ?? '—'}</td>
+              <td>{a.error || a.result?.comment || a.result?.closed || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -119,7 +170,7 @@ function Footer() {
     <div className="footer">
       <span className="brand">Ai เทรด ..เด้อ · SiamSynapse</span>
       <span>{timeStr} ICT</span>
-      <span>25 Agents · Forex · LLM + Evolution</span>
+      <span>World-Class WebTrader UI</span>
     </div>
   )
 }

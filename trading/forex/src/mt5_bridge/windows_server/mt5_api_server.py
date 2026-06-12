@@ -71,6 +71,27 @@ def get_filling_mode(symbol: str) -> int:
         logger.info(f"Neither FOK nor IOC indicated for {symbol}. Using ORDER_FILLING_RETURN.")
         return mt5.ORDER_FILLING_RETURN
 
+
+def deal_entry_label(entry: int) -> str:
+    return {
+        getattr(mt5, "DEAL_ENTRY_IN", 0): "IN",
+        getattr(mt5, "DEAL_ENTRY_OUT", 1): "OUT",
+        getattr(mt5, "DEAL_ENTRY_INOUT", 2): "INOUT",
+        getattr(mt5, "DEAL_ENTRY_OUT_BY", 3): "OUT_BY",
+    }.get(int(entry), str(entry))
+
+
+def deal_reason_label(reason: int) -> str:
+    return {
+        getattr(mt5, "DEAL_REASON_CLIENT", 0): "CLIENT",
+        getattr(mt5, "DEAL_REASON_MOBILE", 1): "MOBILE",
+        getattr(mt5, "DEAL_REASON_WEB", 2): "WEB",
+        getattr(mt5, "DEAL_REASON_EXPERT", 3): "EXPERT",
+        getattr(mt5, "DEAL_REASON_SL", 4): "SL",
+        getattr(mt5, "DEAL_REASON_TP", 5): "TP",
+        getattr(mt5, "DEAL_REASON_SO", 6): "SO",
+    }.get(int(reason), str(reason))
+
 # ── REST Endpoints ───────────────────────────────────────
 
 @app.get("/health")
@@ -178,6 +199,32 @@ def place_order(req: OrderRequest):
         
     price = tick.ask if req.action == "BUY" else tick.bid
     order_type = mt5.ORDER_TYPE_BUY if req.action == "BUY" else mt5.ORDER_TYPE_SELL
+
+    # ── Stale-stop preflight ─────────────────────────────────────────
+    # SL/TP are computed by the agent from the quote at decision time. If the
+    # market gapped before the order reached here (reconnect, weekend open),
+    # those levels can land on the wrong side of the live price or inside the
+    # broker's minimum stop distance. Validate against the fresh tick and
+    # reject rather than letting MT5 silently drop/clamp the stop.
+    point = symbol_info.point or 0.0
+    spread = max(tick.ask - tick.bid, 0.0)
+    stops_level = float(getattr(symbol_info, "trade_stops_level", 0)) * point
+    floor = max(stops_level, spread * 3, point * 50)
+    # Broker fills the stop against the opposite side of entry.
+    stop_ref = tick.bid if req.action == "BUY" else tick.ask
+    if req.sl and req.sl > 0:
+        sl_gap = (stop_ref - req.sl) if req.action == "BUY" else (req.sl - stop_ref)
+        if sl_gap <= 0:
+            raise HTTPException(400, f"Stale SL wrong side: sl={req.sl} ref={stop_ref:.5f} action={req.action}")
+        if sl_gap < floor:
+            raise HTTPException(400, f"Stale SL too close: gap={sl_gap:.5f} < floor={floor:.5f} (bid={tick.bid} ask={tick.ask})")
+    if req.tp and req.tp > 0:
+        tp_gap = (req.tp - stop_ref) if req.action == "BUY" else (stop_ref - req.tp)
+        if tp_gap <= 0:
+            raise HTTPException(400, f"Stale TP wrong side: tp={req.tp} ref={stop_ref:.5f} action={req.action}")
+        if tp_gap < floor:
+            raise HTTPException(400, f"Stale TP too close: gap={tp_gap:.5f} < floor={floor:.5f} (bid={tick.bid} ask={tick.ask})")
+
     filling_mode = get_filling_mode(req.symbol)
 
     request = {
@@ -286,9 +333,12 @@ def get_recent_history(hours: int = 24, limit: int = 200):
 
     out = []
     for d in deals_list:
+        entry = int(getattr(d, 'entry', -1))
+        reason = int(getattr(d, 'reason', -1))
         out.append({
             "ticket": int(getattr(d, 'ticket', 0)),
             "position": int(getattr(d, 'position', 0)),
+            "order": int(getattr(d, 'order', 0)),
             "symbol": str(getattr(d, 'symbol', '')),
             "volume": float(getattr(d, 'volume', 0.0)),
             "price": float(getattr(d, 'price', 0.0)),
@@ -297,7 +347,11 @@ def get_recent_history(hours: int = 24, limit: int = 200):
             "commission": float(getattr(d, 'commission', 0.0)),
             "time": int(getattr(d, 'time', 0)),
             "type": int(getattr(d, 'type', 0)),
-            "entry": bool(getattr(d, 'entry', False)),
+            "entry": entry,
+            "entry_label": deal_entry_label(entry),
+            "reason": reason,
+            "reason_label": deal_reason_label(reason),
+            "magic": int(getattr(d, 'magic', 0)),
             "comment": str(getattr(d, 'comment', '')),
         })
 
@@ -343,6 +397,32 @@ def close_position(ticket: int):
         raise HTTPException(400, f"Close failed: {comment} (code {retcode})")
         
     return {"closed": int(ticket), "profit": float(pos.profit)}
+
+class ModifyRequest(BaseModel):
+    sl: float = 0
+    tp: float = 0
+
+@app.patch("/position/{ticket}")
+def modify_position(ticket: int, req: ModifyRequest):
+    positions = mt5.positions_get(ticket=ticket)
+    if not positions:
+        raise HTTPException(404, f"Position {ticket} not found")
+    pos = positions[0]
+    request = {
+        "action": mt5.TRADE_ACTION_SLTP,
+        "symbol": pos.symbol,
+        "position": int(ticket),
+        "sl": float(req.sl),
+        "tp": float(req.tp),
+        "magic": int(pos.magic),
+    }
+    logger.info(f"Modifying position {ticket}: {request}")
+    result = mt5.order_send(request)
+    if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
+        comment = result.comment if result else "unknown"
+        retcode = result.retcode if result else -1
+        raise HTTPException(400, f"Modify failed: {comment} (code {retcode})")
+    return {"ticket": int(ticket), "sl": float(req.sl), "tp": float(req.tp)}
 
 # ── WebSocket real-time price stream ─────────────────────
 @app.websocket("/ws/prices")
