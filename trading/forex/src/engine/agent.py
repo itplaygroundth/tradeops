@@ -32,6 +32,10 @@ class ForexAgent:
         self.losses = 0
         self.total_pnl = 0.0
         self.total_pnl_pct = 0.0
+        self.gross_profit = 0.0
+        self.gross_loss = 0.0
+        self.max_dd_pct = 0.0
+        self._peak_pnl = 0.0
 
         # State
         self._open_ticket: Optional[int] = None  # MT5 ticket ID
@@ -47,6 +51,12 @@ class ForexAgent:
         if self.trades_count == 0:
             return 0.0
         return self.wins / self.trades_count
+
+    @property
+    def expectancy_pct(self) -> float:
+        if self.trades_count == 0:
+            return 0.0
+        return self.total_pnl_pct / self.trades_count
 
     @property
     def is_in_trade(self) -> bool:
@@ -105,10 +115,18 @@ class ForexAgent:
         self.total_pnl_pct += pnl_pct
         if pnl > 0:
             self.wins += 1
+            self.gross_profit += pnl
             self._consecutive_losses = 0
         else:
             self.losses += 1
+            self.gross_loss += abs(pnl)
             self._consecutive_losses += 1
+        self._peak_pnl = max(self._peak_pnl, self.total_pnl)
+        peak_equity = self._initial_equity() + self._peak_pnl
+        equity = self._initial_equity() + self.total_pnl
+        if peak_equity > 0:
+            dd_pct = (peak_equity - equity) / peak_equity * 100
+            self.max_dd_pct = max(self.max_dd_pct, dd_pct)
 
     def update_strategy_weights(self, weights: dict):
         """Apply a winning strategy-weight config (from AssetLeader competition).
@@ -142,6 +160,10 @@ class ForexAgent:
             "pnl_pct": round(self.total_pnl_pct, 2),
             "equity": round(self._initial_equity() + self.total_pnl, 2),
             "consecutive_losses": self._consecutive_losses,
+            "max_dd_pct": round(self.max_dd_pct, 2),
+            "expectancy_pct": round(self.expectancy_pct, 4),
+            "gross_profit": round(self.gross_profit, 2),
+            "gross_loss": round(self.gross_loss, 2),
             "in_trade": self.is_in_trade,
             "timeframe": self.dna.timeframe,
             "sl_pips": self.dna.sl_pips,

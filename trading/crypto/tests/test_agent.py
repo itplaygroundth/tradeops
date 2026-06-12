@@ -108,3 +108,40 @@ def test_update_strategy_weights_normalizes():
     agent.update_strategy_weights({"momentum": 2.0, "order_flow": 2.0})
     assert abs(sum(agent.dna.strategy_weights.values()) - 1.0) < 1e-9
     assert agent.dna.strategy_weights["momentum"] == 0.5
+
+
+def test_max_dd_tracks_drawdown_from_peak():
+    agent = _make_agent("momentum")
+    agent.record_trade_result(100.0, 10.0)   # peak: equity 1100
+    agent.record_trade_result(-50.0, -5.0)   # equity 1050 → DD (1100-1050)/1100
+    agent.record_trade_result(-50.0, -5.0)   # equity 1000 → DD (1100-1000)/1100
+    expected = (1100.0 - 1000.0) / 1100.0 * 100
+    assert abs(agent.max_dd_pct - expected) < 1e-9
+
+
+def test_max_dd_never_shrinks_on_recovery():
+    agent = _make_agent("momentum")
+    agent.record_trade_result(100.0, 10.0)
+    agent.record_trade_result(-100.0, -10.0)
+    dd_at_bottom = agent.max_dd_pct
+    agent.record_trade_result(200.0, 20.0)   # full recovery + new peak
+    assert agent.max_dd_pct == dd_at_bottom
+
+
+def test_zero_trades_zero_dd_and_expectancy():
+    agent = _make_agent("momentum")
+    assert agent.max_dd_pct == 0.0
+    assert agent.expectancy_pct == 0.0
+    assert agent.gross_profit == 0.0
+    assert agent.gross_loss == 0.0
+
+
+def test_expectancy_and_gross_tracking():
+    agent = _make_agent("momentum")
+    agent.record_trade_result(10.0, 1.0)
+    agent.record_trade_result(-5.0, -0.5)
+    assert abs(agent.expectancy_pct - 0.25) < 1e-9
+    assert agent.gross_profit == 10.0
+    assert agent.gross_loss == 5.0
+    d = agent.to_dict()
+    assert "max_dd_pct" in d and "expectancy_pct" in d

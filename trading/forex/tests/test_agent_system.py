@@ -583,3 +583,33 @@ def test_leader_asset_gate_prioritizes_accepted_leader(monkeypatch, tmp_path):
     assert other_gate["is_leader"] is False
     assert other_gate["min_confidence"] == 65
     assert other_gate["max_agents"] == 1
+
+
+def test_agent_max_dd_tracks_drawdown_from_peak():
+    from engine.signals import ForexSignalEngine
+    from engine.risk_guardian import ForexRiskGuardian
+    dna = random_dna(1, "EURUSDm")
+    agent = ForexAgent(dna, ForexSignalEngine(), ForexRiskGuardian())
+    agent.record_trade_result(100.0, 10.0)   # peak equity 1100
+    agent.record_trade_result(-50.0, -5.0)
+    agent.record_trade_result(-50.0, -5.0)   # equity 1000
+    expected = (1100.0 - 1000.0) / 1100.0 * 100
+    assert abs(agent.max_dd_pct - expected) < 1e-9
+
+
+def test_agent_max_dd_never_shrinks_and_expectancy():
+    from engine.signals import ForexSignalEngine
+    from engine.risk_guardian import ForexRiskGuardian
+    dna = random_dna(2, "EURUSDm")
+    agent = ForexAgent(dna, ForexSignalEngine(), ForexRiskGuardian())
+    assert agent.max_dd_pct == 0.0 and agent.expectancy_pct == 0.0
+    agent.record_trade_result(100.0, 10.0)
+    agent.record_trade_result(-100.0, -10.0)
+    dd_at_bottom = agent.max_dd_pct
+    agent.record_trade_result(200.0, 20.0)
+    assert agent.max_dd_pct == dd_at_bottom
+    assert abs(agent.expectancy_pct - (20.0 / 3)) < 1e-9
+    assert agent.gross_profit == 300.0
+    assert agent.gross_loss == 100.0
+    d = agent.to_dict()
+    assert "max_dd_pct" in d and "expectancy_pct" in d
