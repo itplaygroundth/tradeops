@@ -1,5 +1,5 @@
 # tradeops — unified launcher
-# Usage: make forex | crypto | control | all | stop | stop-orphans | test
+# Usage: make forex | crypto | control | all | dashboards-build | stop | stop-orphans | test
 
 include config/services.env
 export
@@ -9,7 +9,7 @@ FOREX_MODE ?= live
 CRYPTO_MODE ?= live
 CRYPTO_EXCHANGE ?= binance
 
-.PHONY: help forex crypto control all stop stop-orphans test install
+.PHONY: help forex crypto control all dashboards-build forex-dashboard-build crypto-dashboard-build stop stop-orphans test install
 
 help:
 	@echo "tradeops commands:"
@@ -17,6 +17,7 @@ help:
 	@echo "  make crypto   - crypto bot, $(CRYPTO_MODE)/demo mode (port $(CRYPTO_PORT))"
 	@echo "  make control  - control plane server (port $(CONTROL_PORT))"
 	@echo "  make all      - everything in tmux session 'tradeops'"
+	@echo "  make dashboards-build - build static mtai/crypto dashboards"
 	@echo "  make stop     - kill tmux session 'tradeops'"
 	@echo "  make stop-orphans - kill old duplicate tradeops/legacy bot processes"
 	@echo "  make test     - run python test suites"
@@ -30,6 +31,14 @@ crypto:
 
 control:
 	cd control/server && node server.js
+
+dashboards-build: forex-dashboard-build crypto-dashboard-build
+
+forex-dashboard-build:
+	cd trading/forex/dashboard-ui && npm run build
+
+crypto-dashboard-build:
+	cd trading/crypto/dashboard-ui && npm run build
 
 all:
 	tmux kill-session -t tradeops 2>/dev/null || true
@@ -54,3 +63,5 @@ test:
 install:
 	cd control/server && npm install
 	cd control/client && npm install
+	cd trading/forex/dashboard-ui && npm install
+	cd trading/crypto/dashboard-ui && npm install
