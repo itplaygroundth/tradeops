@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+data/
+node_modules/
+dashboard-ui/dist/
+dashboard/
+.superpowers/
