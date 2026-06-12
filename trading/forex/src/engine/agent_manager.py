@@ -25,6 +25,7 @@ from engine.position_dedup_guard import PositionDedupGuard
 from engine.timeframe_filter import MultiTimeframeFilter
 from engine.weekend_reopen_guard import WeekendReopenGuard
 from engine.xau_pullback_short import XauPullbackShortFilter
+from engine.agent_execution_policy import AgentExecutionPolicy
 from storage.trading_journal import is_exit_deal, deal_reason_label
 
 logger = logging.getLogger("agent_manager")
@@ -90,6 +91,7 @@ class ForexAgentManager:
         self.timeframe_filter = MultiTimeframeFilter()
         self.weekend_reopen_guard = WeekendReopenGuard()
         self.xau_pullback_short = XauPullbackShortFilter()
+        self.agent_execution_policy = AgentExecutionPolicy()
 
         dnas = create_population(agent_count)
         self.agents: List[ForexAgent] = [
@@ -111,6 +113,7 @@ class ForexAgentManager:
         self._equity_curve = []
         self._daily_pnl = {}
         self._order_history = []
+        self._entry_audit = []
         self._hard_stop_closed_tickets = set()
         self._manual_entries_paused = False
         self._manual_pause_reason = ""
@@ -543,6 +546,8 @@ class ForexAgentManager:
         summary["timeframe_filter"] = self.timeframe_filter.summary()
         summary["xau_pullback_short"] = self.xau_pullback_short.summary()
         summary["weekend_reopen_guard"] = self.weekend_reopen_guard.summary()
+        summary["agent_execution_policy"] = self.agent_execution_policy.summary()
+        summary["entry_audit"] = self._entry_audit[:100]
         summary["control"] = self.control_status()
 
     async def _check_paper_positions(self, symbol: str, price: float):
@@ -791,20 +796,48 @@ class ForexAgentManager:
                 logger.warning(f"[PositionDedup] Failed to fetch positions: {e}")
                 return
 
-        for agent in agents_for_symbol[:max_agents]:
+        selection = self.agent_execution_policy.select(symbol, agents_for_symbol, max_agents=max_agents)
+        executors = [
+            agent for agent in agents_for_symbol
+            if self.agent_execution_policy.permission_for(selection, agent).allowed
+        ]
+
+        for agent in executors:
+            permission = self.agent_execution_policy.permission_for(selection, agent)
+            dominant_strategy = max(agent.dna.strategy_weights, key=lambda k: agent.dna.strategy_weights[k])
+            audit = {
+                "timestamp": time.time(),
+                "status": "evaluating",
+                "symbol": symbol,
+                "agent": agent.dna.name,
+                "agent_id": agent.dna.id,
+                "strategy": dominant_strategy,
+                "agent_timeframe": agent.dna.timeframe,
+                "execution_permission": permission.to_dict(),
+                "leader_gate": gate,
+                "adaptive_guard": adaptive,
+                "min_confidence": min_confidence,
+            }
             if not self.paper_mode:
                 blocked, reason = self.weekend_reopen_guard.blocks_entries(symbol)
                 if blocked:
                     logger.warning(f"[WeekendReopenGuard] {agent.dna.name} {symbol} blocked: {reason}")
+                    audit.update({"status": "blocked", "block_stage": "weekend_reopen_guard", "reason": reason})
+                    self._record_entry_audit(audit)
                     continue
             perf = self.performance_guard.evaluate(symbol, agent.dna.name)
+            audit["performance_guard"] = perf.__dict__ if hasattr(perf, "__dict__") else {"allowed": perf.allowed, "reason": perf.reason}
             if not perf.allowed:
                 logger.warning(f"[PerformanceGuard] {agent.dna.name} {symbol} blocked: {perf.reason}")
+                audit.update({"status": "blocked", "block_stage": "performance_guard", "reason": perf.reason})
+                self._record_entry_audit(audit)
                 continue
             signal = agent.generate_signal(price)
+            audit["base_signal"] = dict(signal)
             pullback_entry = None
             if not self.paper_mode and self.xau_pullback_short.supports(symbol):
                 pullback_entry = await self.xau_pullback_short.evaluate(self.mt5, symbol, price)
+                audit["pullback_entry"] = pullback_entry.__dict__ if hasattr(pullback_entry, "__dict__") else {}
                 if pullback_entry.allowed:
                     if signal["action"] in ("HOLD", pullback_entry.action):
                         signal = {
@@ -820,16 +853,38 @@ class ForexAgentManager:
                                 f"pullback setup favors {pullback_entry.action}"
                             ),
                         )
+                        audit.update({
+                            "status": "blocked",
+                            "block_stage": "pullback_entry",
+                            "reason": f"pullback setup favors {pullback_entry.action}",
+                            "final_signal": dict(signal),
+                        })
+                        self._record_entry_audit(audit)
                         continue
                 elif signal["action"] != "HOLD":
                     self._log_blocked(
                         f"pullback_entry:{symbol}:{pullback_entry.reason}",
                         f"[PullbackEntry] {agent.dna.name} {symbol} {signal['action']} blocked: {pullback_entry.reason}",
                     )
+                    audit.update({
+                        "status": "blocked",
+                        "block_stage": "pullback_entry",
+                        "reason": pullback_entry.reason,
+                        "final_signal": dict(signal),
+                    })
+                    self._record_entry_audit(audit)
                     continue
+            audit["final_signal"] = dict(signal)
             if signal["action"] == "HOLD" or signal["confidence"] < min_confidence:
+                audit.update({
+                    "status": "blocked",
+                    "block_stage": "signal_confidence",
+                    "reason": f"{signal['action']} confidence {signal['confidence']} < {min_confidence}",
+                })
+                self._record_entry_audit(audit)
                 continue
             action = "BUY" if signal["action"] == "LONG" else "SELL"
+            audit["action"] = action
 
             if not self.paper_mode:
                 dedup_kwargs = {}
@@ -840,12 +895,18 @@ class ForexAgentManager:
                         "cooldown_seconds": pullback_entry.basket_cooldown_seconds,
                     }
                 dedup = self.position_dedup_guard.evaluate(symbol, action, live_positions, **dedup_kwargs)
+                audit["position_dedup_guard"] = dedup.__dict__ if hasattr(dedup, "__dict__") else {"allowed": dedup.allowed, "reason": dedup.reason}
                 if not dedup.allowed:
                     logger.warning(f"[PositionDedup] {agent.dna.name} {symbol} {action} blocked: {dedup.reason}")
+                    audit.update({"status": "blocked", "block_stage": "position_dedup_guard", "reason": dedup.reason})
+                    self._record_entry_audit(audit)
                     continue
                 mtf = await self.timeframe_filter.evaluate(self.mt5, symbol, action, agent.dna.timeframe)
+                audit["timeframe_filter"] = mtf.__dict__ if hasattr(mtf, "__dict__") else {"allowed": mtf.allowed, "reason": mtf.reason}
                 if not mtf.allowed:
                     logger.warning(f"[MTF] {agent.dna.name} {symbol} {action} blocked: {mtf.reason}")
+                    audit.update({"status": "blocked", "block_stage": "timeframe_filter", "reason": mtf.reason})
+                    self._record_entry_audit(audit)
                     continue
 
             # Risk validation
@@ -875,16 +936,29 @@ class ForexAgentManager:
                 risk_multiplier=adaptive["lot_multiplier"],
             )
 
+            audit["risk_guardian"] = {
+                "allowed": risk_result.allowed,
+                "reason": risk_result.reason,
+                "lot_size": risk_result.lot_size,
+                "risk_amount": risk_result.risk_amount,
+                "sl_price": risk_result.sl_price,
+                "tp_price": risk_result.tp_price,
+            }
             if not risk_result.allowed:
                 logger.debug(f"[{agent.dna.name}] blocked: {risk_result.reason}")
+                audit.update({"status": "blocked", "block_stage": "risk_guardian", "reason": risk_result.reason})
+                self._record_entry_audit(audit)
                 continue
 
             # Execute
+            audit.update({"status": "approved", "reason": "all entry guards passed"})
             if self.paper_mode:
-                await self._paper_execute(agent, signal, price, risk_result)
+                await self._paper_execute(agent, signal, price, risk_result, audit=audit)
             else:
-                await self._live_execute(agent, signal, price, risk_result)
+                await self._live_execute(agent, signal, price, risk_result, audit=audit)
                 if agent._open_ticket:
+                    audit.update({"status": "placed", "ticket": agent._open_ticket})
+                    self._record_entry_audit(audit)
                     live_open_positions += 1
                     live_positions.append({
                         "ticket": agent._open_ticket,
@@ -922,7 +996,17 @@ class ForexAgentManager:
             self._last_block_log[key] = now
             logger.warning(message)
 
-    async def _paper_execute(self, agent: ForexAgent, signal: dict, price: float, risk: RiskResult):
+    def _record_entry_audit(self, audit: Dict):
+        try:
+            entry = dict(audit or {})
+            entry.setdefault("timestamp", time.time())
+            self._entry_audit.insert(0, entry)
+            if len(self._entry_audit) > 200:
+                self._entry_audit.pop()
+        except Exception:
+            pass
+
+    async def _paper_execute(self, agent: ForexAgent, signal: dict, price: float, risk: RiskResult, audit: Optional[dict] = None):
         """Simulates order execution for paper mode."""
         action = "BUY" if signal["action"] == "LONG" else "SELL"
         logger.info(
@@ -949,7 +1033,11 @@ class ForexAgentManager:
                 "tp": agent._open_tp,
                 "type": "paper",
                 "status": "open",
+                "audit": audit or {},
             }
+            if audit is not None:
+                audit.update({"status": "placed", "ticket": agent._open_ticket})
+                self._record_entry_audit(audit)
             self._order_history.insert(0, order)
             if len(self._order_history) > 500:
                 self._order_history.pop()
@@ -962,7 +1050,7 @@ class ForexAgentManager:
         except Exception:
             pass
 
-    async def _live_execute(self, agent: ForexAgent, signal: dict, price: float, risk: RiskResult):
+    async def _live_execute(self, agent: ForexAgent, signal: dict, price: float, risk: RiskResult, audit: Optional[dict] = None):
         """Sends order execution request to MT5."""
         action = "BUY" if signal["action"] == "LONG" else "SELL"
         try:
@@ -997,6 +1085,7 @@ class ForexAgentManager:
                     "type": "live",
                     "status": "placed",
                     "ticket": ticket,
+                    "audit": audit or {},
                 }
                 self._order_history.insert(0, order)
                 if len(self._order_history) > 500:
@@ -1011,6 +1100,9 @@ class ForexAgentManager:
                 pass
         except Exception as e:
             logger.error(f"[LIVE] Order failed for {agent.dna.name}: {e}")
+            if audit is not None:
+                audit.update({"status": "failed", "block_stage": "live_execute", "reason": str(e)})
+                self._record_entry_audit(audit)
 
     async def _update_account(self):
         """Refreshes account balance and equity details from MT5."""
