@@ -23,6 +23,7 @@ from engine.leader_asset_supervisor import LeaderAssetSupervisor
 from engine.performance_guard import PerformanceGuard
 from engine.position_dedup_guard import PositionDedupGuard
 from engine.strategy_performance_guard import StrategyPerformanceGuard
+from engine.regime_service import RegimeService
 from engine.timeframe_filter import MultiTimeframeFilter
 from engine.weekend_reopen_guard import WeekendReopenGuard
 from engine.xau_pullback_short import XauPullbackShortFilter
@@ -90,6 +91,7 @@ class ForexAgentManager:
         from storage.history_db import last_open_ts_by_symbol
         self.position_dedup_guard = PositionDedupGuard(managed_magic=MANAGED_MAGIC, db_lookup=last_open_ts_by_symbol)
         self.strategy_performance_guard = StrategyPerformanceGuard()
+        self.regime_service = RegimeService(getattr(self.mt5, "get_ohlcv", None))
         self.timeframe_filter = MultiTimeframeFilter()
         self.weekend_reopen_guard = WeekendReopenGuard()
         self.xau_pullback_short = XauPullbackShortFilter()
@@ -546,6 +548,7 @@ class ForexAgentManager:
             summary["performance_guard"] = fallback
         summary["position_dedup_guard"] = self.position_dedup_guard.summary()
         summary["strategy_performance_guard"] = self.strategy_performance_guard.summary()
+        summary["regime_service"] = self.regime_service.summary()
         summary["timeframe_filter"] = self.timeframe_filter.summary()
         summary["xau_pullback_short"] = self.xau_pullback_short.summary()
         summary["weekend_reopen_guard"] = self.weekend_reopen_guard.summary()

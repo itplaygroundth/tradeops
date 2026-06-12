@@ -25,6 +25,7 @@ from engine.evolution import evolve, EVOLUTION_INTERVAL
 from engine.strategy_performance_guard import StrategyPerformanceGuard
 from engine.performance_guard import PairPerformanceGuard
 from engine.position_dedup_guard import PositionDedupGuard
+from engine.regime_service import RegimeService
 
 logger = logging.getLogger("agent_manager")
 
@@ -76,6 +77,7 @@ class CryptoAgentManager:
         self.strategy_performance_guard = StrategyPerformanceGuard()
         self.pair_performance_guard = PairPerformanceGuard()
         self.position_dedup_guard = PositionDedupGuard()
+        self.regime_service = RegimeService(getattr(self.router, "get_ohlcv", None))
 
         dnas = create_population(agent_count, pairs=self._pairs)
         self.agents: List[CryptoAgent] = [
@@ -688,6 +690,7 @@ class CryptoAgentManager:
             "total_agents": len(self.agents),
             "pairs": list(self._pairs),
             "strategy_performance_guard": self.strategy_performance_guard.summary(),
+            "regime_service": self.regime_service.summary(),
             "control": self.control_status(),
         }
 
