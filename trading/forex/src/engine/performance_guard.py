@@ -16,6 +16,11 @@ EXPECTANCY_SYMBOL_BLOCK_THRESHOLD = float(os.getenv("EXPECTANCY_SYMBOL_BLOCK_THR
 # After this cooldown elapses since the symbol's last closed trade, allow a
 # probation trade so its expectancy can refresh.
 EXPECTANCY_SYMBOL_COOLDOWN_SECONDS = int(os.getenv("EXPECTANCY_SYMBOL_COOLDOWN_SECONDS", "14400"))
+RECENT_SYMBOL_GUARD_ENABLED = str(os.getenv("RECENT_SYMBOL_GUARD_ENABLED", "true")).lower() in ("1", "true", "yes", "on")
+RECENT_SYMBOL_LOOKBACK_DAYS = float(os.getenv("RECENT_SYMBOL_LOOKBACK_DAYS", "3"))
+RECENT_SYMBOL_MIN_TRADES = int(os.getenv("RECENT_SYMBOL_MIN_TRADES", "3"))
+RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD = float(os.getenv("RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD", "-10"))
+RECENT_SYMBOL_COOLDOWN_SECONDS = int(os.getenv("RECENT_SYMBOL_COOLDOWN_SECONDS", "172800"))
 MANUAL_PAUSED_SYMBOLS = {
     item.strip()
     for item in os.getenv("MANUAL_PAUSED_SYMBOLS", "AUDUSDm").split(",")
@@ -68,6 +73,7 @@ class PerformanceGuard:
             "paused_symbols": {},
             "paused_agents": {},
             "expectancy_blocked_symbols": {},
+            "recent_blocked_symbols": {},
             "manual_paused_symbols": sorted(MANUAL_PAUSED_SYMBOLS),
             "symbol_stats": {},
             "agent_stats": {},
@@ -135,6 +141,37 @@ class PerformanceGuard:
             last_ts = max(last_ts, _parse_utc(row.get("exit_time_utc")))
         return last_ts
 
+    @staticmethod
+    def _recent_symbol_stats(rows: List[Dict[str, Any]], now: float) -> Dict[str, Dict[str, Any]]:
+        cutoff = now - (RECENT_SYMBOL_LOOKBACK_DAYS * 86400)
+        stats: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            symbol = str(row.get("symbol") or "")
+            if not symbol:
+                continue
+            ts = _parse_utc(row.get("exit_time_utc"))
+            if not ts or ts < cutoff:
+                continue
+            bucket = stats.setdefault(symbol, {
+                "trades": 0,
+                "wins": 0,
+                "losses": 0,
+                "net_pnl": 0.0,
+                "last_trade_ts": 0.0,
+            })
+            pnl = _float(row.get("net_pnl"))
+            bucket["trades"] += 1
+            bucket["net_pnl"] = round(bucket["net_pnl"] + pnl, 2)
+            bucket["last_trade_ts"] = max(bucket["last_trade_ts"], ts)
+            if pnl > 0:
+                bucket["wins"] += 1
+            elif pnl < 0:
+                bucket["losses"] += 1
+        for bucket in stats.values():
+            trades = bucket["trades"]
+            bucket["win_rate"] = round((bucket["wins"] / trades * 100.0) if trades else 0.0, 1)
+        return stats
+
     def refresh(self, now: Optional[float] = None) -> Dict[str, Any]:
         now = now or datetime.now(tz=timezone.utc).timestamp()
         rows = self._closed_rows(self._load_journal())
@@ -143,6 +180,7 @@ class PerformanceGuard:
         paused_symbols = {}
         paused_agents = {}
         expectancy_blocked_symbols = {}
+        recent_blocked_symbols = {}
 
         for symbol in symbol_stats:
             streak, last_ts = self._loss_streak(rows, "symbol", symbol)
@@ -162,6 +200,30 @@ class PerformanceGuard:
                     "loss_streak": streak,
                     "cooldown_remaining_seconds": remaining,
                     "reason": f"{agent} loss streak {streak} >= {self.agent_loss_limit}",
+                }
+
+        recent_symbol_stats = self._recent_symbol_stats(rows, now) if RECENT_SYMBOL_GUARD_ENABLED else {}
+        for symbol, stats in recent_symbol_stats.items():
+            if (
+                int(stats.get("trades") or 0) >= RECENT_SYMBOL_MIN_TRADES
+                and float(stats.get("net_pnl") or 0.0) <= RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD
+            ):
+                last_ts = float(stats.get("last_trade_ts") or 0.0)
+                remaining = int(RECENT_SYMBOL_COOLDOWN_SECONDS - max(now - last_ts, 0)) if last_ts else 0
+                if remaining <= 0:
+                    continue
+                recent_blocked_symbols[symbol] = {
+                    "trades": stats.get("trades"),
+                    "wins": stats.get("wins"),
+                    "losses": stats.get("losses"),
+                    "win_rate": stats.get("win_rate"),
+                    "net_pnl": stats.get("net_pnl"),
+                    "cooldown_remaining_seconds": remaining,
+                    "reason": (
+                        f"{symbol} recent net PnL {float(stats.get('net_pnl') or 0.0):.2f} "
+                        f"<= {RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD:.2f} over "
+                        f"{RECENT_SYMBOL_LOOKBACK_DAYS:g}d"
+                    ),
                 }
 
         if EXPECTANCY_SYMBOL_GUARD_ENABLED:
@@ -195,10 +257,19 @@ class PerformanceGuard:
             "paused_symbols": paused_symbols,
             "paused_agents": paused_agents,
             "expectancy_blocked_symbols": expectancy_blocked_symbols,
+            "recent_blocked_symbols": recent_blocked_symbols,
             "manual_paused_symbols": sorted(MANUAL_PAUSED_SYMBOLS),
             "symbol_stats": symbol_stats,
             "agent_stats": agent_stats,
+            "recent_symbol_stats": recent_symbol_stats,
             "cooldown_seconds": self.cooldown_seconds,
+            "recent_guard": {
+                "enabled": RECENT_SYMBOL_GUARD_ENABLED,
+                "lookback_days": RECENT_SYMBOL_LOOKBACK_DAYS,
+                "min_trades": RECENT_SYMBOL_MIN_TRADES,
+                "net_pnl_block_threshold": RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD,
+                "cooldown_seconds": RECENT_SYMBOL_COOLDOWN_SECONDS,
+            },
             "expectancy_guard": {
                 "enabled": EXPECTANCY_SYMBOL_GUARD_ENABLED,
                 "min_trades": EXPECTANCY_SYMBOL_MIN_TRADES,
@@ -214,6 +285,9 @@ class PerformanceGuard:
         symbol_pause = summary["paused_symbols"].get(symbol)
         if symbol_pause:
             return PerformanceDecision(False, symbol_pause["reason"], symbol_streak=symbol_pause["loss_streak"])
+        recent_pause = summary.get("recent_blocked_symbols", {}).get(symbol)
+        if recent_pause:
+            return PerformanceDecision(False, recent_pause["reason"])
         expectancy_pause = summary.get("expectancy_blocked_symbols", {}).get(symbol)
         if expectancy_pause:
             return PerformanceDecision(False, expectancy_pause["reason"])

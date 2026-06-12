@@ -1096,7 +1096,12 @@ class ForexAgentManager:
         summary.update(previous_competition_summary)
         summary["account_risk"] = self.account_risk_monitor.current.to_dict()
         summary["adaptive_guard"] = self._adaptive_guard(self.account_risk_monitor.current)
-        summary["performance_guard"] = self.performance_guard.summary()
+        try:
+            summary["performance_guard"] = self.performance_guard.refresh()
+        except Exception as exc:
+            fallback = self.performance_guard.summary()
+            fallback["refresh_error"] = str(exc)
+            summary["performance_guard"] = fallback
         summary["position_dedup_guard"] = self.position_dedup_guard.summary()
         summary["timeframe_filter"] = self.timeframe_filter.summary()
         summary["weekend_reopen_guard"] = self.weekend_reopen_guard.summary()

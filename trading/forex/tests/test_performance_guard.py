@@ -35,6 +35,9 @@ def test_performance_guard_pauses_symbol_and_agent_on_recent_loss_streak(monkeyp
 
 
 def test_performance_guard_allows_after_win_breaks_streak(monkeypatch):
+    import engine.performance_guard as perf_mod
+
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_GUARD_ENABLED", False)
     guard = PerformanceGuard(symbol_loss_limit=3, agent_loss_limit=2, cooldown_seconds=3600)
     rows = [
         closed("XAUUSDm", "FX-XAU-011", -10, 1),
@@ -116,3 +119,57 @@ def test_expectancy_block_expires_after_cooldown(monkeypatch):
     decision = guard.evaluate("AUDUSDm", "FX-AUD-001", now=last_ts + 3601)
     assert decision.allowed is True
     assert guard.summary()["expectancy_blocked_symbols"] == {}
+
+
+def test_recent_symbol_guard_blocks_bad_recent_regime(monkeypatch):
+    import engine.performance_guard as perf_mod
+
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_GUARD_ENABLED", True)
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_LOOKBACK_DAYS", 3)
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_MIN_TRADES", 3)
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD", -10)
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_COOLDOWN_SECONDS", 3600)
+    monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_GUARD_ENABLED", False)
+    monkeypatch.setattr(perf_mod, "MANUAL_PAUSED_SYMBOLS", set())
+
+    guard = PerformanceGuard(symbol_loss_limit=10, agent_loss_limit=10, cooldown_seconds=3600)
+    rows = [
+        closed("XAUUSDm", "FX-XAU-011", -5, 1),
+        closed("XAUUSDm", "FX-XAU-003", -4, 2),
+        closed("XAUUSDm", "FX-XAU-011", -3, 3),
+        closed("GBPUSDm", "FX-GBP-001", 3, 3),
+    ]
+    monkeypatch.setattr(guard, "_load_journal", lambda: rows)
+
+    decision = guard.evaluate("XAUUSDm", "FX-XAU-011", now=1780358580 + 60)
+
+    assert decision.allowed is False
+    assert "recent net PnL" in decision.reason
+    summary = guard.summary()
+    assert summary["recent_blocked_symbols"]["XAUUSDm"]["net_pnl"] == -12
+    assert guard.evaluate("GBPUSDm", "FX-GBP-001", now=1780358580 + 60).allowed is True
+
+
+def test_recent_symbol_guard_allows_after_cooldown(monkeypatch):
+    import engine.performance_guard as perf_mod
+
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_GUARD_ENABLED", True)
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_LOOKBACK_DAYS", 3)
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_MIN_TRADES", 3)
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD", -10)
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_COOLDOWN_SECONDS", 3600)
+    monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_GUARD_ENABLED", False)
+    monkeypatch.setattr(perf_mod, "MANUAL_PAUSED_SYMBOLS", set())
+
+    guard = PerformanceGuard(symbol_loss_limit=10, agent_loss_limit=10, cooldown_seconds=3600)
+    rows = [
+        closed("XAUUSDm", "FX-XAU-011", -5, 1),
+        closed("XAUUSDm", "FX-XAU-003", -4, 2),
+        closed("XAUUSDm", "FX-XAU-011", -3, 3),
+    ]
+    monkeypatch.setattr(guard, "_load_journal", lambda: rows)
+
+    decision = guard.evaluate("XAUUSDm", "FX-XAU-011", now=1780358580 + 3601)
+
+    assert decision.allowed is True
+    assert guard.summary()["recent_blocked_symbols"] == {}
