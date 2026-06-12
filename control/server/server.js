@@ -1193,6 +1193,10 @@ installTradingControlRoutes(app, { db, getSettings, notifications, sendTelegramM
 installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction, notifications, sendTelegramMessage });
 installMadsBridgeRoutes(app, { db, getSettings, collectTradingOverview, dispatchControlCommand, recordControlAction });
 
+const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
+app.use(express.static(CLIENT_DIST));
+app.get('*', (_req, res) => res.sendFile(path.join(CLIENT_DIST, 'index.html')));
+
 app.listen(PORT, () => {
-  console.log(`🚀 AI Hedgefund API Server running on http://localhost:${PORT}`);
+  console.log(`AI Hedgefund API Server running on http://localhost:${PORT}`);
 });
