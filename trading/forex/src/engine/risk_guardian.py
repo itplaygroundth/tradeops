@@ -19,9 +19,12 @@ from mt5_bridge.pip_calc import (
 
 logger = logging.getLogger("risk_guardian")
 
+# ── Micro-profit mode (env-gated) ─────────────────────────
+MICRO_MODE = os.getenv("MICRO_MODE", "").lower() in ("1", "true", "yes")
+
 # ── Hard Rules ───────────────────────────────────────────
 MAX_RISK_PCT = 0.01          # 1% per trade
-MIN_RR_RATIO = 2.0           # TP must be >= 2x SL distance
+MIN_RR_RATIO = float(os.getenv("MTAI_MIN_RR_RATIO", "1.2" if MICRO_MODE else "2.0"))
 MAX_CONCURRENT_POSITIONS = 3 # max open trades
 DAILY_DRAWDOWN_LIMIT = 0.05  # 5% daily loss → stop all
 MAX_EFFECTIVE_LEVERAGE = 100 # effective leverage ceiling 1:100
@@ -35,11 +38,18 @@ MANAGED_MAGIC = int(os.getenv("MTAI_MAGIC", "20260101"))
 RISK_STATE_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "risk_state.json"
 
 # Minimum TP in pips per symbol (spread-aware)
-MIN_TP_PIPS = {
+_BASE_MIN_TP_PIPS = {
     "EURUSDm": 10,   "GBPUSDm": 12,   "USDJPYm": 10,
     "XAUUSDm": 100,  "AUDUSDm": 10,   "USDCADm": 12,
     "USDCHFm": 10,   "NZDUSDm": 10,
 }
+_MICRO_TP_SCALE = float(os.getenv("MTAI_MICRO_TP_SCALE", "0.3"))
+_MICRO_TP_FLOOR = 2  # pips
+if MICRO_MODE:
+    MIN_TP_PIPS = {k: max(_MICRO_TP_FLOOR, int(v * _MICRO_TP_SCALE))
+                   for k, v in _BASE_MIN_TP_PIPS.items()}
+else:
+    MIN_TP_PIPS = dict(_BASE_MIN_TP_PIPS)
 
 @dataclass
 class RiskResult:

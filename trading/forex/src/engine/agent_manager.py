@@ -14,6 +14,7 @@ from engine.dna import create_population
 from engine.agent import ForexAgent
 from engine.signals import ForexSignalEngine
 from engine.risk_guardian import ForexRiskGuardian, RiskResult, AccountRiskMonitor
+from engine.risk_guardian import MICRO_MODE
 from engine.evolution import evolve, EVOLUTION_INTERVAL
 from mt5_bridge.client import MT5Client
 from engine.competition_scheduler import CompetitionScheduler
@@ -68,6 +69,8 @@ TRAILING_MIN_STEP = {
 }
 MANAGED_MAGIC = int(os.getenv("MTAI_MAGIC", "20260101"))
 DAILY_PROFIT_TARGET_USD = float(os.getenv("MTAI_DAILY_PROFIT_TARGET_USD", "20.0"))
+# Micro-mode override: daily target in cents for cent accounts
+DAILY_PROFIT_TARGET_CENTS = float(os.getenv("MTAI_DAILY_PROFIT_TARGET_CENTS", "500"))
 ADAPTIVE_CAUTION_DD = float(os.getenv("ADAPTIVE_CAUTION_DD", "0.015"))
 ADAPTIVE_DEFENSE_DD = float(os.getenv("ADAPTIVE_DEFENSE_DD", "0.03"))
 ADAPTIVE_FLOATING_LOSS_CAUTION_USD = float(os.getenv("ADAPTIVE_FLOATING_LOSS_CAUTION_USD", "5.0"))
@@ -784,8 +787,8 @@ class ForexAgentManager:
             today = time.strftime("%Y-%m-%d", time.localtime())
             pnl = self._daily_pnl.get(today, 0.0)
             logger.warning(
-                f"[DailyTarget] entries blocked: daily realized PnL ${pnl:.2f} "
-                f">= target ${DAILY_PROFIT_TARGET_USD:.2f}"
+                f"[DailyTarget] entries blocked: daily realized PnL {pnl:.2f} "
+                f">= target {self._daily_target_in_account_units():.2f}"
             )
             return
 
@@ -937,7 +940,7 @@ class ForexAgentManager:
             # Risk validation
             today = int(time.time() / 86400)
             day_key = time.strftime("%Y-%m-%d", time.localtime())
-            target_profit_remaining = max(DAILY_PROFIT_TARGET_USD - self._daily_pnl.get(day_key, 0.0), 0.0)
+            target_profit_remaining = max(self._daily_target_in_account_units() - self._daily_pnl.get(day_key, 0.0), 0.0)
             
             # Simple mock lookup to pass to dynamic risk / lot sizing without server dependency in tests
             async def get_price_func(sym):
@@ -1324,7 +1327,20 @@ class ForexAgentManager:
     def _daily_profit_target_reached(self, now: Optional[float] = None) -> bool:
         ts = time.time() if now is None else now
         day = time.strftime("%Y-%m-%d", time.localtime(ts))
-        return self._daily_pnl.get(day, 0.0) >= DAILY_PROFIT_TARGET_USD
+        target = self._daily_target_in_account_units()
+        return self._daily_pnl.get(day, 0.0) >= target
+
+    def _daily_target_in_account_units(self) -> float:
+        """Return daily profit target in account-currency units.
+
+        On cent accounts (USC) ``_daily_pnl`` is already in cents, so we must
+        compare against a cent target — not the USD target, which would stop
+        trading after only 20 *cents* of profit.
+        """
+        from mt5_bridge.pip_calc import is_cent_currency
+        if is_cent_currency(self._account_currency):
+            return DAILY_PROFIT_TARGET_CENTS
+        return DAILY_PROFIT_TARGET_USD
 
     def _adaptive_guard(self, account_risk=None) -> Dict:
         account_risk = account_risk or self.account_risk_monitor.current

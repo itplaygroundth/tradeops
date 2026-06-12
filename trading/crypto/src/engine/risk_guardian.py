@@ -12,14 +12,21 @@ from dataclasses import dataclass
 
 logger = logging.getLogger("risk_guardian")
 
+# ── Micro-profit mode (env-gated) ─────────────────────────
+MICRO_MODE = os.getenv("MICRO_MODE", "").lower() in ("1", "true", "yes")
+
 # ── Hard Rules ───────────────────────────────────────────
 MAX_RISK_PCT = 0.01           # 1% of balance risked per trade
-MIN_RR_RATIO = 1.3            # TP must be >= 1.3x SL distance
+MIN_RR_RATIO = float(os.getenv("CRYPTO_MIN_RR_RATIO", "1.15" if MICRO_MODE else "1.3"))
 MAX_CONCURRENT_POSITIONS = int(os.getenv("CRYPTO_MAX_CONCURRENT_POSITIONS", "1"))  # max open trades per pair
 DAILY_DRAWDOWN_LIMIT = 0.05   # 5% daily loss → stop all
 DAILY_REALIZED_LOSS_LIMIT_USDT = 20.0  # fixed daily stop loss in USDT
-DAILY_PROFIT_TARGET_USDT = 20.0  # stop opening new trades after +$20 realized PnL
+DAILY_PROFIT_TARGET_USDT = float(os.getenv("CRYPTO_DAILY_PROFIT_TARGET_USDT",
+                                           "2.0" if MICRO_MODE else "20.0"))
 MIN_SL_PCT = 0.001            # 0.1% floor on stop distance
+# Micro-mode: TP must cover round-trip fees
+CRYPTO_FEE_PCT = float(os.getenv("CRYPTO_FEE_PCT", "0.001"))
+MICRO_TP_FLOOR_PCT = CRYPTO_FEE_PCT * 2  # break-even floor
 
 
 @dataclass
@@ -109,6 +116,10 @@ class CryptoRiskGuardian:
         # Auto TP if not specified
         if tp_pct <= 0:
             tp_pct = sl_pct * MIN_RR_RATIO
+
+        # Micro-mode: TP must cover round-trip exchange fees
+        if MICRO_MODE and tp_pct < MICRO_TP_FLOOR_PCT:
+            tp_pct = MICRO_TP_FLOOR_PCT
 
         # R:R check
         rr_ratio = tp_pct / sl_pct

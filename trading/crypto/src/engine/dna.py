@@ -3,6 +3,7 @@ Crypto Agent DNA — defines configuration parameters, strategy weights, and bia
 Each agent DNA is specialized to trade a single crypto pair (USDT-quoted).
 Risk is expressed as price-distance percentages (sl_pct/tp_pct), not pips.
 """
+import os
 import random
 from dataclasses import dataclass, field
 from typing import Dict
@@ -15,6 +16,8 @@ STRATEGY_METHODS = [
     "momentum", "mean_reversion", "grid_scalp",
     "order_flow", "breakout_atr", "market_structure",
 ]
+
+MICRO_MODE = os.getenv("MICRO_MODE", "").lower() in ("1", "true", "yes")
 
 # Symbol root for naming (BTCUSDT -> BTC)
 def symbol_root(symbol: str) -> str:
@@ -45,8 +48,12 @@ def random_dna(agent_id: int, symbol: str = None, regime: str = "MIXED") -> Cryp
 
     # Intraday crypto targets should be reachable; strategy caps in the
     # manager tighten these further for scalp/timeframe-specific entries.
-    sl_pct = random.uniform(0.006, 0.018)
-    tp_pct = sl_pct * random.uniform(1.3, 1.8)
+    if MICRO_MODE:
+        sl_pct = random.uniform(0.002, 0.006)
+        tp_pct = sl_pct * random.uniform(1.1, 1.4)
+    else:
+        sl_pct = random.uniform(0.006, 0.018)
+        tp_pct = sl_pct * random.uniform(1.3, 1.8)
 
     # Strategy weights (normalized to sum 1.0)
     weights = {m: random.random() for m in STRATEGY_METHODS}

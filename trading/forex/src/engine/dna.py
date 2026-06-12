@@ -2,6 +2,7 @@
 Forex Agent DNA — defines configuration parameters, strategy weights, and TF/session biases.
 Each agent DNA is specialized to trade a single symbol.
 """
+import os
 import random
 from dataclasses import dataclass, field
 from typing import Dict
@@ -15,6 +16,9 @@ STRATEGY_METHODS = [
     "order_flow", "breakout_atr", "session_open", "market_structure",
 ]
 
+MICRO_MODE = os.getenv("MICRO_MODE", "").lower() in ("1", "true", "yes")
+_MICRO_SL_SCALE = float(os.getenv("MTAI_MICRO_SL_SCALE", "0.4"))
+
 # Symbol-specific defaults (from backtests)
 SYMBOL_DEFAULTS = {
     "EURUSDm": {"sl_range": (10, 25), "tp_mult": (1.5, 3.0), "tf_bias": "M15"},
@@ -26,6 +30,15 @@ SYMBOL_DEFAULTS = {
     "USDCHFm": {"sl_range": (10, 20), "tp_mult": (1.5, 2.5), "tf_bias": "H1"},
     "NZDUSDm": {"sl_range": (10, 20), "tp_mult": (1.5, 2.5), "tf_bias": "H4"},
 }
+
+if MICRO_MODE:
+    _MICRO_SL_FLOOR = {"XAUUSDm": 30}
+    for sym, cfg in SYMBOL_DEFAULTS.items():
+        lo, hi = cfg["sl_range"]
+        floor = _MICRO_SL_FLOOR.get(sym, 3)
+        cfg["sl_range"] = (max(floor, int(lo * _MICRO_SL_SCALE)),
+                           max(floor + 1, int(hi * _MICRO_SL_SCALE)))
+        cfg["tp_mult"] = (1.2, 1.6)
 
 @dataclass
 class ForexAgentDNA:
