@@ -124,10 +124,10 @@ const DEFAULT_SETTINGS = {
   lineTargetId: "",
   lineNotifyToken: "",
   riskProfile: "Balanced",
-  mt5BridgeUrl: 'http://192.168.1.107:8888',
+  mt5BridgeUrl: process.env.MT5_BRIDGE_URL || 'http://192.168.1.107:8888',
   tradingControl: {
-    mtaiUrl: "http://127.0.0.1:3003",
-    cryptoUrl: "http://127.0.0.1:3006",
+    mtaiUrl: process.env.MTAI_API_URL || "http://127.0.0.1:3003",
+    cryptoUrl: process.env.CRYPTO_AI_API_URL || "http://127.0.0.1:3006",
     dailyReportTime: "23:55",
     autoSendDailyReport: false
   },
