@@ -151,8 +151,6 @@ class MultiTimeframeFilter:
             self._record_decision(symbol, decision)
             return decision
 
-        # XAU is stricter: do not trade against higher timeframe and avoid range unless primary agrees clearly.
-        strict = _symbol_key(symbol) == "XAU"
         primary_match = _matches(action, primary_trend)
         higher_match = _matches(action, higher_trend)
 
@@ -160,12 +158,12 @@ class MultiTimeframeFilter:
             decision = TimeframeDecision(True, "MTF aligned", primary, higher, primary_trend, higher_trend, confidence_adjustment=5)
             self._record_decision(symbol, decision)
             return decision
-        if primary_match and higher_trend == "range" and not strict:
-            decision = TimeframeDecision(True, "MTF primary aligned; higher range", primary, higher, primary_trend, higher_trend, confidence_adjustment=0)
-            self._record_decision(symbol, decision)
-            return decision
         if primary_trend == "range":
             decision = TimeframeDecision(False, f"MTF primary {primary} is range", primary, higher, primary_trend, higher_trend)
+            self._record_decision(symbol, decision)
+            return decision
+        if higher_trend == "range":
+            decision = TimeframeDecision(False, f"MTF higher {higher} is range; no permission", primary, higher, primary_trend, higher_trend)
             self._record_decision(symbol, decision)
             return decision
         if higher_trend not in ("range", primary_trend):

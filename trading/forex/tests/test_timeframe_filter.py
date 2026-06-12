@@ -71,7 +71,7 @@ def test_mtf_uses_policy_timeframe_for_xau_even_when_dna_is_lower():
     assert decision.higher_timeframe == "H4"
 
 
-def test_mtf_allows_fx_primary_trend_when_higher_is_range():
+def test_mtf_blocks_fx_primary_trend_when_higher_is_range():
     import asyncio
     range_h1 = candles(1.2, 0.0)
     client = FakeMTFClient({"M15": candles(1.1, 0.001), "H1": range_h1})
@@ -79,8 +79,8 @@ def test_mtf_allows_fx_primary_trend_when_higher_is_range():
 
     decision = asyncio.run(_eval(filter_, client, "GBPUSDm", "BUY", "M15"))
 
-    assert decision.allowed is True
-    assert "higher range" in decision.reason
+    assert decision.allowed is False
+    assert "higher H1 is range" in decision.reason
 
 
 def test_mtf_summary_tracks_policy_and_decision_metrics():
