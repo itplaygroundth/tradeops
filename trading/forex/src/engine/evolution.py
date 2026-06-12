@@ -3,6 +3,7 @@ Evolution Engine for Forex — ranks population, preserves elite/diversity,
 and performs crossover/mutation to evolve agents.
 """
 import copy
+import os
 import random
 from typing import List
 
@@ -10,19 +11,32 @@ from engine.dna import ForexAgentDNA, FOREX_SYMBOLS, STRATEGY_METHODS, random_dn
 
 MIN_TRADES_BEFORE_JUDGMENT = 10  # lowered from 30 — Exness demo throughput ~6 closed/day/top-agent; 30 froze GA for ~1wk
 EVOLUTION_INTERVAL = 3600
+DD_REF_PCT = float(os.getenv("EVO_DD_REF_PCT", "20.0"))    # max DD at which dd_score hits 0
+EXP_REF_PCT = float(os.getenv("EVO_EXP_REF_PCT", "0.5"))   # |expectancy|%/trade mapping to score 0/1
+MUTATION_TP_FLOOR_RR = float(os.getenv("MTAI_MUTATION_TP_FLOOR_RR", "1.5"))
 
 def fitness_score(agent_dict: dict, pop_strategy_avg: dict) -> float:
-    """Calculates fitness score based on PnL, Win Rate, and strategy diversity."""
+    """Fitness from PnL, expectancy, win rate, diversity, and drawdown penalty.
+
+    Missing max_dd_pct/expectancy_pct keys (legacy dicts) degrade neutral:
+    dd_score=1.0, exp_score=0.5.
+    """
     pnl = max(agent_dict.get("total_pnl_pct", 0), -50)
     wr = agent_dict.get("win_rate", 0) / 100.0
     pnl_score = min(max((pnl + 50) / 100.0, 0), 1.0)
+
+    expectancy = agent_dict.get("expectancy_pct")
+    exp_score = 0.5 if expectancy is None else min(max(0.5 + expectancy / (2 * EXP_REF_PCT), 0), 1.0)
+
+    max_dd = agent_dict.get("max_dd_pct", 0.0) or 0.0
+    dd_score = max(0.0, 1.0 - max_dd / DD_REF_PCT)
 
     # Diversity bonus
     weights = agent_dict.get("strategy_weights", {})
     diversity_sum = sum(abs(weights.get(k, 0) - pop_strategy_avg.get(k, 0)) for k in pop_strategy_avg)
     diversity_bonus = min(diversity_sum / max(len(pop_strategy_avg), 1) * 5, 1.0)
 
-    return 0.5 * pnl_score + 0.3 * wr + 0.2 * diversity_bonus
+    return 0.35 * pnl_score + 0.20 * exp_score + 0.15 * wr + 0.15 * diversity_bonus + 0.15 * dd_score
 
 def evolve(agents: List[ForexAgentDNA], agent_stats: List[dict], next_id_start: int) -> tuple:
     """
@@ -96,7 +110,7 @@ def evolve(agents: List[ForexAgentDNA], agent_stats: List[dict], next_id_start: 
                 child.strategy_weights = {k: v/total for k, v in child.strategy_weights.items()}
             # Mutate pips
             child.sl_pips = max(5, child.sl_pips * random.uniform(0.8, 1.2))
-            child.tp_pips = max(child.sl_pips * 1.5, child.tp_pips * random.uniform(0.8, 1.2))
+            child.tp_pips = max(child.sl_pips * MUTATION_TP_FLOOR_RR, child.tp_pips * random.uniform(0.8, 1.2))
             next_id += 1
             next_gen.append(child)
         elif roll < 0.5 and len(elite) >= 2:

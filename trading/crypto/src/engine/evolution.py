@@ -3,6 +3,7 @@ Evolution Engine for Crypto — ranks population, preserves elite/diversity,
 performs crossover/mutation, and reallocates agents toward higher-fitness pairs.
 """
 import copy
+import os
 import random
 from typing import List
 
@@ -10,19 +11,32 @@ from engine.dna import CryptoAgentDNA, CRYPTO_SYMBOLS, STRATEGY_METHODS, random_
 
 MIN_TRADES_BEFORE_JUDGMENT = 10
 EVOLUTION_INTERVAL = 3600
+DD_REF_PCT = float(os.getenv("EVO_DD_REF_PCT", "20.0"))
+EXP_REF_PCT = float(os.getenv("EVO_EXP_REF_PCT", "0.5"))
+MUTATION_TP_FLOOR_RR = float(os.getenv("CRYPTO_MUTATION_TP_FLOOR_RR", "1.5"))
 
 
 def fitness_score(agent_dict: dict, pop_strategy_avg: dict) -> float:
-    """Fitness from PnL%, win-rate, and strategy diversity."""
+    """Fitness from PnL, expectancy, win rate, diversity, and drawdown penalty.
+
+    Missing max_dd_pct/expectancy_pct keys (legacy dicts) degrade neutral:
+    dd_score=1.0, exp_score=0.5.
+    """
     pnl = max(agent_dict.get("total_pnl_pct", 0), -50)
     wr = agent_dict.get("win_rate", 0) / 100.0
     pnl_score = min(max((pnl + 50) / 100.0, 0), 1.0)
+
+    expectancy = agent_dict.get("expectancy_pct")
+    exp_score = 0.5 if expectancy is None else min(max(0.5 + expectancy / (2 * EXP_REF_PCT), 0), 1.0)
+
+    max_dd = agent_dict.get("max_dd_pct", 0.0) or 0.0
+    dd_score = max(0.0, 1.0 - max_dd / DD_REF_PCT)
 
     weights = agent_dict.get("strategy_weights", {})
     diversity_sum = sum(abs(weights.get(k, 0) - pop_strategy_avg.get(k, 0)) for k in pop_strategy_avg)
     diversity_bonus = min(diversity_sum / max(len(pop_strategy_avg), 1) * 5, 1.0)
 
-    return 0.5 * pnl_score + 0.3 * wr + 0.2 * diversity_bonus
+    return 0.35 * pnl_score + 0.20 * exp_score + 0.15 * wr + 0.15 * diversity_bonus + 0.15 * dd_score
 
 
 def _pair_fitness(agents: List[CryptoAgentDNA], stats_map: dict, pairs: list) -> dict:
@@ -125,7 +139,7 @@ def evolve(agents: List[CryptoAgentDNA], agent_stats: List[dict], next_id_start:
             if total > 0:
                 child.strategy_weights = {k: v / total for k, v in child.strategy_weights.items()}
             child.sl_pct = min(0.05, max(0.005, child.sl_pct * random.uniform(0.8, 1.2)))
-            child.tp_pct = max(child.sl_pct * 1.5, child.tp_pct * random.uniform(0.8, 1.2))
+            child.tp_pct = max(child.sl_pct * MUTATION_TP_FLOOR_RR, child.tp_pct * random.uniform(0.8, 1.2))
             rename(child, next_id)
             next_id += 1
             next_gen.append(child)
