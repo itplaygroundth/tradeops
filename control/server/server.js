@@ -11,6 +11,8 @@ import {
   recordControlAction,
 } from './services/tradingControl.js';
 import { installAiAnalystRoutes } from './services/aiAnalyst.js';
+import { installMadsBridgeRoutes } from './services/madsBridge.js';
+import { collectTradingOverview } from './services/tradingControl.js';
 import { createNotificationService, installNotificationRoutes } from './services/notifications.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1189,6 +1191,7 @@ app.post('/api/mt5/order', async (req, res) => {
 installNotificationRoutes(app, { notifications });
 installTradingControlRoutes(app, { db, getSettings, notifications, sendTelegramMessage });
 installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction, notifications, sendTelegramMessage });
+installMadsBridgeRoutes(app, { db, getSettings, collectTradingOverview, dispatchControlCommand, recordControlAction });
 
 app.listen(PORT, () => {
   console.log(`🚀 AI Hedgefund API Server running on http://localhost:${PORT}`);
