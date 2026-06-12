@@ -1,0 +1,33 @@
+<h2>Dashboard ต้องการข้อมูลจาก MT5 อะไรบ้าง?</h2>
+<p class="subtitle">เลือกได้มากกว่า 1 ข้อ</p>
+
+<div class="options" data-multiselect>
+  <div class="option" data-choice="account" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Account Info</h3>
+      <p>Balance, Equity, Margin, Free Margin, Profit — แสดงในหน้า Overview</p>
+    </div>
+  </div>
+  <div class="option" data-choice="positions" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Open Positions</h3>
+      <p>รายการ position ที่เปิดอยู่ — symbol, volume, P&amp;L, SL/TP</p>
+    </div>
+  </div>
+  <div class="option" data-choice="price" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Live Prices</h3>
+      <p>ราคา Bid/Ask real-time สำหรับ forex pairs ในพอร์ต</p>
+    </div>
+  </div>
+  <div class="option" data-choice="trade" onclick="toggleSelect(this)">
+    <div class="letter">D</div>
+    <div class="content">
+      <h3>Place Orders</h3>
+      <p>ส่ง Buy/Sell order จาก dashboard ไปที่ MT5 ได้เลย</p>
+    </div>
+  </div>
+</div>

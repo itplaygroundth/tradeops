@@ -1,0 +1,38 @@
+<h2>Architecture: Node.js server คุยกับ MT5 ยังไง?</h2>
+<p class="subtitle">Python bridge (mt5_bridge) รันแยก — Node.js จะ proxy ไปหามันอย่างไร?</p>
+
+<div class="options">
+  <div class="option" data-choice="proxy" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Node.js Proxy (Recommended)</h3>
+      <p>server.js เพิ่ม /api/mt5/* endpoints ที่ proxy ไปหา Python bridge http://127.0.0.1:8888 — dashboard ไม่รู้จัก MT5 โดยตรง</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>ข้อดี</h4><ul><li>เปลี่ยน backend ได้ไม่กระทบ frontend</li><li>Node.js ทำ auth/validation ก่อนส่งไป MT5</li></ul></div>
+        <div class="cons"><h4>ข้อเสีย</h4><ul><li>latency เพิ่ม 1 hop</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="direct" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Frontend Direct</h3>
+      <p>App.jsx เรียก Python bridge โดยตรงจาก browser (ต้องเปิด CORS บน Python)</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>ข้อดี</h4><ul><li>ง่ายกว่า — ไม่ต้องแก้ server.js มาก</li></ul></div>
+        <div class="cons"><h4>ข้อเสีย</h4><ul><li>expose MT5 bridge port ออก browser ตรงๆ</li><li>CORS config ยุ่งยาก</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <div class="option" data-choice="replace" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Replace server.js data with MT5 data</h3>
+      <p>แทน hardcode ใน server.js ด้วยการดึงจาก MT5 bridge ทุก endpoint ที่มีอยู่แล้ว</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>ข้อดี</h4><ul><li>frontend ไม่ต้องเปลี่ยนเลย</li></ul></div>
+        <div class="cons"><h4>ข้อเสีย</h4><ul><li>ข้อมูล MT5 (forex positions) ≠ portfolio structure ปัจจุบัน (funds/crypto/forex)</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>

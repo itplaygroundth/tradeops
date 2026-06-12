@@ -1,0 +1,60 @@
+<h2>Design: MT5 Integration</h2>
+<p class="subtitle">Architecture overview — ดูแล้วบอกว่า OK หรือต้องแก้ไข</p>
+
+<div class="section">
+  <h3>Data Flow</h3>
+  <div class="mockup">
+    <div class="mockup-header">System Architecture</div>
+    <div class="mockup-body" style="font-family:monospace;font-size:13px;line-height:2">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:12px 20px;color:#a78bfa">
+          App.jsx<br><span style="font-size:11px;color:#888">React Dashboard</span>
+        </div>
+        <div style="color:#666">→ fetch every 5s →</div>
+        <div style="background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:12px 20px;color:#34d399">
+          server.js :5001<br><span style="font-size:11px;color:#888">Node.js + SQLite</span>
+        </div>
+        <div style="color:#666">→ HTTP proxy →</div>
+        <div style="background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:12px 20px;color:#f59e0b">
+          192.168.1.107:8888<br><span style="font-size:11px;color:#888">MT5 Bridge (Windows)</span>
+        </div>
+        <div style="color:#666">→ MetaTrader 5</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>New Endpoints (server.js)</h3>
+  <div style="font-family:monospace;font-size:13px;background:#0f0f1a;border-radius:8px;padding:16px;color:#e2e8f0;line-height:1.8">
+    <div><span style="color:#34d399">GET</span> <span style="color:#a78bfa">/api/mt5/account</span> <span style="color:#666">→ balance, equity, margin, profit</span></div>
+    <div><span style="color:#34d399">GET</span> <span style="color:#a78bfa">/api/mt5/positions</span> <span style="color:#666">→ open positions list</span></div>
+    <div><span style="color:#34d399">GET</span> <span style="color:#a78bfa">/api/mt5/price/:symbol</span> <span style="color:#666">→ bid/ask live price</span></div>
+    <div><span style="color:#34d399">GET</span> <span style="color:#a78bfa">/api/mt5/status</span> <span style="color:#666">→ bridge online/offline</span></div>
+    <div><span style="color:#f59e0b">POST</span> <span style="color:#a78bfa">/api/mt5/order</span> <span style="color:#666">→ place buy/sell order</span></div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Dashboard Changes (App.jsx)</h3>
+  <ul style="line-height:2;color:#cbd5e1">
+    <li>Overview tab: แทน hardcode balance ด้วย MT5 account data</li>
+    <li>Forex tab: ราคา live จาก MT5 แทน external API</li>
+    <li>เพิ่ม <strong style="color:#a78bfa">MT5 Positions</strong> section — แสดง open trades</li>
+    <li>Transaction form: ส่ง order ผ่าน /api/mt5/order</li>
+    <li>Status bar: แสดง MT5 connection status + "Last updated" timestamp</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>Offline Handling</h3>
+  <ul style="line-height:2;color:#cbd5e1">
+    <li>server.js cache ข้อมูลล่าสุดใน memory</li>
+    <li>ถ้า bridge ไม่ตอบ → return cached data + <code style="color:#f87171">{"mt5_status":"offline","cached_at":"..."}</code></li>
+    <li>App.jsx แสดง <span style="background:#7f1d1d;color:#fca5a5;padding:2px 8px;border-radius:4px;font-size:12px">⚠ MT5 Offline — showing stale data</span> banner</li>
+  </ul>
+</div>
+
+<div style="margin-top:24px;padding:16px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#8b949e;font-size:13px">
+  Design นี้ OK ไหม? หรือต้องการแก้ส่วนไหน?
+</div>
