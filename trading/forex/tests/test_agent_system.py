@@ -155,7 +155,7 @@ async def _async_agent_processing_uses_per_symbol_tick_counts():
     manager = ForexAgentManager(client, paper_mode=True, agent_count=8)
     processed = []
 
-    async def fake_process(symbol, price):
+    async def fake_process(symbol, price, **kwargs):
         processed.append((symbol, price))
 
     manager._process_agents = fake_process

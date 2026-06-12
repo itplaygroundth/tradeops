@@ -10,6 +10,11 @@ WEEKEND_REOPEN_GUARD_ENABLED = str(os.getenv("WEEKEND_REOPEN_GUARD_ENABLED", "tr
 WEEKEND_REOPEN_GAP_SECONDS = int(os.getenv("WEEKEND_REOPEN_GAP_SECONDS", "43200"))
 WEEKEND_REOPEN_BLOCK_SECONDS = int(os.getenv("WEEKEND_REOPEN_BLOCK_SECONDS", "1800"))
 WEEKEND_REOPEN_AUTO_CLOSE = str(os.getenv("WEEKEND_REOPEN_AUTO_CLOSE", "false")).lower() in ("1", "true", "yes", "on")
+WEEKEND_PRE_CLOSE_ENABLED = str(os.getenv("WEEKEND_PRE_CLOSE_ENABLED", "true")).lower() in ("1", "true", "yes", "on")
+WEEKEND_PRE_CLOSE_WEEKDAY_UTC = int(os.getenv("WEEKEND_PRE_CLOSE_WEEKDAY_UTC", "4"))  # Friday
+WEEKEND_PRE_CLOSE_AFTER_UTC = os.getenv("WEEKEND_PRE_CLOSE_AFTER_UTC", "18:00")
+WEEKEND_PRE_CLOSE_REOPEN_WEEKDAY_UTC = int(os.getenv("WEEKEND_PRE_CLOSE_REOPEN_WEEKDAY_UTC", "0"))  # Monday
+WEEKEND_PRE_CLOSE_REOPEN_AFTER_UTC = os.getenv("WEEKEND_PRE_CLOSE_REOPEN_AFTER_UTC", "01:00")
 WEEKEND_REOPEN_STATE_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "weekend_reopen_state.json"
 
 MAX_SPREAD = {
@@ -53,6 +58,34 @@ class WeekendReopenDecision:
         }
 
 
+@dataclass
+class WeekendPreCloseDecision:
+    status: str = "inactive"
+    reason: str = ""
+    block_entries_until: float = 0.0
+    close_tickets: List[int] = field(default_factory=list)
+    cutoff_weekday_utc: int = WEEKEND_PRE_CLOSE_WEEKDAY_UTC
+    cutoff_after_utc: str = WEEKEND_PRE_CLOSE_AFTER_UTC
+    reopen_weekday_utc: int = WEEKEND_PRE_CLOSE_REOPEN_WEEKDAY_UTC
+    reopen_after_utc: str = WEEKEND_PRE_CLOSE_REOPEN_AFTER_UTC
+
+    @property
+    def blocks_entries(self) -> bool:
+        return self.block_entries_until > time.time()
+
+    def to_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "reason": self.reason,
+            "block_entries_until": self.block_entries_until,
+            "close_tickets": self.close_tickets,
+            "cutoff_weekday_utc": self.cutoff_weekday_utc,
+            "cutoff_after_utc": self.cutoff_after_utc,
+            "reopen_weekday_utc": self.reopen_weekday_utc,
+            "reopen_after_utc": self.reopen_after_utc,
+        }
+
+
 def symbol_group(symbol: str) -> str:
     value = (symbol or "").upper()
     if "XAU" in value or "GOLD" in value:
@@ -83,6 +116,37 @@ def _normalize_ts(value: Optional[float]) -> Optional[float]:
     return ts
 
 
+def _parse_hhmm(value: str) -> tuple[int, int]:
+    try:
+        hour, minute = str(value).split(":", 1)
+        hour_i = int(hour)
+        minute_i = int(minute)
+        if 0 <= hour_i <= 23 and 0 <= minute_i <= 59:
+            return hour_i, minute_i
+    except Exception:
+        pass
+    return 0, 0
+
+
+def _week_timestamp_after(now: float, weekday: int, hhmm: str) -> float:
+    hour, minute = _parse_hhmm(hhmm)
+    base = time.gmtime(now)
+    day_start = now - ((base.tm_hour * 3600) + (base.tm_min * 60) + base.tm_sec)
+    days_ahead = (weekday - base.tm_wday) % 7
+    candidate = day_start + (days_ahead * 86400) + (hour * 3600) + (minute * 60)
+    if candidate <= now:
+        candidate += 7 * 86400
+    return candidate
+
+
+def _is_after_weekday_cutoff(now: float, weekday: int, hhmm: str) -> bool:
+    ts = time.gmtime(now)
+    hour, minute = _parse_hhmm(hhmm)
+    if ts.tm_wday != weekday:
+        return False
+    return (ts.tm_hour, ts.tm_min) >= (hour, minute)
+
+
 class WeekendReopenGuard:
     """Detects post-weekend reopen risk and temporarily blocks new entries.
 
@@ -100,12 +164,22 @@ class WeekendReopenGuard:
         gap_seconds: int = WEEKEND_REOPEN_GAP_SECONDS,
         block_seconds: int = WEEKEND_REOPEN_BLOCK_SECONDS,
         auto_close: bool = WEEKEND_REOPEN_AUTO_CLOSE,
+        pre_close_enabled: bool = WEEKEND_PRE_CLOSE_ENABLED,
+        pre_close_weekday_utc: int = WEEKEND_PRE_CLOSE_WEEKDAY_UTC,
+        pre_close_after_utc: str = WEEKEND_PRE_CLOSE_AFTER_UTC,
+        pre_close_reopen_weekday_utc: int = WEEKEND_PRE_CLOSE_REOPEN_WEEKDAY_UTC,
+        pre_close_reopen_after_utc: str = WEEKEND_PRE_CLOSE_REOPEN_AFTER_UTC,
     ):
         self.state_file = Path(state_file)
         self.enabled = enabled
         self.gap_seconds = gap_seconds
         self.block_seconds = block_seconds
         self.auto_close = auto_close
+        self.pre_close_enabled = pre_close_enabled
+        self.pre_close_weekday_utc = pre_close_weekday_utc
+        self.pre_close_after_utc = pre_close_after_utc
+        self.pre_close_reopen_weekday_utc = pre_close_reopen_weekday_utc
+        self.pre_close_reopen_after_utc = pre_close_reopen_after_utc
         self._state = self._load()
         self._last_summary: Dict[str, Any] = {"enabled": self.enabled, "symbols": {}}
 
@@ -198,8 +272,65 @@ class WeekendReopenGuard:
         self._last_summary = {"enabled": self.enabled, "symbols": symbols}
         return decision
 
+    def evaluate_pre_close(
+        self,
+        positions: List[dict],
+        now: Optional[float] = None,
+    ) -> WeekendPreCloseDecision:
+        now = now or time.time()
+        decision = WeekendPreCloseDecision(
+            status="ok",
+            reason="not in pre-weekend close window",
+            cutoff_weekday_utc=self.pre_close_weekday_utc,
+            cutoff_after_utc=self.pre_close_after_utc,
+            reopen_weekday_utc=self.pre_close_reopen_weekday_utc,
+            reopen_after_utc=self.pre_close_reopen_after_utc,
+        )
+        if not self.enabled or not self.pre_close_enabled:
+            decision.status = "disabled"
+            decision.reason = "pre-weekend close disabled"
+            self._state["pre_close"] = decision.to_dict()
+            self._save()
+            return decision
+
+        until = float((self._state.get("pre_close") or {}).get("block_entries_until") or 0.0)
+        if until > now:
+            decision.status = "active"
+            decision.reason = "pre-weekend entry block active"
+            decision.block_entries_until = until
+
+        if not _is_after_weekday_cutoff(now, self.pre_close_weekday_utc, self.pre_close_after_utc):
+            self._state["pre_close"] = decision.to_dict()
+            self._save()
+            return decision
+
+        reopen_ts = _week_timestamp_after(
+            now,
+            self.pre_close_reopen_weekday_utc,
+            self.pre_close_reopen_after_utc,
+        )
+        close_tickets = [
+            int(pos["ticket"])
+            for pos in positions
+            if pos.get("ticket")
+        ]
+        decision.status = "closing" if close_tickets else "blocking"
+        decision.reason = (
+            f"pre-weekend close window after "
+            f"weekday={self.pre_close_weekday_utc} {self.pre_close_after_utc} UTC"
+        )
+        decision.block_entries_until = reopen_ts
+        decision.close_tickets = close_tickets
+        self._state["pre_close"] = decision.to_dict()
+        self._save()
+        return decision
+
     def blocks_entries(self, symbol: str, now: Optional[float] = None) -> tuple[bool, str]:
         now = now or time.time()
+        pre_close = self._state.get("pre_close") or {}
+        pre_close_until = float(pre_close.get("block_entries_until") or 0.0)
+        if pre_close_until > now:
+            return True, f"pre-weekend close guard active for {int(pre_close_until - now)}s: {pre_close.get('reason', '')}"
         item = (self._state.get("symbols") or {}).get(symbol) or {}
         until = float(item.get("block_entries_until") or 0.0)
         if until > now:
@@ -207,4 +338,7 @@ class WeekendReopenGuard:
         return False, ""
 
     def summary(self) -> dict:
-        return self._last_summary
+        summary = dict(self._last_summary)
+        summary["pre_close"] = self._state.get("pre_close") or {}
+        summary["pre_close_enabled"] = self.pre_close_enabled
+        return summary

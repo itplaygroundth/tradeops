@@ -619,10 +619,26 @@ class ForexAgentManager:
                     agent._open_tp = 0.0
                     agent._open_risk_amount = 0.0
 
-    async def _apply_weekend_reopen_guard(self, positions: List[dict]):
-        if self.paper_mode or not positions:
-            return
+    async def _apply_weekend_reopen_guard(self, positions: List[dict]) -> set:
+        closed_tickets = set()
+        if self.paper_mode:
+            return closed_tickets
         managed = self._managed_positions(positions)
+
+        pre_close = self.weekend_reopen_guard.evaluate_pre_close(managed, now=time.time())
+        if pre_close.status in ("closing", "blocking", "active"):
+            logger.warning(
+                f"[WeekendPreCloseGuard] {pre_close.status}: {pre_close.reason} "
+                f"close_tickets={pre_close.close_tickets} block_until={pre_close.block_entries_until}"
+            )
+        for ticket in pre_close.close_tickets:
+            try:
+                result = await self.mt5.close_position(ticket)
+                closed_tickets.add(ticket)
+                logger.error(f"[WeekendPreCloseGuard] closed ticket={ticket} result={result}")
+            except Exception as e:
+                logger.warning(f"[WeekendPreCloseGuard] failed to close ticket={ticket}: {e}")
+
         symbols = sorted({str(pos.get("symbol") or "") for pos in managed if pos.get("symbol")})
         for symbol in symbols:
             try:
@@ -647,15 +663,19 @@ class ForexAgentManager:
             for ticket in decision.close_tickets:
                 try:
                     result = await self.mt5.close_position(ticket)
+                    closed_tickets.add(ticket)
                     logger.error(f"[WeekendReopenGuard] auto-closed ticket={ticket} result={result}")
                 except Exception as e:
                     logger.warning(f"[WeekendReopenGuard] failed to auto-close ticket={ticket}: {e}")
+        return closed_tickets
 
     async def _sync_positions(self):
         """Syncs active live positions on MT5 to update agent states."""
         try:
             positions = await self.mt5.get_positions()
-            await self._apply_weekend_reopen_guard(positions)
+            closed_tickets = await self._apply_weekend_reopen_guard(positions)
+            if closed_tickets:
+                positions = [pos for pos in positions if pos.get("ticket") not in closed_tickets]
             await self._apply_live_exit_management(positions)
             await self._refresh_account_risk(positions=positions)
             active_tickets = {pos["ticket"] for pos in positions}
