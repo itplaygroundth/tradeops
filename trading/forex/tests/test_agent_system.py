@@ -375,7 +375,7 @@ async def _async_position_dedup_blocks_duplicate_live_entry(monkeypatch):
     agent.dna.symbol = "GBPUSDm"
     agent.dna.sl_pips = 15
     agent.dna.tp_pips = 35
-    agent.generate_signal = lambda price: {"action": "LONG", "confidence": 90, "reason": "test"}
+    agent.generate_signal = lambda price, **kw: {"action": "LONG", "confidence": 90, "reason": "test"}
 
     await manager._process_agents("GBPUSDm", 1.2000)
 
