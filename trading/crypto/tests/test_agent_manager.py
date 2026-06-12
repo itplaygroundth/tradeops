@@ -199,7 +199,7 @@ def test_htf_aligned_signal_gets_confidence_boost():
     agent.dna.symbol = "BTCUSDT"
     agent.dna.timeframe = "M15"
     _force_strategy(agent, "momentum")
-    agent.generate_signal = lambda price: {
+    agent.generate_signal = lambda price, **kw: {
         "action": "SHORT", "confidence": 40, "reason": "unit short"
     }
 
@@ -216,7 +216,7 @@ def test_htf_guard_blocks_countertrend_signal_for_any_strategy():
     agent = mgr.agents[0]
     agent.dna.symbol = "BTCUSDT"
     _force_strategy(agent, "breakout_atr")
-    agent.generate_signal = lambda price: {
+    agent.generate_signal = lambda price, **kw: {
         "action": "LONG", "confidence": 90, "reason": "unit long"
     }
 
@@ -233,7 +233,7 @@ def test_trend_follow_fallback_opens_direction_when_signal_holds():
     agent.dna.symbol = "BTCUSDT"
     agent.dna.timeframe = "M15"
     _force_strategy(agent, "market_structure")
-    agent.generate_signal = lambda price: {
+    agent.generate_signal = lambda price, **kw: {
         "action": "HOLD", "confidence": 35, "reason": "structure waiting"
     }
 
@@ -291,12 +291,12 @@ async def test_process_agents_evaluates_beyond_first_three_and_selects_signal(mo
         agent.dna.tp_pct = 0.015
         if idx < 3:
             _force_strategy(agent, "mean_reversion")
-            agent.generate_signal = lambda price: {
+            agent.generate_signal = lambda price, **kw: {
                 "action": "HOLD", "confidence": 0, "reason": "first three idle"
             }
         else:
             _force_strategy(agent, "momentum")
-            agent.generate_signal = lambda price: {
+            agent.generate_signal = lambda price, **kw: {
                 "action": "SHORT", "confidence": 60, "reason": "fourth agent short"
             }
     mgr.agents = agents
@@ -320,7 +320,7 @@ async def test_process_agents_uses_selected_agent_strategy_for_risk_caps(monkeyp
     agents[0].dna.sl_pct = 0.018
     agents[0].dna.tp_pct = 0.03
     _force_strategy(agents[0], "mean_reversion")
-    agents[0].generate_signal = lambda price: {
+    agents[0].generate_signal = lambda price, **kw: {
         "action": "HOLD", "confidence": 0, "reason": "idle"
     }
 
@@ -329,7 +329,7 @@ async def test_process_agents_uses_selected_agent_strategy_for_risk_caps(monkeyp
     agents[1].dna.sl_pct = 0.018
     agents[1].dna.tp_pct = 0.03
     _force_strategy(agents[1], "grid_scalp")
-    agents[1].generate_signal = lambda price: {
+    agents[1].generate_signal = lambda price, **kw: {
         "action": "SHORT", "confidence": 60, "reason": "selected scalp"
     }
     mgr.agents = agents

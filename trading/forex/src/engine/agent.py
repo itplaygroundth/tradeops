@@ -10,6 +10,7 @@ from typing import Optional
 from engine.dna import ForexAgentDNA
 from engine.signals import ForexSignalEngine
 from engine.risk_guardian import ForexRiskGuardian, RiskResult
+from engine.regime_routing import route_strategy
 
 logger = logging.getLogger("agent")
 
@@ -62,17 +63,18 @@ class ForexAgent:
     def is_in_trade(self) -> bool:
         return self._open_ticket is not None
 
-    def generate_signal(self, price: float) -> dict:
+    def generate_signal(self, price: float, regime: str = None) -> dict:
         """Generates signal for the agent's assigned symbol."""
         symbol = self.dna.symbol
 
-        # Dominant strategy
-        dominant = max(self.dna.strategy_weights, key=lambda k: self.dna.strategy_weights[k])
+        dominant = route_strategy(self.dna.strategy_weights, regime)
 
         if dominant == "momentum":
             return self.signal_engine.technical_signal(symbol)
         elif dominant == "mean_reversion":
-            # Invert momentum signal for mean reversion
+            if regime not in (None, "RANGING"):
+                return {"action": "HOLD", "confidence": 0,
+                        "reason": f"MR skipped: regime={regime} (not ranging)"}
             tech = self.signal_engine.technical_signal(symbol)
             if tech["action"] == "LONG":
                 tech["action"] = "SHORT"

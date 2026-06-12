@@ -395,7 +395,8 @@ class ForexAgentManager:
 
         # Process agent signals every 10 ticks per symbol
         if symbol_tick_count % 10 == 0:
-            await self._process_agents(symbol, price)
+            regime, _ = await self.regime_service.get(symbol)
+            await self._process_agents(symbol, price, regime=regime)
 
         # Sync live positions from MT5 every 30 ticks
         if self._tick_count % 30 == 0:
@@ -759,7 +760,7 @@ class ForexAgentManager:
             "reason": proposal.get("reason", ""),
         }
 
-    async def _process_agents(self, symbol: str, price: float):
+    async def _process_agents(self, symbol: str, price: float, regime: str = None):
         """Evaluates entry signals and executes trades for idle agents assigned to a symbol."""
         if self._manual_entries_paused:
             logger.warning(f"[Control] {symbol} entries paused: {self._manual_pause_reason or 'manual pause'}")
@@ -828,6 +829,7 @@ class ForexAgentManager:
                 "agent": agent.dna.name,
                 "agent_id": agent.dna.id,
                 "strategy": dominant_strategy,
+                "regime": regime,
                 "agent_timeframe": agent.dna.timeframe,
                 "execution_permission": permission.to_dict(),
                 "leader_gate": gate,
@@ -855,7 +857,7 @@ class ForexAgentManager:
                 audit.update({"status": "blocked", "block_stage": "strategy_performance_guard", "reason": strat_guard.reason})
                 self._record_entry_audit(audit)
                 continue
-            signal = agent.generate_signal(price)
+            signal = agent.generate_signal(price, regime=regime)
             audit["base_signal"] = dict(signal)
             pullback_entry = None
             if not self.paper_mode and self.xau_pullback_short.supports(symbol):

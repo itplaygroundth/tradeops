@@ -8,6 +8,7 @@ from typing import Optional
 from engine.dna import CryptoAgentDNA
 from engine.signals import CryptoSignalEngine
 from engine.risk_guardian import CryptoRiskGuardian
+from engine.regime_routing import route_strategy
 
 logger = logging.getLogger("agent")
 
@@ -62,22 +63,25 @@ class CryptoAgent:
     def is_in_trade(self) -> bool:
         return self._open_ticket is not None
 
-    def generate_signal(self, price: float) -> dict:
+    def generate_signal(self, price: float, markov_regime: str = None) -> dict:
         """Generates a signal for the agent's assigned symbol via dominant strategy."""
         symbol = self.dna.symbol
         tf = self.dna.timeframe
-        dominant = max(self.dna.strategy_weights, key=lambda k: self.dna.strategy_weights[k])
+        dominant = route_strategy(self.dna.strategy_weights, markov_regime)
 
         if dominant == "momentum":
             return self.signal_engine.technical_signal(symbol, tf)
         elif dominant == "mean_reversion":
-            # Mean reversion only makes sense in a ranging market. Fading a
-            # trending/high-vol move (crypto's norm) bleeds money, so gate on
-            # the regime and HOLD when the market is directional.
-            regime, _ = self.signal_engine.get_history(symbol, tf).market_regime()
-            if regime != "SIDEWAYS":
-                return {"action": "HOLD", "confidence": 0,
-                        "reason": f"MR skipped: regime={regime} (not ranging)"}
+            # Use Markov regime when available; fall back to heuristic.
+            if markov_regime is not None:
+                if markov_regime not in (None, "RANGING"):
+                    return {"action": "HOLD", "confidence": 0,
+                            "reason": f"MR skipped: regime={markov_regime} (not ranging)"}
+            else:
+                heuristic, _ = self.signal_engine.get_history(symbol, tf).market_regime()
+                if heuristic != "SIDEWAYS":
+                    return {"action": "HOLD", "confidence": 0,
+                            "reason": f"MR skipped: regime={heuristic} (not ranging)"}
             tech = self.signal_engine.technical_signal(symbol, tf)
             if tech["action"] == "LONG":
                 tech["action"] = "SHORT"

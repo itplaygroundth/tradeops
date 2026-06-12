@@ -167,7 +167,8 @@ class CryptoAgentManager:
 
         # process agent signals every 10 ticks
         if self._tick_count % 10 == 0:
-            await self._process_agents(symbol, price)
+            regime, _ = await self.regime_service.get(symbol)
+            await self._process_agents(symbol, price, regime=regime)
 
         # sync live positions every 30 ticks (run.py writes state separately)
         if self._tick_count % 30 == 0 and not self.paper_mode:
@@ -242,7 +243,7 @@ class CryptoAgentManager:
             self.risk_guardian.on_position_closed(agent.dna.symbol, 0.0)
             self._reset_agent(agent)
 
-    async def _process_agents(self, symbol: str, price: float):
+    async def _process_agents(self, symbol: str, price: float, regime: str = None):
         if self._manual_entries_paused:
             logger.warning(f"[Control] {symbol} entries paused: {self._manual_pause_reason or 'manual pause'}")
             return
@@ -275,7 +276,7 @@ class CryptoAgentManager:
                     f"{guard.reason}; cooldown={guard.cooldown_remaining_seconds}s",
                 )
                 continue
-            signal = self._signal_with_trend_context(agent, price, strategy)
+            signal = self._signal_with_trend_context(agent, price, strategy, regime=regime)
             if signal["action"] == "HOLD" or signal["confidence"] < 50:
                 continue
             candidates.append((signal["confidence"], agent, signal, strategy))
@@ -306,8 +307,8 @@ class CryptoAgentManager:
             else:
                 await self._live_execute(agent, signal, price, risk, strategy, sl_pct, tp_pct)
 
-    def _signal_with_trend_context(self, agent: CryptoAgent, price: float, strategy: str) -> dict:
-        signal = agent.generate_signal(price)
+    def _signal_with_trend_context(self, agent: CryptoAgent, price: float, strategy: str, regime: str = None) -> dict:
+        signal = agent.generate_signal(price, markov_regime=regime)
         action = signal.get("action", "HOLD")
         symbol = agent.dna.symbol
 
