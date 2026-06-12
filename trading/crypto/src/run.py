@@ -12,6 +12,7 @@ import argparse
 import asyncio
 import json
 import logging
+import mimetypes
 import os
 import socketserver
 from http.server import BaseHTTPRequestHandler
@@ -166,6 +167,20 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
             # static file fallback
             self._serve_static(path)
 
+        def do_HEAD(self):
+            parsed = urlparse(self.path)
+            path = parsed.path
+            if path == "/live_state.json":
+                state = manager.to_state_dict() if manager is not None else {}
+                body = json.dumps(state).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                return
+            self._serve_static(path, send_body=False)
+
         # ---- POST -------------------------------------------------------
         def do_POST(self):
             path = urlparse(self.path).path
@@ -256,7 +271,7 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
             self._json({"error": "not found"}, status=404)
 
         # ---- static -----------------------------------------------------
-        def _serve_static(self, path):
+        def _serve_static(self, path, send_body=True):
             rel = path.lstrip("/") or "index.html"
             target = (static_dir / rel).resolve()
             try:
@@ -267,10 +282,19 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
             if not target.is_file():
                 self._json({"error": "not found"}, status=404)
                 return
+            body = target.read_bytes() if send_body else b""
+            content_type, _ = mimetypes.guess_type(str(target))
+            if content_type is None:
+                content_type = "application/octet-stream"
             self.send_response(200)
+            self.send_header("Content-Type", content_type)
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", str(target.stat().st_size))
+            if target.name == "index.html":
+                self.send_header("Cache-Control", "no-cache")
             self.end_headers()
-            self.wfile.write(target.read_bytes())
+            if send_body:
+                self.wfile.write(body)
 
     class ThreadingServer(socketserver.ThreadingTCPServer):
         allow_reuse_address = True
