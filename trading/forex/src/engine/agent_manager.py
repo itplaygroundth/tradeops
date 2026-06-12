@@ -802,24 +802,30 @@ class ForexAgentManager:
                 logger.warning(f"[PerformanceGuard] {agent.dna.name} {symbol} blocked: {perf.reason}")
                 continue
             signal = agent.generate_signal(price)
-            xau_pullback = None
-            if not self.paper_mode and ("XAU" in symbol.upper() or "GOLD" in symbol.upper()):
-                xau_pullback = await self.xau_pullback_short.evaluate(self.mt5, symbol, price)
-                if xau_pullback.allowed:
-                    if signal["action"] in ("HOLD", "SHORT"):
+            pullback_entry = None
+            if not self.paper_mode and self.xau_pullback_short.supports(symbol):
+                pullback_entry = await self.xau_pullback_short.evaluate(self.mt5, symbol, price)
+                if pullback_entry.allowed:
+                    if signal["action"] in ("HOLD", pullback_entry.action):
                         signal = {
-                            "action": "SHORT",
-                            "confidence": max(int(signal.get("confidence") or 0), xau_pullback.confidence),
-                            "reason": f"{xau_pullback.reason}; base={signal.get('reason', '')}",
+                            "action": pullback_entry.action,
+                            "confidence": max(int(signal.get("confidence") or 0), pullback_entry.confidence),
+                            "reason": f"{pullback_entry.reason}; base={signal.get('reason', '')}",
                         }
-                    elif signal["action"] == "LONG":
-                        logger.warning(
-                            f"[XAUPullback] {agent.dna.name} {symbol} LONG blocked: "
-                            f"pullback setup favors SHORT"
+                    else:
+                        self._log_blocked(
+                            f"pullback_entry:{symbol}:opposite:{pullback_entry.action}",
+                            (
+                                f"[PullbackEntry] {agent.dna.name} {symbol} {signal['action']} blocked: "
+                                f"pullback setup favors {pullback_entry.action}"
+                            ),
                         )
                         continue
-                elif signal["action"] == "SHORT":
-                    logger.warning(f"[XAUPullback] {agent.dna.name} {symbol} SHORT blocked: {xau_pullback.reason}")
+                elif signal["action"] != "HOLD":
+                    self._log_blocked(
+                        f"pullback_entry:{symbol}:{pullback_entry.reason}",
+                        f"[PullbackEntry] {agent.dna.name} {symbol} {signal['action']} blocked: {pullback_entry.reason}",
+                    )
                     continue
             if signal["action"] == "HOLD" or signal["confidence"] < min_confidence:
                 continue
@@ -827,11 +833,11 @@ class ForexAgentManager:
 
             if not self.paper_mode:
                 dedup_kwargs = {}
-                if xau_pullback and xau_pullback.allowed and action == "SELL":
+                if pullback_entry and pullback_entry.allowed:
                     dedup_kwargs = {
-                        "max_per_symbol": xau_pullback.basket_max_positions,
-                        "max_per_symbol_side": xau_pullback.basket_max_positions,
-                        "cooldown_seconds": xau_pullback.basket_cooldown_seconds,
+                        "max_per_symbol": pullback_entry.basket_max_positions,
+                        "max_per_symbol_side": pullback_entry.basket_max_positions,
+                        "cooldown_seconds": pullback_entry.basket_cooldown_seconds,
                     }
                 dedup = self.position_dedup_guard.evaluate(symbol, action, live_positions, **dedup_kwargs)
                 if not dedup.allowed:
