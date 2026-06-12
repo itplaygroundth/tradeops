@@ -96,9 +96,15 @@ class PositionDedupGuard:
         side: str,
         positions: List[dict],
         now: Optional[float] = None,
+        max_per_symbol: Optional[int] = None,
+        max_per_symbol_side: Optional[int] = None,
+        cooldown_seconds: Optional[int] = None,
     ) -> DedupDecision:
         now = now or time.time()
         side = str(side or "").upper()
+        max_symbol = self.max_per_symbol if max_per_symbol is None else int(max_per_symbol)
+        max_side = self.max_per_symbol_side if max_per_symbol_side is None else int(max_per_symbol_side)
+        cooldown = self.cooldown_seconds if cooldown_seconds is None else int(cooldown_seconds)
         active = [pos for pos in self._managed_positions(positions) if pos.get("symbol") == symbol]
         same_side = [pos for pos in active if self._side(pos) == side]
         opposite_side = [pos for pos in active if self._side(pos) and self._side(pos) != side]
@@ -109,7 +115,7 @@ class PositionDedupGuard:
             last_open = db_ts if last_open is None else max(last_open, db_ts)
         cooldown_remaining = 0
         if last_open:
-            cooldown_remaining = int(self.cooldown_seconds - max(now - last_open, 0))
+            cooldown_remaining = int(cooldown - max(now - last_open, 0))
             if cooldown_remaining > 0:
                 return DedupDecision(
                     False,
@@ -120,19 +126,19 @@ class PositionDedupGuard:
                     cooldown_remaining,
                 )
 
-        if len(active) >= self.max_per_symbol:
+        if len(active) >= max_symbol:
             return DedupDecision(
                 False,
-                f"{symbol} already has {len(active)} managed position(s); max {self.max_per_symbol}",
+                f"{symbol} already has {len(active)} managed position(s); max {max_symbol}",
                 len(active),
                 len(same_side),
                 len(opposite_side),
             )
 
-        if len(same_side) >= self.max_per_symbol_side:
+        if len(same_side) >= max_side:
             return DedupDecision(
                 False,
-                f"{symbol} {side} already has {len(same_side)} managed position(s); max {self.max_per_symbol_side}",
+                f"{symbol} {side} already has {len(same_side)} managed position(s); max {max_side}",
                 len(active),
                 len(same_side),
                 len(opposite_side),

@@ -18,6 +18,24 @@ def test_position_dedup_blocks_same_symbol_position():
     assert "already has 1 managed position" in decision.reason
 
 
+def test_position_dedup_allows_scoped_basket_override():
+    guard = PositionDedupGuard(max_per_symbol=1, max_per_symbol_side=1, cooldown_seconds=0)
+    positions = [{"ticket": 1, "symbol": "XAUUSDm", "type": "SELL", "magic": 20260101}]
+
+    decision = guard.evaluate(
+        "XAUUSDm",
+        "SELL",
+        positions,
+        now=1000,
+        max_per_symbol=3,
+        max_per_symbol_side=3,
+        cooldown_seconds=0,
+    )
+
+    assert decision.allowed is True
+    assert decision.same_side_positions == 1
+
+
 def test_position_dedup_blocks_hedge_when_disabled():
     guard = PositionDedupGuard(max_per_symbol=2, max_per_symbol_side=1, cooldown_seconds=0, allow_hedge=False)
     positions = [{"ticket": 1, "symbol": "GBPUSDm", "type": "SELL", "magic": 20260101}]

@@ -24,6 +24,7 @@ from engine.performance_guard import PerformanceGuard
 from engine.position_dedup_guard import PositionDedupGuard
 from engine.timeframe_filter import MultiTimeframeFilter
 from engine.weekend_reopen_guard import WeekendReopenGuard
+from engine.xau_pullback_short import XauPullbackShortFilter
 from storage.trading_journal import is_exit_deal, deal_reason_label
 
 logger = logging.getLogger("agent_manager")
@@ -88,6 +89,7 @@ class ForexAgentManager:
         self.position_dedup_guard = PositionDedupGuard(managed_magic=MANAGED_MAGIC, db_lookup=last_open_ts_by_symbol)
         self.timeframe_filter = MultiTimeframeFilter()
         self.weekend_reopen_guard = WeekendReopenGuard()
+        self.xau_pullback_short = XauPullbackShortFilter()
 
         dnas = create_population(agent_count)
         self.agents: List[ForexAgent] = [
@@ -434,6 +436,7 @@ class ForexAgentManager:
                     except Exception:
                         state = {}
                 self._merge_competition_summary(state, self._competition_entry(result))
+                self._merge_runtime_guard_summary(state)
                 _atomic_write_state(state)
                 self._schedule_leader_asset_supervisor()
             except Exception:
@@ -465,6 +468,7 @@ class ForexAgentManager:
                 except Exception:
                     state = {}
             state.setdefault("summary", {})["leader_asset_supervisor"] = proposal
+            self._merge_runtime_guard_summary(state)
             _atomic_write_state(state)
         except Exception:
             logger.exception("Leader asset supervisor failed")
@@ -526,6 +530,20 @@ class ForexAgentManager:
                     item.get("winner_sharpe", 0),
                 ),
             )
+
+    def _merge_runtime_guard_summary(self, state: Dict):
+        summary = state.setdefault("summary", {})
+        try:
+            summary["performance_guard"] = self.performance_guard.refresh()
+        except Exception as exc:
+            fallback = self.performance_guard.summary()
+            fallback["refresh_error"] = str(exc)
+            summary["performance_guard"] = fallback
+        summary["position_dedup_guard"] = self.position_dedup_guard.summary()
+        summary["timeframe_filter"] = self.timeframe_filter.summary()
+        summary["xau_pullback_short"] = self.xau_pullback_short.summary()
+        summary["weekend_reopen_guard"] = self.weekend_reopen_guard.summary()
+        summary["control"] = self.control_status()
 
     async def _check_paper_positions(self, symbol: str, price: float):
         """Simulates SL/TP trigger evaluations for paper trading positions."""
@@ -784,12 +802,38 @@ class ForexAgentManager:
                 logger.warning(f"[PerformanceGuard] {agent.dna.name} {symbol} blocked: {perf.reason}")
                 continue
             signal = agent.generate_signal(price)
+            xau_pullback = None
+            if not self.paper_mode and ("XAU" in symbol.upper() or "GOLD" in symbol.upper()):
+                xau_pullback = await self.xau_pullback_short.evaluate(self.mt5, symbol, price)
+                if xau_pullback.allowed:
+                    if signal["action"] in ("HOLD", "SHORT"):
+                        signal = {
+                            "action": "SHORT",
+                            "confidence": max(int(signal.get("confidence") or 0), xau_pullback.confidence),
+                            "reason": f"{xau_pullback.reason}; base={signal.get('reason', '')}",
+                        }
+                    elif signal["action"] == "LONG":
+                        logger.warning(
+                            f"[XAUPullback] {agent.dna.name} {symbol} LONG blocked: "
+                            f"pullback setup favors SHORT"
+                        )
+                        continue
+                elif signal["action"] == "SHORT":
+                    logger.warning(f"[XAUPullback] {agent.dna.name} {symbol} SHORT blocked: {xau_pullback.reason}")
+                    continue
             if signal["action"] == "HOLD" or signal["confidence"] < min_confidence:
                 continue
             action = "BUY" if signal["action"] == "LONG" else "SELL"
 
             if not self.paper_mode:
-                dedup = self.position_dedup_guard.evaluate(symbol, action, live_positions)
+                dedup_kwargs = {}
+                if xau_pullback and xau_pullback.allowed and action == "SELL":
+                    dedup_kwargs = {
+                        "max_per_symbol": xau_pullback.basket_max_positions,
+                        "max_per_symbol_side": xau_pullback.basket_max_positions,
+                        "cooldown_seconds": xau_pullback.basket_cooldown_seconds,
+                    }
+                dedup = self.position_dedup_guard.evaluate(symbol, action, live_positions, **dedup_kwargs)
                 if not dedup.allowed:
                     logger.warning(f"[PositionDedup] {agent.dna.name} {symbol} {action} blocked: {dedup.reason}")
                     continue
@@ -1096,16 +1140,7 @@ class ForexAgentManager:
         summary.update(previous_competition_summary)
         summary["account_risk"] = self.account_risk_monitor.current.to_dict()
         summary["adaptive_guard"] = self._adaptive_guard(self.account_risk_monitor.current)
-        try:
-            summary["performance_guard"] = self.performance_guard.refresh()
-        except Exception as exc:
-            fallback = self.performance_guard.summary()
-            fallback["refresh_error"] = str(exc)
-            summary["performance_guard"] = fallback
-        summary["position_dedup_guard"] = self.position_dedup_guard.summary()
-        summary["timeframe_filter"] = self.timeframe_filter.summary()
-        summary["weekend_reopen_guard"] = self.weekend_reopen_guard.summary()
-        summary["control"] = self.control_status()
+        self._merge_runtime_guard_summary({"summary": summary})
 
         state = {
             "timestamp": time.time(),
