@@ -29,6 +29,7 @@ from engine.timeframe_filter import MultiTimeframeFilter
 from engine.weekend_reopen_guard import WeekendReopenGuard
 from engine.xau_pullback_short import XauPullbackShortFilter
 from engine.agent_execution_policy import AgentExecutionPolicy
+from engine.regime_entry_filter import RegimeEntryFilter
 from storage.trading_journal import is_exit_deal, deal_reason_label
 
 logger = logging.getLogger("agent_manager")
@@ -99,6 +100,7 @@ class ForexAgentManager:
         self.weekend_reopen_guard = WeekendReopenGuard()
         self.xau_pullback_short = XauPullbackShortFilter()
         self.agent_execution_policy = AgentExecutionPolicy()
+        self.regime_entry_filter = RegimeEntryFilter()
 
         dnas = create_population(agent_count)
         self.agents: List[ForexAgent] = [
@@ -125,6 +127,15 @@ class ForexAgentManager:
         self._manual_entries_paused = False
         self._manual_pause_reason = ""
         self._last_block_log = {}
+        # Symbol/strategy/regime attribution tracking for walk-forward analysis
+        self._attribution = {
+            "by_symbol": {},
+            "by_strategy": {},
+            "by_timeframe": {},
+            "by_regime": {},
+            "by_symbol_strategy": {},
+            "by_symbol_regime": {},
+        }
         # initialize history DB
         try:
             from storage.history_db import init_db, query_orders
@@ -557,11 +568,18 @@ class ForexAgentManager:
         summary["xau_pullback_short"] = self.xau_pullback_short.summary()
         summary["weekend_reopen_guard"] = self.weekend_reopen_guard.summary()
         summary["agent_execution_policy"] = self.agent_execution_policy.summary()
+        summary["regime_entry_filter"] = self.regime_entry_filter.summary()
+        summary["attribution"] = self.attribution_summary()
         summary["entry_audit"] = self._entry_audit[:100]
         summary["control"] = self.control_status()
 
     async def _check_paper_positions(self, symbol: str, price: float):
         """Simulates SL/TP trigger evaluations for paper trading positions."""
+        regime = None
+        try:
+            regime, _ = await self.regime_service.get(symbol)
+        except Exception:
+            regime = "UNKNOWN"
         for agent in self.agents:
             if agent.dna.symbol == symbol and agent.is_in_trade:
                 direction = 1 if agent._open_side == "BUY" else -1
@@ -671,6 +689,15 @@ class ForexAgentManager:
 
     async def _sync_positions(self):
         """Syncs active live positions on MT5 to update agent states."""
+        regimes = {}
+        for agent in self.agents:
+            if agent.is_in_trade:
+                sym = agent.dna.symbol
+                if sym not in regimes:
+                    try:
+                        regimes[sym], _ = await self.regime_service.get(sym)
+                    except Exception:
+                        regimes[sym] = "UNKNOWN"
         try:
             positions = await self.mt5.get_positions()
             closed_tickets = await self._apply_weekend_reopen_guard(positions)
@@ -707,6 +734,14 @@ class ForexAgentManager:
                 try:
                     _strat = max(agent.dna.strategy_weights, key=lambda k: agent.dna.strategy_weights[k])
                     self.strategy_performance_guard.record(_strat, pnl)
+                    # Record attribution for walk-forward analysis
+                    self._record_attribution(
+                        symbol=agent.dna.symbol,
+                        strategy=_strat,
+                        timeframe=agent.dna.timeframe,
+                        regime=regimes.get(agent.dna.symbol, "UNKNOWN"),
+                        pnl=pnl,
+                    )
                 except Exception:
                     pass
                 logger.info(
@@ -817,6 +852,15 @@ class ForexAgentManager:
             self._log_blocked(
                 f"adaptive:{adaptive['mode']}:{adaptive['reason']}",
                 f"[AdaptiveGuard] entries blocked: {adaptive['reason']}",
+            )
+            return
+
+        # Regime-based entry filter (evidence-backed: XAUUSDm negative in trending regimes)
+        regime_filter = self.regime_entry_filter.evaluate(symbol, regime or "UNKNOWN")
+        if not regime_filter.allowed:
+            self._log_blocked(
+                f"regime_filter:{symbol}:{regime}",
+                f"[RegimeFilter] {symbol} entries blocked: {regime_filter.reason}",
             )
             return
 
@@ -1023,7 +1067,15 @@ class ForexAgentManager:
             "paper_mode": self.paper_mode,
             "account_risk_mode": self.account_risk_monitor.current.mode,
             "account_risk_reason": self.account_risk_monitor.current.reason,
+            "mads_defensive_policy": self.risk_guardian.external_policy(),
         }
+
+    def set_risk_policy(self, mode: str, risk_scale: float, max_positions: int) -> Dict:
+        policy = self.risk_guardian.set_external_policy(mode, risk_scale, max_positions)
+        if policy["risk_scale"] <= 0 or policy["max_positions"] <= 0:
+            self.pause_entries(f"MADS {policy['mode']} defensive policy")
+        logger.warning(f"[Control] MADS defensive policy applied: {policy}")
+        return self.control_status()
 
     def pause_entries(self, reason: str = "manual control") -> Dict:
         self._manual_entries_paused = True

@@ -10,7 +10,7 @@ PERFORMANCE_GUARD_LOOKBACK = int(os.getenv("PERFORMANCE_GUARD_LOOKBACK", "200"))
 PERFORMANCE_GUARD_COOLDOWN_SECONDS = int(os.getenv("PERFORMANCE_GUARD_COOLDOWN_SECONDS", "14400"))
 EXPECTANCY_SYMBOL_GUARD_ENABLED = str(os.getenv("EXPECTANCY_SYMBOL_GUARD_ENABLED", "true")).lower() in ("1", "true", "yes", "on")
 EXPECTANCY_SYMBOL_MIN_TRADES = int(os.getenv("EXPECTANCY_SYMBOL_MIN_TRADES", "10"))
-EXPECTANCY_SYMBOL_BLOCK_THRESHOLD = float(os.getenv("EXPECTANCY_SYMBOL_BLOCK_THRESHOLD", "-0.25"))
+EXPECTANCY_SYMBOL_BLOCK_THRESHOLD = float(os.getenv("EXPECTANCY_SYMBOL_BLOCK_THRESHOLD", "-0.10"))
 # Expectancy block must expire, otherwise a paused symbol can never trade again
 # (no new trades -> losses never age out of the lookback -> permanent ban).
 # After this cooldown elapses since the symbol's last closed trade, allow a
@@ -19,7 +19,7 @@ EXPECTANCY_SYMBOL_COOLDOWN_SECONDS = int(os.getenv("EXPECTANCY_SYMBOL_COOLDOWN_S
 RECENT_SYMBOL_GUARD_ENABLED = str(os.getenv("RECENT_SYMBOL_GUARD_ENABLED", "true")).lower() in ("1", "true", "yes", "on")
 RECENT_SYMBOL_LOOKBACK_DAYS = float(os.getenv("RECENT_SYMBOL_LOOKBACK_DAYS", "3"))
 RECENT_SYMBOL_MIN_TRADES = int(os.getenv("RECENT_SYMBOL_MIN_TRADES", "3"))
-RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD = float(os.getenv("RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD", "-10"))
+RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD = float(os.getenv("RECENT_SYMBOL_NET_PNL_BLOCK_THRESHOLD", "-5"))
 RECENT_SYMBOL_COOLDOWN_SECONDS = int(os.getenv("RECENT_SYMBOL_COOLDOWN_SECONDS", "172800"))
 MANUAL_PAUSED_SYMBOLS = {
     item.strip()

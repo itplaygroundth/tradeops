@@ -47,11 +47,11 @@ class StrategyPerformanceGuard:
     ):
         self.enabled = _env_bool("STRATEGY_GUARD_ENABLED", True) if enabled is None else enabled
         self.min_trades = min_trades if min_trades is not None else _env_int("STRATEGY_GUARD_MIN_TRADES", 3)
-        self.loss_streak = loss_streak if loss_streak is not None else _env_int("STRATEGY_GUARD_LOSS_STREAK", 3)
+        self.loss_streak = loss_streak if loss_streak is not None else _env_int("STRATEGY_GUARD_LOSS_STREAK", 2)
         self.min_expectancy = (
             min_expectancy
             if min_expectancy is not None
-            else _env_float("STRATEGY_GUARD_MIN_EXPECTANCY", -0.10)
+            else _env_float("STRATEGY_GUARD_MIN_EXPECTANCY", 0.0)
         )
         self.cooldown_seconds = (
             cooldown_seconds
