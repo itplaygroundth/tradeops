@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  TrendingUp,
-  TrendingDown,
   Coins,
   LineChart,
   DollarSign,
@@ -16,10 +14,117 @@ import {
   MessageSquare,
   Bell,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  PieChart
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
+
+const INVESTMENT_PLANS = {
+  saving: {
+    name: 'Saving',
+    thaiName: 'ปลอดภัยและสภาพคล่อง',
+    risk: 'ต่ำ',
+    rebalance: 'ทุก 6 เดือน',
+    horizon: '1-3 ปี',
+    description: 'เหมาะกับเงินสำรอง เป้าหมายระยะสั้น หรือช่วงใกล้เกษียณ',
+    allocations: [
+      { key: 'liquidity', label: 'Liquidity Buffer', weight: 0.4, assets: 'เงินสด, เงินฝาก, กองทุนตลาดเงิน' },
+      { key: 'core', label: 'Core', weight: 0.5, assets: 'พันธบัตร, หุ้นใหญ่คุณภาพ, REITs ความเสี่ยงต่ำ' },
+      { key: 'satellite', label: 'Satellite', weight: 0.1, assets: 'Specialty funds, crypto ขนาดเล็ก' },
+    ],
+  },
+  balance: {
+    name: 'Balance',
+    thaiName: 'สมดุลและเติบโต',
+    risk: 'ปานกลาง',
+    rebalance: 'ทุก 3-6 เดือน',
+    horizon: '5-10 ปี',
+    description: 'เหมาะกับเป้าหมายกลาง-ยาว ต้องการโตแบบยังคุมความผันผวน',
+    allocations: [
+      { key: 'liquidity', label: 'Liquidity Buffer', weight: 0.2, assets: 'เงินสด, กองทุนตลาดเงิน, T-bill' },
+      { key: 'core', label: 'Core', weight: 0.6, assets: 'หุ้นใหญ่, กองทุนรวมหุ้น, พันธบัตร, REITs' },
+      { key: 'satellite', label: 'Satellite', weight: 0.2, assets: 'หุ้นเติบโต, GOLD, อสังหาฯ เชิงลงทุน' },
+    ],
+  },
+  risk: {
+    name: 'Risk',
+    thaiName: 'เติบโตสูง',
+    risk: 'สูง',
+    rebalance: 'ทุก 1-2 เดือน',
+    horizon: '10+ ปี',
+    description: 'เหมาะกับเงินเย็น ระยะยาว และรับ drawdown สูงได้',
+    allocations: [
+      { key: 'liquidity', label: 'Liquidity Buffer', weight: 0.125, assets: 'เงินสด, กองทุนตลาดเงิน' },
+      { key: 'core', label: 'Core', weight: 0.475, assets: 'หุ้นเติบโต, specialty funds, tech, REITs' },
+      { key: 'satellite', label: 'Satellite', weight: 0.4, assets: 'Crypto, หุ้นเล็ก, Gold, Emerging Markets' },
+    ],
+  },
+};
+
+const MARKET_SCENARIOS = {
+  bull: {
+    name: 'Bull',
+    thaiName: 'ตลาดขาขึ้น',
+    tone: 'risk-on',
+    assumptions: {
+      liquidity: { return: 0.025, volatility: 0.01, drawdown: 0.01 },
+      core: { return: 0.12, volatility: 0.12, drawdown: 0.12 },
+      satellite: { return: 0.22, volatility: 0.24, drawdown: 0.2 },
+    },
+  },
+  normal: {
+    name: 'Normal',
+    thaiName: 'ตลาดปกติ',
+    tone: 'base case',
+    assumptions: {
+      liquidity: { return: 0.018, volatility: 0.008, drawdown: 0.005 },
+      core: { return: 0.07, volatility: 0.09, drawdown: 0.1 },
+      satellite: { return: 0.11, volatility: 0.18, drawdown: 0.18 },
+    },
+  },
+  bear: {
+    name: 'Bear',
+    thaiName: 'ตลาดขาลง',
+    tone: 'stress',
+    assumptions: {
+      liquidity: { return: 0.012, volatility: 0.006, drawdown: 0.002 },
+      core: { return: -0.04, volatility: 0.13, drawdown: 0.22 },
+      satellite: { return: -0.18, volatility: 0.32, drawdown: 0.45 },
+    },
+  },
+};
+
+function projectInvestmentPlan(plan, scenario, principal, years) {
+  const metrics = plan.allocations.reduce((acc, allocation) => {
+    const assumption = scenario.assumptions[allocation.key];
+    acc.expectedReturn += allocation.weight * assumption.return;
+    acc.volatility += Math.pow(allocation.weight * assumption.volatility, 2);
+    acc.maxDrawdown += allocation.weight * assumption.drawdown;
+    return acc;
+  }, { expectedReturn: 0, volatility: 0, maxDrawdown: 0 });
+
+  const annualReturn = metrics.expectedReturn;
+  const annualVolatility = Math.sqrt(metrics.volatility);
+  const endingValue = principal * Math.pow(1 + annualReturn, years);
+  const conservativeValue = principal * Math.pow(1 + annualReturn - annualVolatility, years);
+  const optimisticValue = principal * Math.pow(1 + annualReturn + annualVolatility, years);
+  const path = Array.from({ length: years + 1 }, (_, index) => ({
+    year: index,
+    value: principal * Math.pow(1 + annualReturn, index),
+  }));
+
+  return {
+    annualReturn,
+    annualVolatility,
+    maxDrawdown: metrics.maxDrawdown,
+    endingValue,
+    conservativeValue,
+    optimisticValue,
+    profit: endingValue - principal,
+    path,
+  };
+}
 
 function MT5PriceTag({ symbol, apiBase }) {
   const [price, setPrice] = React.useState(null);
@@ -30,7 +135,9 @@ function MT5PriceTag({ symbol, apiBase }) {
         const res = await fetch(`${apiBase}/api/mt5/price/${symbol}`);
         const d = await res.json();
         if (!cancelled && d.mt5_status === 'online') setPrice(d);
-      } catch {}
+      } catch {
+        // Price tag refresh is best-effort; stale display is acceptable here.
+      }
     };
     fetch_();
     const id = setInterval(fetch_, 5000);
@@ -67,11 +174,811 @@ function HealthPill({ health, mt5Status }) {
   );
 }
 
+function SmallMetric({ label, value, tone = 'neutral' }) {
+  const color = tone === 'good' ? 'var(--accent-emerald)' : tone === 'bad' ? 'var(--accent-rose)' : 'var(--text-primary)';
+  return (
+    <div className="glass-panel" style={{ padding: '1rem', borderRadius: '10px', minHeight: '76px' }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
+      <div style={{ color, fontSize: '1.5rem', fontWeight: 800, marginTop: '0.35rem' }}>{value ?? '—'}</div>
+    </div>
+  );
+}
+
+function ResearchOsDashboard({ data, loading, error, actionStatus, gateStatus, walkForwardStatus, promotionStatus, shadowStatus, reviewStatus, handoffStatus, enableStatus, decisionStatus, stagedDispatchStatus, onRefresh, onRunPipeline, onRunGates, onRunWalkForward, onRunPromotion, onDeployShadow, onRunReview, onBuildHandoff, onRequestEnable, onDecision, onStageDispatch }) {
+  const research = data?.researchLab || {};
+  const strategy = data?.strategyLab || {};
+  const papers = research.papers || {};
+  const hypotheses = research.hypotheses || {};
+  const proposals = research.proposals || {};
+  const registry = strategy.registry || {};
+  const batch = strategy.batch || {};
+  const walkForward = strategy.walkForward || {};
+  const shadow = strategy.shadow || {};
+  const latestReview = strategy.latestReview || null;
+  const lineage = strategy.lineage || {};
+  const liveReadiness = strategy.liveReadiness || {};
+  const handoff = strategy.handoff || null;
+  const latestEnableRequest = strategy.latestEnableRequest || null;
+  const latestApprovalDecision = strategy.latestApprovalDecision || null;
+  const dispatchPlan = strategy.dispatchPlan || null;
+  const stagedDispatch = strategy.stagedDispatch || null;
+  const bestRuns = batch.bestOverall || [];
+  const promotionResults = promotionStatus?.results || [];
+  const busy = loading || actionStatus?.loading || gateStatus?.loading || walkForwardStatus?.loading || promotionStatus?.loading || shadowStatus?.loading || reviewStatus?.loading || handoffStatus?.loading || enableStatus?.loading || decisionStatus?.loading || stagedDispatchStatus?.loading;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>TradeOps Research OS</h1>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            Command center for paper research, hypotheses, strategy gates, and registry health.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
+          <button className="btn-secondary" onClick={onRefresh} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <RefreshCw size={16} />
+            {loading ? 'Refreshing' : 'Refresh'}
+          </button>
+          <button className="btn-secondary" onClick={onBuildHandoff} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Send size={16} />
+            {handoffStatus?.loading ? 'Building Handoff' : 'Build Handoff'}
+          </button>
+          <button className="btn-secondary" onClick={onRequestEnable} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ShieldCheck size={16} />
+            {enableStatus?.loading ? 'Requesting Enable' : 'Request Enable'}
+          </button>
+          <button className="btn-secondary" onClick={() => onDecision('approve')} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ShieldCheck size={16} />
+            {decisionStatus?.loading ? 'Recording' : 'Approve Stage'}
+          </button>
+          <button className="btn-secondary" onClick={onStageDispatch} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Send size={16} />
+            {stagedDispatchStatus?.loading ? 'Staging Dispatch' : 'Stage Dispatch'}
+          </button>
+          <button className="btn-secondary" onClick={onRunReview} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <MessageSquare size={16} />
+            {reviewStatus?.loading ? 'Reviewing' : 'MADS Review'}
+          </button>
+          <button className="btn-secondary" onClick={onDeployShadow} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <LineChart size={16} />
+            {shadowStatus?.loading ? 'Deploying Shadow' : 'Deploy Shadow'}
+          </button>
+          <button className="btn-secondary" onClick={onRunPromotion} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ShieldCheck size={16} />
+            {promotionStatus?.loading ? 'Promoting' : 'Run Promotion'}
+          </button>
+          <button className="btn-secondary" onClick={onRunWalkForward} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Activity size={16} />
+            {walkForwardStatus?.loading ? 'Running Walk-Forward' : 'Run Walk-Forward'}
+          </button>
+          <button className="btn-secondary" onClick={onRunGates} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <ShieldCheck size={16} />
+            {gateStatus?.loading ? 'Running Gates' : 'Run Strategy Gates'}
+          </button>
+          <button className="primary-btn" onClick={onRunPipeline} disabled={busy} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Cpu size={16} />
+            {actionStatus?.loading ? 'Running Pipeline' : 'Run Pipeline'}
+          </button>
+        </div>
+      </header>
+
+      {error && (
+        <div className="glass-panel" style={{ padding: '1rem', borderColor: 'rgba(244, 63, 94, 0.35)', color: 'var(--accent-rose)' }}>
+          {error}
+        </div>
+      )}
+
+      {actionStatus?.msg && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1rem',
+            borderColor: actionStatus.type === 'error' ? 'rgba(244, 63, 94, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            color: actionStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)'
+          }}
+        >
+          <div style={{ fontWeight: 700, color: actionStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--accent-emerald)' }}>
+            {actionStatus.msg}
+          </div>
+          {(actionStatus.steps || []).length > 0 && (
+            <div style={{ display: 'grid', gap: '0.35rem', marginTop: '0.75rem', fontSize: '0.78rem' }}>
+              {actionStatus.steps.map((step, index) => (
+                <div key={`${step.command}-${index}`} style={{ color: step.ok ? 'var(--text-muted)' : 'var(--accent-rose)' }}>
+                  {step.ok ? 'PASS' : 'FAIL'} · {step.command} · {step.durationMs}ms
+                  {step.stderr ? ` · ${step.stderr}` : ''}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {gateStatus?.msg && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1rem',
+            borderColor: gateStatus.type === 'error' ? 'rgba(244, 63, 94, 0.35)' : gateStatus.type === 'warning' ? 'rgba(240, 185, 11, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            color: gateStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)'
+          }}
+        >
+          <div style={{ fontWeight: 700, color: gateStatus.type === 'error' ? 'var(--accent-rose)' : gateStatus.type === 'warning' ? 'var(--accent-amber)' : 'var(--accent-emerald)' }}>
+            {gateStatus.msg}
+          </div>
+          {(gateStatus.steps || []).length > 0 && (
+            <div style={{ display: 'grid', gap: '0.35rem', marginTop: '0.75rem', fontSize: '0.78rem' }}>
+              {gateStatus.steps.map((step, index) => (
+                <div key={`${step.command}-${index}`} style={{ color: step.ok ? 'var(--text-muted)' : 'var(--accent-rose)' }}>
+                  {step.gatePassed ? 'GATE PASS' : step.ok ? 'GATE COMPLETE' : 'FAIL'} · {step.command} · {step.durationMs}ms
+                  {step.stderr ? ` · ${step.stderr}` : ''}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {walkForwardStatus?.msg && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1rem',
+            borderColor: walkForwardStatus.type === 'error' ? 'rgba(244, 63, 94, 0.35)' : walkForwardStatus.type === 'warning' ? 'rgba(240, 185, 11, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            color: walkForwardStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)'
+          }}
+        >
+          <div style={{ fontWeight: 700, color: walkForwardStatus.type === 'error' ? 'var(--accent-rose)' : walkForwardStatus.type === 'warning' ? 'var(--accent-amber)' : 'var(--accent-emerald)' }}>
+            {walkForwardStatus.msg}
+          </div>
+          {(walkForwardStatus.steps || []).length > 0 && (
+            <div style={{ display: 'grid', gap: '0.35rem', marginTop: '0.75rem', fontSize: '0.78rem' }}>
+              {walkForwardStatus.steps.map((step, index) => (
+                <div key={`${step.command}-${index}`} style={{ color: step.ok ? 'var(--text-muted)' : 'var(--accent-rose)' }}>
+                  {step.gatePassed ? 'WALK-FORWARD PASS' : step.ok ? 'WALK-FORWARD COMPLETE' : 'FAIL'} · {step.command} · {step.durationMs}ms
+                  {step.stderr ? ` · ${step.stderr}` : ''}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {promotionStatus?.msg && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1rem',
+            borderColor: promotionStatus.type === 'error' ? 'rgba(244, 63, 94, 0.35)' : promotionStatus.type === 'warning' ? 'rgba(240, 185, 11, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            color: promotionStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)'
+          }}
+        >
+          <div style={{ fontWeight: 700, color: promotionStatus.type === 'error' ? 'var(--accent-rose)' : promotionStatus.type === 'warning' ? 'var(--accent-amber)' : 'var(--accent-emerald)' }}>
+            {promotionStatus.msg}
+          </div>
+          {promotionResults.length > 0 && (
+            <div style={{ overflowX: 'auto', marginTop: '0.9rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '0.55rem' }}>Strategy</th>
+                    <th style={{ padding: '0.55rem' }}>Status</th>
+                    <th style={{ padding: '0.55rem' }}>Windows</th>
+                    <th style={{ padding: '0.55rem' }}>Pass Rate</th>
+                    <th style={{ padding: '0.55rem' }}>Decision</th>
+                    <th style={{ padding: '0.55rem' }}>Reasons</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promotionResults.map((item) => (
+                    <tr key={`${item.name}-${item.version}`} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <td style={{ padding: '0.55rem', fontWeight: 700 }}>{item.name}</td>
+                      <td style={{ padding: '0.55rem' }}>{item.previousStatus} → {item.nextStatus}</td>
+                      <td style={{ padding: '0.55rem' }}>{item.metrics?.passed_windows || 0}/{item.metrics?.windows || 0}</td>
+                      <td style={{ padding: '0.55rem' }}>{Math.round((item.metrics?.pass_rate || 0) * 100)}%</td>
+                      <td style={{ padding: '0.55rem', color: item.approved ? 'var(--accent-emerald)' : 'var(--accent-amber)', fontWeight: 700 }}>
+                        {item.approved ? 'approved' : 'blocked'}
+                      </td>
+                      <td style={{ padding: '0.55rem', color: (item.reasons || []).length ? 'var(--accent-rose)' : 'var(--text-muted)' }}>
+                        {(item.reasons || []).join('; ') || '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {shadowStatus?.msg && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1rem',
+            borderColor: shadowStatus.type === 'error' ? 'rgba(244, 63, 94, 0.35)' : shadowStatus.type === 'warning' ? 'rgba(240, 185, 11, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            color: shadowStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)'
+          }}
+        >
+          <div style={{ fontWeight: 700, color: shadowStatus.type === 'error' ? 'var(--accent-rose)' : shadowStatus.type === 'warning' ? 'var(--accent-amber)' : 'var(--accent-emerald)' }}>
+            {shadowStatus.msg}
+          </div>
+        </div>
+      )}
+
+      {reviewStatus?.msg && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1rem',
+            borderColor: reviewStatus.type === 'error' ? 'rgba(244, 63, 94, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            color: reviewStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)'
+          }}
+        >
+          <div style={{ fontWeight: 700, color: reviewStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--accent-emerald)' }}>
+            {reviewStatus.msg}
+          </div>
+        </div>
+      )}
+
+      {handoffStatus?.msg && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1rem',
+            borderColor: handoffStatus.type === 'error' ? 'rgba(244, 63, 94, 0.35)' : handoffStatus.type === 'warning' ? 'rgba(240, 185, 11, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            color: handoffStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)'
+          }}
+        >
+          <div style={{ fontWeight: 700, color: handoffStatus.type === 'error' ? 'var(--accent-rose)' : handoffStatus.type === 'warning' ? 'var(--accent-amber)' : 'var(--accent-emerald)' }}>
+            {handoffStatus.msg}
+          </div>
+        </div>
+      )}
+
+      {enableStatus?.msg && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1rem',
+            borderColor: enableStatus.type === 'error' ? 'rgba(244, 63, 94, 0.35)' : enableStatus.type === 'warning' ? 'rgba(240, 185, 11, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            color: enableStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)'
+          }}
+        >
+          <div style={{ fontWeight: 700, color: enableStatus.type === 'error' ? 'var(--accent-rose)' : enableStatus.type === 'warning' ? 'var(--accent-amber)' : 'var(--accent-emerald)' }}>
+            {enableStatus.msg}
+          </div>
+        </div>
+      )}
+
+      {decisionStatus?.msg && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1rem',
+            borderColor: decisionStatus.type === 'error' ? 'rgba(244, 63, 94, 0.35)' : decisionStatus.type === 'warning' ? 'rgba(240, 185, 11, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            color: decisionStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)'
+          }}
+        >
+          <div style={{ fontWeight: 700, color: decisionStatus.type === 'error' ? 'var(--accent-rose)' : decisionStatus.type === 'warning' ? 'var(--accent-amber)' : 'var(--accent-emerald)' }}>
+            {decisionStatus.msg}
+          </div>
+        </div>
+      )}
+
+      {stagedDispatchStatus?.msg && (
+        <div
+          className="glass-panel"
+          style={{
+            padding: '1rem',
+            borderColor: stagedDispatchStatus.type === 'error' ? 'rgba(244, 63, 94, 0.35)' : stagedDispatchStatus.type === 'warning' ? 'rgba(240, 185, 11, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            color: stagedDispatchStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)'
+          }}
+        >
+          <div style={{ fontWeight: 700, color: stagedDispatchStatus.type === 'error' ? 'var(--accent-rose)' : stagedDispatchStatus.type === 'warning' ? 'var(--accent-amber)' : 'var(--accent-emerald)' }}>
+            {stagedDispatchStatus.msg}
+          </div>
+          {(stagedDispatchStatus.blockers || []).length > 0 && (
+            <div style={{ display: 'grid', gap: '0.35rem', marginTop: '0.75rem', fontSize: '0.82rem' }}>
+              {(stagedDispatchStatus.blockers || []).map((blocker) => (
+                <div key={blocker} style={{ color: 'var(--accent-rose)' }}>
+                  Blocked: {blocker}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem' }}>
+        <SmallMetric label="Papers" value={papers.stored || 0} />
+        <SmallMetric label="Hypotheses" value={hypotheses.count || 0} />
+        <SmallMetric label="Generated Proposals" value={proposals.generated || 0} />
+        <SmallMetric label="Registry Strategies" value={registry.total || 0} />
+        <SmallMetric label="Batch Runs" value={batch.runs || 0} />
+        <SmallMetric label="Passed Runs" value={batch.passedRuns || 0} tone={(batch.passedRuns || 0) > 0 ? 'good' : 'bad'} />
+        <SmallMetric label="Walk-Forward Pass" value={`${walkForward.approved || 0}/${walkForward.reports || 0}`} tone={(walkForward.approved || 0) > 0 ? 'good' : 'neutral'} />
+        <SmallMetric label="Shadow Active" value={shadow.active || 0} tone={(shadow.active || 0) > 0 ? 'good' : 'neutral'} />
+        <SmallMetric label="Review Source" value={latestReview?.source || 'none'} tone={latestReview ? 'good' : 'neutral'} />
+        <SmallMetric label="Lineage Risks" value={lineage.riskCount || 0} tone={(lineage.riskCount || 0) > 0 ? 'bad' : 'good'} />
+        <SmallMetric label="Live Readiness" value={liveReadiness.status || 'BLOCKED'} tone={liveReadiness.status === 'READY_FOR_LIMITED_LIVE_REVIEW' ? 'good' : 'bad'} />
+        <SmallMetric label="Handoff" value={handoff?.status || 'none'} tone={handoff?.status === 'ready_for_manual_enable' ? 'good' : 'neutral'} />
+        <SmallMetric label="Enable Request" value={latestEnableRequest?.status || 'none'} tone={latestEnableRequest?.status === 'PENDING_MANUAL_APPROVAL' ? 'good' : 'neutral'} />
+        <SmallMetric label="Dispatch Plan" value={dispatchPlan?.status || 'none'} tone={dispatchPlan?.status === 'STAGED' ? 'good' : 'neutral'} />
+        <SmallMetric label="Staged Dispatch" value={stagedDispatch?.status || 'none'} tone={stagedDispatch?.accepted ? 'good' : stagedDispatch?.status === 'BLOCKED' ? 'bad' : 'neutral'} />
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Research Pipeline</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+          <div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '0.4rem' }}>Paper Brief</div>
+            <div style={{ color: papers.markdownBrief ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontWeight: 700 }}>
+              {papers.markdownBrief ? 'Markdown ready' : 'Markdown missing'}
+            </div>
+          </div>
+          <div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '0.4rem' }}>Latest Search</div>
+            <div style={{ fontWeight: 700 }}>{papers.latestFound || 0} found</div>
+          </div>
+          <div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '0.4rem' }}>Latest Digest</div>
+            <div style={{ fontWeight: 700 }}>{hypotheses.latestCount || 0} hypotheses</div>
+          </div>
+          <div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginBottom: '0.4rem' }}>Latest Proposal Build</div>
+            <div style={{ fontWeight: 700 }}>{proposals.latestGenerated || 0} proposals</div>
+          </div>
+        </div>
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Live Readiness Gate</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+          <SmallMetric label="Status" value={liveReadiness.status || 'BLOCKED'} tone={liveReadiness.status === 'READY_FOR_LIMITED_LIVE_REVIEW' ? 'good' : 'bad'} />
+          <SmallMetric label="Ready Shadow" value={liveReadiness.readyForShadow || 0} tone={(liveReadiness.readyForShadow || 0) > 0 ? 'good' : 'neutral'} />
+          <SmallMetric label="Ready Review" value={liveReadiness.readyForLimitedLiveReview || 0} tone={(liveReadiness.readyForLimitedLiveReview || 0) > 0 ? 'good' : 'neutral'} />
+          <SmallMetric label="Strategies" value={liveReadiness.total || 0} />
+        </div>
+        <div style={{ display: 'grid', gap: '0.75rem', marginBottom: '1rem' }}>
+          {(liveReadiness.blockers || []).length > 0 && (
+            <div style={{ color: 'var(--accent-rose)', fontSize: '0.85rem' }}>
+              Blockers: {(liveReadiness.blockers || []).join('; ')}
+            </div>
+          )}
+          {(liveReadiness.warnings || []).length > 0 && (
+            <div style={{ color: 'var(--accent-amber)', fontSize: '0.85rem' }}>
+              Warnings: {(liveReadiness.warnings || []).join('; ')}
+            </div>
+          )}
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead>
+              <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                <th style={{ padding: '0.6rem' }}>Strategy</th>
+                <th style={{ padding: '0.6rem' }}>Stage</th>
+                <th style={{ padding: '0.6rem' }}>Shadow</th>
+                <th style={{ padding: '0.6rem' }}>Limited Live Review</th>
+                <th style={{ padding: '0.6rem' }}>Evidence</th>
+                <th style={{ padding: '0.6rem' }}>Blockers</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(liveReadiness.items || []).map((item) => (
+                <tr key={`${item.strategy}-${item.version}`} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <td style={{ padding: '0.6rem', fontWeight: 700 }}>{item.strategy}</td>
+                  <td style={{ padding: '0.6rem' }}>{item.stage}</td>
+                  <td style={{ padding: '0.6rem', color: item.ready_for_shadow ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontWeight: 700 }}>{item.ready_for_shadow ? 'ready' : 'blocked'}</td>
+                  <td style={{ padding: '0.6rem', color: item.ready_for_limited_live_review ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontWeight: 700 }}>{item.ready_for_limited_live_review ? 'ready' : 'blocked'}</td>
+                  <td style={{ padding: '0.6rem', color: 'var(--text-muted)' }}>
+                    batch {item.evidence?.batch_passed || 0} · wf {item.evidence?.walk_forward_approved || 0} · shadow {item.evidence?.shadow_active || 0} · review {item.evidence?.review_source || '-'}
+                  </td>
+                  <td style={{ padding: '0.6rem', color: (item.blockers || []).length ? 'var(--accent-rose)' : 'var(--text-muted)' }}>
+                    {(item.blockers || []).join('; ') || '-'}
+                  </td>
+                </tr>
+              ))}
+              {!(liveReadiness.items || []).length && (
+                <tr><td colSpan="6" style={{ padding: '0.8rem', color: 'var(--text-muted)' }}>No readiness candidates yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Execution Handoff Manifest</h2>
+        {handoff ? (
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+              <SmallMetric label="Manifest Status" value={handoff.status} tone={handoff.status === 'ready_for_manual_enable' ? 'good' : 'bad'} />
+              <SmallMetric label="Target Mode" value={handoff.target_mode} />
+              <SmallMetric label="Execution" value={handoff.order_execution} tone={handoff.order_execution === 'requires_manual_enable' ? 'good' : 'bad'} />
+              <SmallMetric label="Strategies" value={(handoff.strategies || []).length} />
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+              {handoff.id} · {handoff.created_at}
+            </div>
+            {(handoff.blockers || []).length > 0 && (
+              <div style={{ color: 'var(--accent-rose)', fontSize: '0.85rem' }}>
+                Blockers: {(handoff.blockers || []).join('; ')}
+              </div>
+            )}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '0.6rem' }}>Strategy</th>
+                    <th style={{ padding: '0.6rem' }}>Stage</th>
+                    <th style={{ padding: '0.6rem' }}>Risk</th>
+                    <th style={{ padding: '0.6rem' }}>Positions</th>
+                    <th style={{ padding: '0.6rem' }}>Execution</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(handoff.strategies || []).map((item) => (
+                    <tr key={`${item.strategy}-${item.version}`} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <td style={{ padding: '0.6rem', fontWeight: 700 }}>{item.strategy}</td>
+                      <td style={{ padding: '0.6rem' }}>{item.stage}</td>
+                      <td style={{ padding: '0.6rem' }}>{item.controls?.max_risk_pct}</td>
+                      <td style={{ padding: '0.6rem' }}>{item.controls?.max_positions}</td>
+                      <td style={{ padding: '0.6rem', color: item.controls?.order_execution === 'disabled' ? 'var(--accent-amber)' : 'var(--accent-rose)', fontWeight: 700 }}>
+                        {item.controls?.order_execution}
+                      </td>
+                    </tr>
+                  ))}
+                  {!(handoff.strategies || []).length && (
+                    <tr><td colSpan="5" style={{ padding: '0.8rem', color: 'var(--text-muted)' }}>No handoff strategies yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div style={{ color: 'var(--text-muted)' }}>No execution handoff manifest yet.</div>
+        )}
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Manual Enable Request</h2>
+        {latestEnableRequest ? (
+          <div style={{ display: 'grid', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+              <SmallMetric label="Request Status" value={latestEnableRequest.status} tone={latestEnableRequest.status === 'PENDING_MANUAL_APPROVAL' ? 'good' : 'bad'} />
+              <SmallMetric label="Execution" value={latestEnableRequest.order_execution} tone={latestEnableRequest.order_execution === 'disabled' ? 'good' : 'bad'} />
+              <SmallMetric label="Strategies" value={(latestEnableRequest.strategies || []).length} />
+              <SmallMetric label="Requested By" value={latestEnableRequest.requested_by || '-'} />
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+              {latestEnableRequest.id} · {latestEnableRequest.created_at}
+            </div>
+            {(latestEnableRequest.blockers || []).length > 0 && (
+              <div style={{ color: 'var(--accent-rose)', fontSize: '0.85rem' }}>
+                Blockers: {(latestEnableRequest.blockers || []).join('; ')}
+              </div>
+            )}
+            {(latestEnableRequest.checklist || []).length > 0 && (
+              <div style={{ display: 'grid', gap: '0.45rem' }}>
+                {(latestEnableRequest.checklist || []).map((item) => (
+                  <div key={item} style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                    - {item}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ color: 'var(--accent-amber)', fontSize: '0.85rem', fontWeight: 700 }}>
+              Next: {latestEnableRequest.next_required_action}
+            </div>
+          </div>
+        ) : (
+          <div style={{ color: 'var(--text-muted)' }}>No manual enable request yet.</div>
+        )}
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Approval Decision & Dispatch Plan</h2>
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          {latestApprovalDecision ? (
+            <div style={{ display: 'grid', gap: '0.5rem' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                {latestApprovalDecision.id} · {latestApprovalDecision.created_at}
+              </div>
+              <div style={{ fontWeight: 700, color: latestApprovalDecision.status === 'APPROVED_FOR_STAGED_DISPATCH' ? 'var(--accent-emerald)' : 'var(--accent-amber)' }}>
+                {latestApprovalDecision.status} · dispatch {latestApprovalDecision.engine_dispatch}
+              </div>
+              {latestApprovalDecision.reason && (
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{latestApprovalDecision.reason}</div>
+              )}
+            </div>
+          ) : (
+            <div style={{ color: 'var(--text-muted)' }}>No approval decision yet.</div>
+          )}
+
+          {dispatchPlan ? (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '0.6rem' }}>Plan</th>
+                    <th style={{ padding: '0.6rem' }}>Status</th>
+                    <th style={{ padding: '0.6rem' }}>Engine Dispatch</th>
+                    <th style={{ padding: '0.6rem' }}>Execution</th>
+                    <th style={{ padding: '0.6rem' }}>Strategies</th>
+                    <th style={{ padding: '0.6rem' }}>Next</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <td style={{ padding: '0.6rem', fontWeight: 700 }}>{dispatchPlan.id}</td>
+                    <td style={{ padding: '0.6rem', color: dispatchPlan.status === 'STAGED' ? 'var(--accent-emerald)' : 'var(--accent-amber)', fontWeight: 700 }}>{dispatchPlan.status}</td>
+                    <td style={{ padding: '0.6rem', color: dispatchPlan.engine_dispatch === 'disabled' ? 'var(--accent-amber)' : 'var(--accent-rose)', fontWeight: 700 }}>{dispatchPlan.engine_dispatch}</td>
+                    <td style={{ padding: '0.6rem', color: dispatchPlan.order_execution === 'disabled' ? 'var(--accent-amber)' : 'var(--accent-rose)', fontWeight: 700 }}>{dispatchPlan.order_execution}</td>
+                    <td style={{ padding: '0.6rem' }}>{(dispatchPlan.strategies || []).length}</td>
+                    <td style={{ padding: '0.6rem', color: 'var(--text-muted)' }}>{dispatchPlan.next_required_action}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ color: 'var(--text-muted)' }}>No staged dispatch plan yet.</div>
+          )}
+
+          {stagedDispatch ? (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '0.6rem' }}>Latest Dispatch</th>
+                    <th style={{ padding: '0.6rem' }}>Status</th>
+                    <th style={{ padding: '0.6rem' }}>Engine Dispatch</th>
+                    <th style={{ padding: '0.6rem' }}>Execution</th>
+                    <th style={{ padding: '0.6rem' }}>Commands</th>
+                    <th style={{ padding: '0.6rem' }}>Blockers</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <td style={{ padding: '0.6rem', fontWeight: 700 }}>{stagedDispatch.created_at || '-'}</td>
+                    <td style={{ padding: '0.6rem', color: stagedDispatch.accepted ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontWeight: 700 }}>{stagedDispatch.status || 'unknown'}</td>
+                    <td style={{ padding: '0.6rem', color: stagedDispatch.engine_dispatch === 'pause_and_policy_sent' ? 'var(--accent-emerald)' : 'var(--accent-amber)', fontWeight: 700 }}>{stagedDispatch.engine_dispatch || '-'}</td>
+                    <td style={{ padding: '0.6rem', color: stagedDispatch.order_execution === 'disabled' ? 'var(--accent-amber)' : 'var(--accent-rose)', fontWeight: 700 }}>{stagedDispatch.order_execution || '-'}</td>
+                    <td style={{ padding: '0.6rem' }}>{(stagedDispatch.commands || []).length}</td>
+                    <td style={{ padding: '0.6rem', color: (stagedDispatch.blockers || []).length ? 'var(--accent-rose)' : 'var(--text-muted)' }}>
+                      {(stagedDispatch.blockers || []).join('; ') || '-'}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ color: 'var(--text-muted)' }}>No staged dispatch attempt yet.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Walk-Forward Reports</h2>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                <th style={{ padding: '0.6rem' }}>Strategy</th>
+                <th style={{ padding: '0.6rem' }}>Symbol</th>
+                <th style={{ padding: '0.6rem' }}>Windows</th>
+                <th style={{ padding: '0.6rem' }}>Pass Rate</th>
+                <th style={{ padding: '0.6rem' }}>Status</th>
+                <th style={{ padding: '0.6rem' }}>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(walkForward.latest || []).map((report) => (
+                <tr key={report.file} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <td style={{ padding: '0.6rem', fontWeight: 700 }}>{report.strategy_name}</td>
+                  <td style={{ padding: '0.6rem' }}>{report.symbol}</td>
+                  <td style={{ padding: '0.6rem' }}>{report.passed_windows}/{report.windows}</td>
+                  <td style={{ padding: '0.6rem' }}>{Math.round((report.pass_rate || 0) * 100)}%</td>
+                  <td style={{ padding: '0.6rem', color: report.approved_for_forward_test ? 'var(--accent-emerald)' : 'var(--accent-amber)', fontWeight: 700 }}>
+                    {report.approved_for_forward_test ? 'forward_testing' : 'optimized'}
+                  </td>
+                  <td style={{ padding: '0.6rem', color: 'var(--text-muted)' }}>{(report.gate_reasons || []).join('; ') || '-'}</td>
+                </tr>
+              ))}
+              {!(walkForward.latest || []).length && (
+                <tr><td colSpan="6" style={{ padding: '0.8rem', color: 'var(--text-muted)' }}>No walk-forward reports yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Shadow Deployments</h2>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                <th style={{ padding: '0.6rem' }}>Strategy</th>
+                <th style={{ padding: '0.6rem' }}>Market</th>
+                <th style={{ padding: '0.6rem' }}>Mode</th>
+                <th style={{ padding: '0.6rem' }}>Network</th>
+                <th style={{ padding: '0.6rem' }}>Execution</th>
+                <th style={{ padding: '0.6rem' }}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(shadow.latest || []).map((deployment) => (
+                <tr key={deployment.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <td style={{ padding: '0.6rem', fontWeight: 700 }}>{deployment.strategy_name}</td>
+                  <td style={{ padding: '0.6rem' }}>{deployment.market}</td>
+                  <td style={{ padding: '0.6rem' }}>{deployment.mode}</td>
+                  <td style={{ padding: '0.6rem' }}>{deployment.network}</td>
+                  <td style={{ padding: '0.6rem', color: deployment.order_execution === 'disabled' ? 'var(--accent-amber)' : 'var(--accent-rose)', fontWeight: 700 }}>{deployment.order_execution}</td>
+                  <td style={{ padding: '0.6rem', color: deployment.status === 'active' ? 'var(--accent-emerald)' : 'var(--text-muted)', fontWeight: 700 }}>{deployment.status}</td>
+                </tr>
+              ))}
+              {!(shadow.latest || []).length && (
+                <tr><td colSpan="6" style={{ padding: '0.8rem', color: 'var(--text-muted)' }}>No shadow deployments yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Latest Research Review</h2>
+        {latestReview ? (
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+              {latestReview.created_at} · source {latestReview.source} · status {latestReview.status}
+            </div>
+            {latestReview.reason && (
+              <div style={{ color: 'var(--accent-amber)', fontSize: '0.85rem' }}>{latestReview.reason}</div>
+            )}
+            <pre style={{ whiteSpace: 'pre-wrap', color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.5, margin: 0 }}>
+              {latestReview.output || 'No review output.'}
+            </pre>
+          </div>
+        ) : (
+          <div style={{ color: 'var(--text-muted)' }}>No Research OS review yet.</div>
+        )}
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Strategy Lineage Audit</h2>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+            <thead>
+              <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                <th style={{ padding: '0.6rem' }}>Strategy</th>
+                <th style={{ padding: '0.6rem' }}>Stage</th>
+                <th style={{ padding: '0.6rem' }}>Paper</th>
+                <th style={{ padding: '0.6rem' }}>Hypothesis</th>
+                <th style={{ padding: '0.6rem' }}>Batch</th>
+                <th style={{ padding: '0.6rem' }}>WF</th>
+                <th style={{ padding: '0.6rem' }}>Shadow</th>
+                <th style={{ padding: '0.6rem' }}>Risk Flags</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(lineage.items || []).map((item) => (
+                <tr key={`${item.strategy}-${item.version}`} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <td style={{ padding: '0.6rem', fontWeight: 700 }}>
+                    <div>{item.strategy}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{item.type} · {(item.symbols || []).join(', ')}</div>
+                  </td>
+                  <td style={{ padding: '0.6rem', color: item.stage === 'approved' ? 'var(--accent-emerald)' : item.stage === 'draft' ? 'var(--accent-rose)' : 'var(--accent-amber)', fontWeight: 700 }}>{item.stage}</td>
+                  <td style={{ padding: '0.6rem' }}>
+                    <div>{item.source_paper_id || '-'}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem', maxWidth: '220px' }}>{item.source_paper_title || '-'}</div>
+                  </td>
+                  <td style={{ padding: '0.6rem' }}>
+                    <div>{item.source_hypothesis_id || '-'}</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{item.hypothesis_family || '-'} · {item.hypothesis_regime || '-'}</div>
+                  </td>
+                  <td style={{ padding: '0.6rem' }}>{item.batch?.passed || 0}/{item.batch?.runs || 0}</td>
+                  <td style={{ padding: '0.6rem' }}>{item.walk_forward?.approved || 0}/{item.walk_forward?.reports || 0}</td>
+                  <td style={{ padding: '0.6rem' }}>{item.shadow?.active || 0}/{item.shadow?.deployments || 0}</td>
+                  <td style={{ padding: '0.6rem', color: (item.risk_flags || []).length ? 'var(--accent-rose)' : 'var(--text-muted)' }}>
+                    {(item.risk_flags || []).join('; ') || '-'}
+                  </td>
+                </tr>
+              ))}
+              {!(lineage.items || []).length && (
+                <tr><td colSpan="8" style={{ padding: '0.8rem', color: 'var(--text-muted)' }}>No strategy lineage yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '1rem' }}>
+        <div className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+          <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Top Papers</h2>
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {(papers.top || []).slice(0, 6).map((paper) => (
+              <div key={paper.paper_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '0.65rem' }}>
+                <div style={{ fontWeight: 700, lineHeight: 1.35 }}>{paper.title}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '0.25rem' }}>
+                  {paper.source} · score {paper.score} · {(paper.keywords || []).join(', ') || 'no keywords'}
+                </div>
+              </div>
+            ))}
+            {!(papers.top || []).length && <div style={{ color: 'var(--text-muted)' }}>No papers indexed yet.</div>}
+          </div>
+        </div>
+
+        <div className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+          <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Hypotheses</h2>
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {(hypotheses.top || []).slice(0, 6).map((item) => (
+              <div key={item.hypothesis_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '0.65rem' }}>
+                <div style={{ fontWeight: 700 }}>{item.strategy_family}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '0.25rem' }}>
+                  {item.regime} · confidence {item.confidence} · source {item.source_paper_id}
+                </div>
+              </div>
+            ))}
+            {!(hypotheses.top || []).length && <div style={{ color: 'var(--text-muted)' }}>No hypotheses generated yet.</div>}
+          </div>
+        </div>
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Strategy Gates</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+          <SmallMetric label="Draft" value={registry.byStatus?.draft || 0} />
+          <SmallMetric label="Optimized" value={registry.byStatus?.optimized || 0} />
+          <SmallMetric label="Forward Testing" value={registry.byStatus?.forward_testing || 0} />
+          <SmallMetric label="Approved" value={registry.byStatus?.approved || 0} tone={(registry.byStatus?.approved || 0) > 0 ? 'good' : 'neutral'} />
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                <th style={{ padding: '0.6rem' }}>Proposal</th>
+                <th style={{ padding: '0.6rem' }}>Symbol</th>
+                <th style={{ padding: '0.6rem' }}>Status</th>
+                <th style={{ padding: '0.6rem' }}>Passed</th>
+                <th style={{ padding: '0.6rem' }}>Score</th>
+                <th style={{ padding: '0.6rem' }}>P&L</th>
+                <th style={{ padding: '0.6rem' }}>PF</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bestRuns.slice(0, 8).map((run, idx) => {
+                const best = run.best || {};
+                return (
+                  <tr key={`${run.proposal}-${run.symbol}-${idx}`} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <td style={{ padding: '0.6rem', fontWeight: 700 }}>{run.proposal}</td>
+                    <td style={{ padding: '0.6rem' }}>{run.symbol}</td>
+                    <td style={{ padding: '0.6rem' }}>{run.status}</td>
+                    <td style={{ padding: '0.6rem', color: run.passed > 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)' }}>{run.passed}</td>
+                    <td style={{ padding: '0.6rem' }}>{best.score ?? '—'}</td>
+                    <td style={{ padding: '0.6rem' }}>{best.total_pnl_pct ?? '—'}</td>
+                    <td style={{ padding: '0.6rem' }}>{best.profit_factor ?? '—'}</td>
+                  </tr>
+                );
+              })}
+              {!bestRuns.length && (
+                <tr><td colSpan="7" style={{ padding: '0.8rem', color: 'var(--text-muted)' }}>No batch report yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [portfolio, setPortfolio] = useState(null);
   const [settings, setSettings] = useState(null);
   const [aiRecommend, setAiRecommend] = useState(null);
+  const [strategyView, setStrategyView] = useState('model');
+  const [strategyAnalysis, setStrategyAnalysis] = useState(null);
+  const [strategyPreview, setStrategyPreview] = useState(null);
+  const [strategyStatus, setStrategyStatus] = useState({ loading: false, message: '', type: '' });
   
   // Simulated Ticker & Flashing State
   const [prevPrices, setPrevPrices] = useState({});
@@ -115,6 +1022,18 @@ export default function App() {
   const [closeConfirmTicket, setCloseConfirmTicket] = useState(null);
   const [aiAnalystReport, setAiAnalystReport] = useState(null);
   const [aiAnalystStatus, setAiAnalystStatus] = useState({ loading: false, msg: '', type: '' });
+  const [researchOs, setResearchOs] = useState(null);
+  const [researchOsStatus, setResearchOsStatus] = useState({ loading: false, msg: '', type: '' });
+  const [researchOsActionStatus, setResearchOsActionStatus] = useState({ loading: false, msg: '', type: '', steps: [] });
+  const [strategyGateStatus, setStrategyGateStatus] = useState({ loading: false, msg: '', type: '', steps: [] });
+  const [walkForwardStatus, setWalkForwardStatus] = useState({ loading: false, msg: '', type: '', steps: [] });
+  const [promotionStatus, setPromotionStatus] = useState({ loading: false, msg: '', type: '' });
+  const [shadowStatus, setShadowStatus] = useState({ loading: false, msg: '', type: '' });
+  const [researchReviewStatus, setResearchReviewStatus] = useState({ loading: false, msg: '', type: '' });
+  const [handoffStatus, setHandoffStatus] = useState({ loading: false, msg: '', type: '' });
+  const [enableRequestStatus, setEnableRequestStatus] = useState({ loading: false, msg: '', type: '' });
+  const [approvalDecisionStatus, setApprovalDecisionStatus] = useState({ loading: false, msg: '', type: '' });
+  const [stagedDispatchStatus, setStagedDispatchStatus] = useState({ loading: false, msg: '', type: '', blockers: [] });
 
   // LLM Settings State
   const [llmProvider, setLlmProvider] = useState('Gemini');
@@ -141,6 +1060,10 @@ export default function App() {
   const [mt5Status, setMt5Status] = useState('unknown'); // 'online' | 'offline' | 'unknown'
   const [mt5CachedAt, setMt5CachedAt] = useState(null);
   const [health, setHealth] = useState(null);
+  const [projectionCapital, setProjectionCapital] = useState(100000);
+  const [projectionYears, setProjectionYears] = useState(10);
+  const [selectedPlan, setSelectedPlan] = useState('balance');
+  const [selectedScenario, setSelectedScenario] = useState('normal');
 
   // 1. Fetch initial configuration & data
   useEffect(() => {
@@ -155,6 +1078,8 @@ export default function App() {
     }, 3000);
 
     return () => clearInterval(interval);
+  // Initial dashboard bootstrap owns its polling cadence.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -171,6 +1096,8 @@ export default function App() {
       const price = portfolio.categories[txType]?.items.find(i => i.id === firstAsset)?.currentPrice || '';
       setTxPrice(price);
     }
+  // Transaction selector should update only when the selected asset category changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [txType]);
 
   useEffect(() => {
@@ -233,7 +1160,7 @@ export default function App() {
         return null;
       }
       const res = result.value;
-      let data = null;
+      let data;
       try {
         data = await res.json();
       } catch {
@@ -287,6 +1214,302 @@ export default function App() {
       type: errors.length ? 'error' : 'success'
     });
     setTimeout(() => setTradingReportStatus({ loading: false, msg: '', type: '' }), 4000);
+  };
+
+  const fetchResearchOs = async (silent = false) => {
+    if (!silent) setResearchOsStatus({ loading: true, msg: '', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/status`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setResearchOs(data);
+      setResearchOsStatus({ loading: false, msg: '', type: '' });
+    } catch (err) {
+      setResearchOsStatus({
+        loading: false,
+        msg: `Research OS offline: ${err.message}`,
+        type: 'error'
+      });
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const pollResearchOs = async () => {
+      if (cancelled) return;
+      await fetchResearchOs(true);
+    };
+    pollResearchOs();
+    const id = setInterval(pollResearchOs, 15000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  const runResearchOsPipeline = async () => {
+    setResearchOsActionStatus({ loading: true, msg: 'Running research pipeline...', type: '', steps: [] });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'full', maxResults: 8 })
+      });
+      const data = await res.json();
+      if (data.status) setResearchOs(data.status);
+      if (!res.ok || !data.ok) {
+        const failed = (data.steps || []).find((step) => !step.ok);
+        throw new Error(failed?.stderr || data.error || `Pipeline failed with HTTP ${res.status}`);
+      }
+      setResearchOsActionStatus({
+        loading: false,
+        msg: `Research pipeline completed: ${data.steps?.length || 0} steps`,
+        type: 'success',
+        steps: data.steps || []
+      });
+    } catch (err) {
+      setResearchOsActionStatus((prev) => ({
+        loading: false,
+        msg: err.message,
+        type: 'error',
+        steps: prev.steps || []
+      }));
+    }
+  };
+
+  const runStrategyGates = async () => {
+    setStrategyGateStatus({ loading: true, msg: 'Running strategy gates...', type: '', steps: [] });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/gates/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: 500, top: 10, network: 'production' })
+      });
+      const data = await res.json();
+      if (data.status) setResearchOs(data.status);
+      if (!res.ok || !data.ok) {
+        const failed = (data.steps || []).find((step) => !step.ok);
+        throw new Error(failed?.stderr || data.error || `Strategy gates failed with HTTP ${res.status}`);
+      }
+      const passedRuns = data.status?.strategyLab?.batch?.passedRuns || 0;
+      setStrategyGateStatus({
+        loading: false,
+        msg: data.gatePassed
+          ? `Strategy gates passed: ${passedRuns} candidate run(s)`
+          : 'Strategy gates completed: no candidate passed yet',
+        type: data.gatePassed ? 'success' : 'warning',
+        steps: data.steps || []
+      });
+    } catch (err) {
+      setStrategyGateStatus((prev) => ({
+        loading: false,
+        msg: err.message,
+        type: 'error',
+        steps: prev.steps || []
+      }));
+    }
+  };
+
+  const runWalkForwardGates = async () => {
+    setWalkForwardStatus({ loading: true, msg: 'Running walk-forward gates...', type: '', steps: [] });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/walk-forward/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 5, count: 720, trainSize: 240, testSize: 120, stepSize: 120, network: 'production' })
+      });
+      const data = await res.json();
+      if (data.status) setResearchOs(data.status);
+      if (!res.ok || !data.ok) {
+        const failed = (data.steps || []).find((step) => !step.ok);
+        throw new Error(failed?.stderr || data.error || `Walk-forward gates failed with HTTP ${res.status}`);
+      }
+      const approved = data.status?.strategyLab?.walkForward?.approved || 0;
+      const reports = data.status?.strategyLab?.walkForward?.reports || 0;
+      setWalkForwardStatus({
+        loading: false,
+        msg: data.skipped
+          ? `Walk-forward skipped: ${data.reason}`
+          : data.gatePassed
+            ? `Walk-forward passed: ${approved}/${reports} report(s)`
+            : 'Walk-forward completed: no candidate passed yet',
+        type: data.skipped || !data.gatePassed ? 'warning' : 'success',
+        steps: data.steps || []
+      });
+    } catch (err) {
+      setWalkForwardStatus((prev) => ({
+        loading: false,
+        msg: err.message,
+        type: 'error',
+        steps: prev.steps || []
+      }));
+    }
+  };
+
+  const runPromotionGate = async () => {
+    setPromotionStatus({ loading: true, msg: 'Running promotion gate...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/promotion/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minPassRate: 0.6, minWindows: 2 })
+      });
+      const data = await res.json();
+      if (data.status) setResearchOs(data.status);
+      if (!res.ok || !data.ok) throw new Error(data.error || `Promotion failed with HTTP ${res.status}`);
+      setPromotionStatus({
+        loading: false,
+        msg: data.promoted > 0
+          ? `Promotion completed: ${data.promoted}/${data.evaluated} strategy approved`
+          : `Promotion completed: 0/${data.evaluated} strategy approved`,
+        type: data.promoted > 0 ? 'success' : 'warning',
+        results: data.results || []
+      });
+    } catch (err) {
+      setPromotionStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
+  const deployShadowStrategies = async () => {
+    setShadowStatus({ loading: true, msg: 'Deploying approved strategies to shadow...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/shadow/deploy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'testnet_shadow', network: 'testnet' })
+      });
+      const data = await res.json();
+      if (data.status) setResearchOs(data.status);
+      if (!res.ok || !data.ok) throw new Error(data.error || `Shadow deployment failed with HTTP ${res.status}`);
+      setShadowStatus({
+        loading: false,
+        msg: data.deployed > 0
+          ? `Shadow deployment active: ${data.deployed} approved strategy`
+          : 'Shadow deployment skipped: no approved strategy yet',
+        type: data.deployed > 0 ? 'success' : 'warning'
+      });
+    } catch (err) {
+      setShadowStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
+  const runResearchReview = async () => {
+    setResearchReviewStatus({ loading: true, msg: 'Requesting Research OS review...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/mads/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fallback: true })
+      });
+      const data = await res.json();
+      if (data.status) setResearchOs(data.status);
+      if (!res.ok || !data.ok) throw new Error(data.error || `Research review failed with HTTP ${res.status}`);
+      setResearchReviewStatus({
+        loading: false,
+        msg: `Research review completed via ${data.review?.source || 'unknown'}`,
+        type: 'success'
+      });
+    } catch (err) {
+      setResearchReviewStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
+  const buildExecutionHandoff = async () => {
+    setHandoffStatus({ loading: true, msg: 'Building execution handoff manifest...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/handoff/build`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetMode: 'limited_live_review', maxStrategies: 3 })
+      });
+      const data = await res.json();
+      if (data.status) setResearchOs(data.status);
+      if (!res.ok || !data.ok) throw new Error(data.error || `Handoff failed with HTTP ${res.status}`);
+      setHandoffStatus({
+        loading: false,
+        msg: data.built > 0
+          ? `Handoff ready: ${data.built} strategy, execution requires manual enable`
+          : 'Handoff blocked: no strategy passed live readiness',
+        type: data.built > 0 ? 'success' : 'warning'
+      });
+    } catch (err) {
+      setHandoffStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
+  const requestManualEnable = async () => {
+    setEnableRequestStatus({ loading: true, msg: 'Creating manual enable request...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/enable/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestedBy: 'dashboard', reason: 'limited live review request' })
+      });
+      const data = await res.json();
+      if (data.status) setResearchOs(data.status);
+      if (!res.ok || !data.ok) throw new Error(data.error || `Enable request failed with HTTP ${res.status}`);
+      setEnableRequestStatus({
+        loading: false,
+        msg: data.created
+          ? 'Manual enable request created; execution remains disabled'
+          : 'Manual enable request blocked; handoff is not ready',
+        type: data.created ? 'success' : 'warning'
+      });
+    } catch (err) {
+      setEnableRequestStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
+  const recordApprovalDecision = async (decision) => {
+    setApprovalDecisionStatus({ loading: true, msg: 'Recording approval decision...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/enable/decision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision, operator: 'dashboard', reason: `${decision} staged dispatch` })
+      });
+      const data = await res.json();
+      if (data.status) setResearchOs(data.status);
+      if (!res.ok || !data.ok) throw new Error(data.error || `Approval decision failed with HTTP ${res.status}`);
+      setApprovalDecisionStatus({
+        loading: false,
+        msg: data.accepted
+          ? 'Approval recorded; dispatch plan staged with engine dispatch disabled'
+          : 'Approval decision blocked; no pending manual enable request',
+        type: data.accepted ? 'success' : 'warning'
+      });
+    } catch (err) {
+      setApprovalDecisionStatus({ loading: false, msg: err.message, type: 'error' });
+    }
+  };
+
+  const stageResearchDispatch = async () => {
+    setStagedDispatchStatus({ loading: true, msg: 'Staging demo/testnet controls...', type: '', blockers: [] });
+    try {
+      const res = await fetch(`${API_BASE}/api/research-os/dispatch/stage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: 'STAGE_DEMO_TESTNET' })
+      });
+      const data = await res.json();
+      if (data.status_snapshot) setResearchOs(data.status_snapshot);
+      if (!res.ok || data.accepted === false) {
+        setStagedDispatchStatus({
+          loading: false,
+          msg: data.status === 'BLOCKED'
+            ? 'Staged dispatch blocked by safety gate'
+            : (data.error || `Staged dispatch failed with HTTP ${res.status}`),
+          type: data.status === 'BLOCKED' ? 'warning' : 'error',
+          blockers: data.blockers || []
+        });
+        return;
+      }
+      setStagedDispatchStatus({
+        loading: false,
+        msg: `Staged controls sent: ${(data.commands || []).length} command(s); order execution remains disabled`,
+        type: 'success',
+        blockers: []
+      });
+    } catch (err) {
+      setStagedDispatchStatus({ loading: false, msg: err.message, type: 'error', blockers: [] });
+    }
   };
 
   const sendTradingReport = async () => {
@@ -469,14 +1692,19 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/notifications/status`);
       const data = await res.json();
       if (res.ok) setNotificationStatus(data);
-    } catch (_) {}
+    } catch {
+      // Notification status is best-effort on dashboard load.
+    }
   };
 
   const fetchAIRecommendations = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/ai/recommend`);
+      const res = await fetch(`${API_BASE}/api/portfolio/strategy`);
       const data = await res.json();
-      setAiRecommend(data);
+      setAiRecommend({
+        ...data,
+        aiInsights: 'Risk model คำนวณเป้าหมายแบบ deterministic กด Analyze with LLM เพื่อรับบทวิเคราะห์จากโมเดลจริง',
+      });
     } catch (err) {
       console.error("Error fetching AI recommendations:", err);
     }
@@ -547,7 +1775,7 @@ export default function App() {
         fetchAIRecommendations();
         setTimeout(() => setTxSuccess(false), 5000);
       }
-    } catch (err) {
+    } catch {
       setTxError('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
     }
   };
@@ -575,7 +1803,7 @@ export default function App() {
       setSettings(data.settings);
       setTeleStatus({ loading: false, msg: 'บันทึกการตั้งค่าสำเร็จ!', type: 'success' });
       setTimeout(() => setTeleStatus({ loading: false, msg: '', type: '' }), 4000);
-    } catch (err) {
+    } catch {
       setTeleStatus({ loading: false, msg: 'ไม่สามารถบันทึกข้อมูลได้', type: 'error' });
     }
   };
@@ -605,7 +1833,7 @@ export default function App() {
       } else {
         setTeleStatus({ loading: false, msg: data.error || 'การเชื่อมต่อล้มเหลว กรุณาเช็คความถูกต้องของ Token', type: 'error' });
       }
-    } catch (err) {
+    } catch {
       setTeleStatus({ loading: false, msg: 'ล้มเหลวในการเชื่อมต่อ Telegram API', type: 'error' });
     }
   };
@@ -635,7 +1863,7 @@ export default function App() {
       } else {
         setTeleStatus({ loading: false, msg: data.error || 'การเชื่อมต่อ LINE ล้มเหลว กรุณาเช็ค token และ target', type: 'error' });
       }
-    } catch (err) {
+    } catch {
       setTeleStatus({ loading: false, msg: 'ล้มเหลวในการเชื่อมต่อ LINE API', type: 'error' });
     }
   };
@@ -772,7 +2000,7 @@ export default function App() {
       });
       const data = await res.json();
       setChatMessages(prev => [...prev, { sender: 'ai', text: data.reply }]);
-    } catch (err) {
+    } catch {
       setChatMessages(prev => [...prev, { sender: 'ai', text: '❌ ไม่สามารถเชื่อมต่อกับ AI Advisor ได้ในขณะนี้ ขออภัยในความไม่สะดวกครับ' }]);
     } finally {
       setAiTyping(false);
@@ -799,50 +2027,69 @@ export default function App() {
   const triggerSmartRebalance = async () => {
     if (!aiRecommend) return;
     setRebalancingProgress(true);
-
     try {
-      // Simulate smart execution by adjusting assets to meet the target
-      for (const rec of aiRecommend.recommendations) {
-        if (rec.action === 'HOLD') continue;
-        
-        // Find an asset in this category to buy/sell
-        const categoryAssets = portfolio.categories[rec.category].items;
-        if (categoryAssets.length === 0) continue;
-        
-        const targetAsset = categoryAssets[0]; // Trade first asset in category
-        const price = targetAsset.currentPrice;
-        const targetAction = rec.action === 'BUY_MORE' ? 'buy' : 'sell';
-        
-        // Absolute weight adjust unit volume
-        const adjustUnits = Math.abs(rec.amount / price);
-
-        if (adjustUnits > 0) {
-          await fetch(`${API_BASE}/api/portfolio/transaction`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              type: rec.category,
-              assetId: targetAsset.id,
-              action: targetAction,
-              units: parseFloat(adjustUnits.toFixed(4)),
-              price: parseFloat(price.toFixed(4))
-            })
-          });
-        }
-      }
-
-      await fetchPortfolio();
-      await fetchAIRecommendations();
-      
-      // Update chat
-      setChatMessages(prev => [...prev, {
-        sender: 'ai',
-        text: '⚙️ *ดำเนินการปรับปรุงพอร์ตอัตโนมัติ (AI Rebalanced) สำเร็จ!* ปัจจุบันสัดส่วนพอร์ตการลงทุนรวมของคุณได้รับการจัดสรรสอดคล้องตามระดับความเสี่ยงเป้าหมายที่คุณเลือกเรียบร้อยแล้ว บันทึกข้อมูลและแจ้งเตือนเข้าแอปพลิเคชัน Telegram แล้วครับ 🚀'
-      }]);
+      const res = await fetch(`${API_BASE}/api/portfolio/strategy/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ riskProfile: settings.riskProfile }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'สร้าง preview ไม่สำเร็จ');
+      setStrategyPreview(data);
+      setStrategyStatus({ loading: false, message: 'สร้าง Rebalance Preview แล้ว กรุณาตรวจสอบก่อนอนุมัติ', type: 'success' });
     } catch (err) {
-      console.error("Rebalancing failure", err);
+      setStrategyStatus({ loading: false, message: err.message, type: 'error' });
     } finally {
       setRebalancingProgress(false);
+    }
+  };
+
+  const analyzePortfolioStrategy = async () => {
+    setStrategyStatus({ loading: true, message: 'LLM กำลังวิเคราะห์พอร์ตจริง...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/portfolio/strategy/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          riskProfile: settings.riskProfile,
+          plan: selectedPlan,
+          scenario: selectedScenario,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'LLM analysis failed');
+      setStrategyAnalysis(data);
+      setStrategyStatus({
+        loading: false,
+        message: `วิเคราะห์ด้วย ${data.provider} / ${data.model} สำเร็จ`,
+        type: 'success',
+      });
+    } catch (err) {
+      setStrategyStatus({ loading: false, message: err.message, type: 'error' });
+    }
+  };
+
+  const executeStrategyPreview = async () => {
+    if (!strategyPreview?.token) return;
+    setStrategyStatus({ loading: true, message: 'กำลังบันทึกการปรับสมดุล...', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/portfolio/strategy/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: strategyPreview.token, confirm: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Rebalance execution failed');
+      setStrategyPreview(null);
+      await fetchPortfolio();
+      await fetchAIRecommendations();
+      setStrategyStatus({
+        loading: false,
+        message: `บันทึก Rebalance สำเร็จ ${data.trades.length} รายการ`,
+        type: 'success',
+      });
+    } catch (err) {
+      setStrategyStatus({ loading: false, message: err.message, type: 'error' });
     }
   };
 
@@ -904,12 +2151,30 @@ export default function App() {
   // Format currencies helper
   const fmt = (val) => new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB', minimumFractionDigits: 2 }).format(val);
   const fmtUsd = (val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(val);
+  const fmtPct = (val) => `${(val * 100).toFixed(1)}%`;
 
   // SVG Allocation Pie Chart calculation
   const totalValue = portfolio.netWorth;
   const fundsVal = portfolio.categories.funds.value;
   const cryptoVal = portfolio.categories.crypto.value;
   const forexVal = portfolio.categories.forex.value;
+  const projectionPrincipal = Number(projectionCapital) > 0 ? Number(projectionCapital) : 0;
+  const projectionHorizon = Math.max(1, Math.min(30, Number(projectionYears) || 1));
+  const activePlan = INVESTMENT_PLANS[selectedPlan];
+  const activeScenario = MARKET_SCENARIOS[selectedScenario];
+  const activeProjection = projectInvestmentPlan(activePlan, activeScenario, projectionPrincipal, projectionHorizon);
+  const projectionRows = Object.entries(INVESTMENT_PLANS).flatMap(([planId, plan]) => (
+    Object.entries(MARKET_SCENARIOS).map(([scenarioId, scenario]) => ({
+      planId,
+      scenarioId,
+      plan,
+      scenario,
+      result: projectInvestmentPlan(plan, scenario, projectionPrincipal, projectionHorizon),
+    }))
+  ));
+  const bestProjection = projectionRows.reduce((best, row) => (
+    row.result.endingValue > best.result.endingValue ? row : best
+  ), projectionRows[0]);
 
   const fundsPct = totalValue > 0 ? (fundsVal / totalValue) * 100 : 0;
   const cryptoPct = totalValue > 0 ? (cryptoVal / totalValue) * 100 : 0;
@@ -965,7 +2230,8 @@ export default function App() {
             { id: 'forex', label: 'ตลาด Forex', icon: DollarSign },
             { id: 'mt5', label: 'MT5 Positions', icon: Activity },
             { id: 'trading-control', label: 'Trading Control', icon: ShieldCheck },
-            { id: 'ai-advisor', label: 'AI Optimizer', icon: Cpu },
+            { id: 'research-os', label: 'Research OS', icon: Cpu },
+            { id: 'portfolio-strategy', label: 'Portfolio Strategy', icon: PieChart },
             { id: 'settings', label: 'ตั้งค่า & แจ้งเตือน', icon: Settings },
           ].map(tab => {
             const Icon = tab.icon;
@@ -1176,12 +2442,12 @@ export default function App() {
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 {settings.alerts && settings.alerts.length > 0 ? (
                   settings.alerts.map(al => {
-                    const priceUnit = al.assetId === 'USD_JPY' ? '¥' : al.assetId.includes('_') ? '$' : '$';
+                    const priceUnit = al.assetId === 'USD_JPY' ? '¥' : '$';
                     return (
                       <div key={al.id} className="glass-panel" style={{ padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(255, 255, 255, 0.01)', borderRadius: '10px' }}>
                         <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#f8fafc' }}>{al.assetId}</span>
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          {al.condition === 'above' ? 'สูงกว่า 📈' : 'ต่ำกว่า 📉'} {al.value.toLocaleString()}
+                          {al.condition === 'above' ? 'สูงกว่า 📈' : 'ต่ำกว่า 📉'} {priceUnit}{al.value.toLocaleString()}
                         </span>
                         <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--accent-purple)', animation: 'pulseGlow 1.5s infinite' }} />
                       </div>
@@ -2146,8 +3412,57 @@ export default function App() {
           </div>
         )}
 
+        {/* RESEARCH OS TAB */}
+        {activeTab === 'research-os' && (
+          <ResearchOsDashboard
+            data={researchOs}
+            loading={researchOsStatus.loading}
+            error={researchOsStatus.type === 'error' ? researchOsStatus.msg : ''}
+            actionStatus={researchOsActionStatus}
+            gateStatus={strategyGateStatus}
+            walkForwardStatus={walkForwardStatus}
+            promotionStatus={promotionStatus}
+            shadowStatus={shadowStatus}
+            reviewStatus={researchReviewStatus}
+            handoffStatus={handoffStatus}
+            enableStatus={enableRequestStatus}
+            decisionStatus={approvalDecisionStatus}
+            stagedDispatchStatus={stagedDispatchStatus}
+            onRefresh={() => fetchResearchOs(false)}
+            onRunPipeline={runResearchOsPipeline}
+            onRunGates={runStrategyGates}
+            onRunWalkForward={runWalkForwardGates}
+            onRunPromotion={runPromotionGate}
+            onDeployShadow={deployShadowStrategies}
+            onRunReview={runResearchReview}
+            onBuildHandoff={buildExecutionHandoff}
+            onRequestEnable={requestManualEnable}
+            onDecision={recordApprovalDecision}
+            onStageDispatch={stageResearchDispatch}
+          />
+        )}
+
         {/* AI OPTIMIZER & WEALTH COACH */}
-        {activeTab === 'ai-advisor' && (
+        {activeTab === 'portfolio-strategy' && (
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+            {[
+              ['model', 'Investment Model', PieChart],
+              ['optimizer', 'AI Analysis & Rebalance', Cpu],
+            ].map(([id, label, Icon]) => (
+              <button
+                key={id}
+                className={strategyView === id ? 'btn-primary' : 'btn-secondary'}
+                onClick={() => setStrategyView(id)}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}
+              >
+                <Icon size={16} />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'portfolio-strategy' && strategyView === 'optimizer' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
             <header>
               <h1 style={{ fontSize: '2.2rem', fontWeight: 800, fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -2229,9 +3544,19 @@ export default function App() {
 
                     <div className="glass-panel" style={{ padding: '1rem', background: 'rgba(139,92,246,0.03)', borderColor: 'rgba(139,92,246,0.1)' }}>
                       <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                        💡 <strong>มุมมอง AI:</strong> {aiRecommend.aiInsights}
+                        <strong>Risk model:</strong> {aiRecommend.aiInsights}
                       </p>
                     </div>
+
+                    <button
+                      onClick={analyzePortfolioStrategy}
+                      disabled={strategyStatus.loading}
+                      className="btn-secondary"
+                      style={{ width: '100%', justifyContent: 'center', padding: '0.9rem' }}
+                    >
+                      <MessageSquare size={18} />
+                      Analyze with configured LLM
+                    </button>
 
                     <button 
                       onClick={triggerSmartRebalance}
@@ -2247,7 +3572,7 @@ export default function App() {
                       ) : (
                         <>
                           <Cpu size={18} />
-                          ปรับโครงสร้างพอร์ตอัจฉริยะ (AI Smart Rebalance)
+                          สร้าง Rebalance Preview
                         </>
                       )}
                     </button>
@@ -2311,6 +3636,70 @@ export default function App() {
 
             </div>
 
+            {strategyStatus.message && (
+              <div className="glass-panel" style={{
+                padding: '1rem 1.2rem',
+                borderColor: strategyStatus.type === 'error' ? 'rgba(244,63,94,0.35)' : 'rgba(16,185,129,0.3)',
+                color: strategyStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--text-secondary)',
+              }}>
+                {strategyStatus.message}
+              </div>
+            )}
+
+            {strategyAnalysis?.analysis && (
+              <section className="glass-panel" style={{ padding: '1.5rem' }}>
+                <h3 style={{ marginBottom: '0.75rem' }}>LLM Strategy Analysis</h3>
+                <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{strategyAnalysis.analysis.summary}</p>
+                <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, marginTop: '0.75rem' }}>{strategyAnalysis.analysis.rationale}</p>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                  <div>
+                    <strong style={{ color: 'var(--accent-rose)' }}>Risks</strong>
+                    {(strategyAnalysis.analysis.risks || []).map((item) => <p key={item} style={{ color: 'var(--text-secondary)', marginTop: '0.45rem' }}>• {item}</p>)}
+                  </div>
+                  <div>
+                    <strong style={{ color: 'var(--accent-emerald)' }}>Suggested actions</strong>
+                    {(strategyAnalysis.analysis.actions || []).map((item) => <p key={item} style={{ color: 'var(--text-secondary)', marginTop: '0.45rem' }}>• {item}</p>)}
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {strategyPreview && (
+              <section className="glass-panel" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                  <div>
+                    <h3>Rebalance Preview</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.3rem' }}>
+                      หมดอายุ {new Date(strategyPreview.expiresAt).toLocaleTimeString('th-TH')}
+                    </p>
+                  </div>
+                  <button className="btn-primary" onClick={executeStrategyPreview} disabled={strategyStatus.loading}>
+                    <ShieldCheck size={17} />
+                    อนุมัติและบันทึก
+                  </button>
+                </div>
+                <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
+                  <table className="custom-table">
+                    <thead><tr><th>Asset</th><th>Action</th><th style={{ textAlign: 'right' }}>Units</th><th style={{ textAlign: 'right' }}>Notional</th><th>Reason</th></tr></thead>
+                    <tbody>
+                      {strategyPreview.trades.map((trade) => (
+                        <tr key={`${trade.category}-${trade.assetId}`}>
+                          <td>{trade.assetName} ({trade.assetId})</td>
+                          <td style={{ color: trade.action === 'buy' ? 'var(--accent-emerald)' : 'var(--accent-rose)', fontWeight: 700 }}>{trade.action.toUpperCase()}</td>
+                          <td style={{ textAlign: 'right' }}>{trade.units}</td>
+                          <td style={{ textAlign: 'right' }}>{fmt(trade.notional)}</td>
+                          <td>{trade.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {strategyPreview.warnings.map((warning) => (
+                  <p key={warning} style={{ color: 'var(--accent-amber)', fontSize: '0.78rem', marginTop: '0.55rem' }}>• {warning}</p>
+                ))}
+              </section>
+            )}
+
             {/* Bounce animation helper */}
             <style>{`
               @keyframes bounce {
@@ -2318,6 +3707,212 @@ export default function App() {
                 to { transform: translateY(-4px); }
               }
             `}</style>
+          </div>
+        )}
+
+        {/* INVESTMENT MODEL PROJECTION TAB */}
+        {activeTab === 'portfolio-strategy' && strategyView === 'model' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1.5rem' }}>
+              <div>
+                <h1 style={{ fontSize: '2.2rem', fontWeight: 800, fontFamily: 'var(--font-display)', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <PieChart style={{ color: 'var(--accent-purple)' }} size={32} />
+                  Investment Models
+                </h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginTop: '0.2rem' }}>
+                  จำลองผลตอบแทน Saving / Balance / Risk ภายใต้ Bull, Normal และ Bear market
+                </p>
+              </div>
+              <div className="glass-panel" style={{ padding: '1rem 1.2rem', minWidth: '260px' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.4rem' }}>Best projection</div>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>
+                  {bestProjection.plan.name} / {bestProjection.scenario.name}
+                </div>
+                <div style={{ color: 'var(--accent-emerald)', fontWeight: 800, marginTop: '0.35rem' }}>
+                  {fmt(bestProjection.result.endingValue)}
+                </div>
+              </div>
+            </header>
+
+            <section className="glass-panel" style={{ padding: '1.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr 1.3fr', gap: '1rem', alignItems: 'end' }}>
+              <label style={{ display: 'grid', gap: '0.5rem' }}>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', fontWeight: 700 }}>เงินต้นเริ่มต้น</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={projectionCapital}
+                  onChange={(e) => setProjectionCapital(e.target.value)}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: '0.5rem' }}>
+                <span style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', fontWeight: 700 }}>ระยะเวลาจำลอง (ปี)</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="30"
+                  value={projectionYears}
+                  onChange={(e) => setProjectionYears(e.target.value)}
+                />
+              </label>
+              <div className="glass-panel" style={{ padding: '1rem', background: 'rgba(240,185,11,0.05)', borderColor: 'rgba(240,185,11,0.18)' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Active model</div>
+                <div style={{ marginTop: '0.35rem', fontWeight: 800 }}>
+                  {activePlan.name} / {activeScenario.name} → {fmt(activeProjection.endingValue)}
+                </div>
+              </div>
+            </section>
+
+            <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                <h3 style={{ marginBottom: '1rem', fontSize: '1rem' }}>เลือกแผน</h3>
+                <div style={{ display: 'grid', gap: '0.75rem' }}>
+                  {Object.entries(INVESTMENT_PLANS).map(([id, plan]) => {
+                    const active = selectedPlan === id;
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => setSelectedPlan(id)}
+                        style={{
+                          textAlign: 'left',
+                          padding: '1rem',
+                          borderRadius: '12px',
+                          border: active ? '1px solid rgba(240,185,11,0.45)' : '1px solid var(--glass-border)',
+                          background: active ? 'rgba(240,185,11,0.08)' : 'rgba(255,255,255,0.02)',
+                          color: 'var(--text-primary)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                          <strong>{plan.name}</strong>
+                          <span style={{ color: active ? 'var(--accent-purple)' : 'var(--text-muted)', fontSize: '0.78rem' }}>{plan.risk}</span>
+                        </div>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.35rem', lineHeight: 1.45 }}>{plan.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="glass-panel" style={{ padding: '1.5rem' }}>
+                <h3 style={{ marginBottom: '1rem', fontSize: '1rem' }}>เลือกสภาวะตลาด</h3>
+                <div style={{ display: 'grid', gap: '0.75rem' }}>
+                  {Object.entries(MARKET_SCENARIOS).map(([id, scenario]) => {
+                    const active = selectedScenario === id;
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => setSelectedScenario(id)}
+                        style={{
+                          textAlign: 'left',
+                          padding: '1rem',
+                          borderRadius: '12px',
+                          border: active ? '1px solid rgba(0,122,255,0.45)' : '1px solid var(--glass-border)',
+                          background: active ? 'rgba(0,122,255,0.08)' : 'rgba(255,255,255,0.02)',
+                          color: 'var(--text-primary)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
+                          <strong>{scenario.name}</strong>
+                          <span style={{ color: active ? 'var(--accent-cyan)' : 'var(--text-muted)', fontSize: '0.78rem' }}>{scenario.tone}</span>
+                        </div>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: '0.35rem' }}>{scenario.thaiName}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+
+            <section style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '1rem' }}>
+              {[
+                ['Expected CAGR', fmtPct(activeProjection.annualReturn), 'var(--accent-emerald)'],
+                ['Volatility', fmtPct(activeProjection.annualVolatility), 'var(--accent-amber)'],
+                ['Model DD', fmtPct(activeProjection.maxDrawdown), 'var(--accent-rose)'],
+                ['Profit', fmt(activeProjection.profit), activeProjection.profit >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'],
+              ].map(([label, value, color]) => (
+                <div key={label} className="glass-panel" style={{ padding: '1.2rem' }}>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</div>
+                  <div style={{ color, fontSize: '1.35rem', fontWeight: 800, marginTop: '0.45rem' }}>{value}</div>
+                </div>
+              ))}
+            </section>
+
+            <section className="glass-panel" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h3 style={{ fontSize: '1rem' }}>Allocation ของ {activePlan.name}</h3>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Rebalance: {activePlan.rebalance}</span>
+              </div>
+              <div style={{ display: 'grid', gap: '0.85rem' }}>
+                {activePlan.allocations.map((allocation) => (
+                  <div key={allocation.key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem', fontSize: '0.85rem' }}>
+                      <strong>{allocation.label}</strong>
+                      <span style={{ color: 'var(--text-secondary)' }}>{Math.round(allocation.weight * 1000) / 10}%</span>
+                    </div>
+                    <div style={{ height: '10px', background: 'rgba(255,255,255,0.06)', borderRadius: '999px', overflow: 'hidden' }}>
+                      <div style={{ width: `${allocation.weight * 100}%`, height: '100%', background: allocation.key === 'liquidity' ? '#60a5fa' : allocation.key === 'core' ? '#34c759' : '#f0b90b' }} />
+                    </div>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '0.35rem' }}>{allocation.assets}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="glass-panel" style={{ padding: '1.5rem' }}>
+              <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>ตารางเปรียบเทียบ 3 แผน x 3 ตลาด</h3>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+                  <thead>
+                    <tr style={{ color: 'var(--text-muted)', textAlign: 'left', borderBottom: '1px solid var(--glass-border)' }}>
+                      <th style={{ padding: '0.75rem' }}>Plan</th>
+                      <th style={{ padding: '0.75rem' }}>Scenario</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right' }}>CAGR</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right' }}>DD</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right' }}>Ending Value</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right' }}>Conservative</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right' }}>Optimistic</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projectionRows.map((row) => {
+                      const active = row.planId === selectedPlan && row.scenarioId === selectedScenario;
+                      return (
+                        <tr key={`${row.planId}-${row.scenarioId}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', background: active ? 'rgba(240,185,11,0.06)' : 'transparent' }}>
+                          <td style={{ padding: '0.75rem', fontWeight: 800 }}>{row.plan.name}</td>
+                          <td style={{ padding: '0.75rem', color: 'var(--text-secondary)' }}>{row.scenario.name}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: row.result.annualReturn >= 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)' }}>{fmtPct(row.result.annualReturn)}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: 'var(--accent-rose)' }}>{fmtPct(row.result.maxDrawdown)}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: 800 }}>{fmt(row.result.endingValue)}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: 'var(--text-secondary)' }}>{fmt(row.result.conservativeValue)}</td>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: 'var(--accent-cyan)' }}>{fmt(row.result.optimisticValue)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="glass-panel" style={{ padding: '1.5rem' }}>
+              <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Growth path: {activePlan.name} / {activeScenario.name}</h3>
+              <div style={{ display: 'flex', alignItems: 'end', gap: '0.5rem', height: '220px', paddingTop: '1rem' }}>
+                {activeProjection.path.map((point) => {
+                  const maxValue = Math.max(...activeProjection.path.map(p => p.value), projectionPrincipal || 1);
+                  const height = Math.max(6, (point.value / maxValue) * 190);
+                  return (
+                    <div key={point.year} style={{ flex: 1, display: 'grid', alignItems: 'end', gap: '0.4rem', minWidth: '18px' }}>
+                      <div title={`${point.year} ปี: ${fmt(point.value)}`} style={{ height: `${height}px`, borderRadius: '8px 8px 2px 2px', background: point.year === projectionHorizon ? 'linear-gradient(180deg, #f0b90b, #d97706)' : 'linear-gradient(180deg, #60a5fa, #007aff)' }} />
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem', textAlign: 'center' }}>{point.year}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '1rem', lineHeight: 1.5 }}>
+                ตัวเลขนี้เป็นแบบจำลองจากสมมติฐาน ไม่ใช่คำแนะนำการลงทุนเฉพาะบุคคล ผลลัพธ์จริงขึ้นกับตลาด ค่าธรรมเนียม ภาษี และวินัยในการ rebalance
+              </p>
+            </section>
           </div>
         )}
 

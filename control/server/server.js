@@ -10,10 +10,18 @@ import {
   installTradingControlRoutes,
   recordControlAction,
 } from './services/tradingControl.js';
-import { installAiAnalystRoutes } from './services/aiAnalyst.js';
+import { analyze, installAiAnalystRoutes } from './services/aiAnalyst.js';
 import { installMadsBridgeRoutes } from './services/madsBridge.js';
+import { installMadsSupervisorRoutes } from './services/madsSupervisor.js';
 import { collectTradingOverview } from './services/tradingControl.js';
 import { createNotificationService, installNotificationRoutes } from './services/notifications.js';
+import {
+  createTradeNotificationMonitor,
+  installTradeNotificationRoutes,
+} from './services/tradeNotificationMonitor.js';
+import { installPortfolioStrategyRoutes } from './services/portfolioStrategy.js';
+import { installLiveReadinessRoutes } from './services/liveReadiness.js';
+import { installResearchOsRoutes } from './services/researchOsStatus.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
@@ -87,6 +95,14 @@ db.exec(`
     active INTEGER NOT NULL DEFAULT 1
   );
 `);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS alert_delivery_state (
+    alert_id TEXT PRIMARY KEY,
+    next_allowed_at INTEGER NOT NULL,
+    last_triggered_at TEXT NOT NULL,
+    last_price REAL NOT NULL
+  );
+`);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS transactions (
@@ -130,8 +146,8 @@ const DEFAULT_SETTINGS = {
   tradingControl: {
     mtaiUrl: process.env.MTAI_API_URL || "http://127.0.0.1:3003",
     cryptoUrl: process.env.CRYPTO_AI_API_URL || "http://127.0.0.1:3006",
-    dailyReportTime: "23:55",
-    autoSendDailyReport: false
+    dailyReportTime: "08:00",
+    autoSendDailyReport: true
   },
   alerts: [
     { id: "alert-1", assetId: "BTC", condition: "above", value: 70000, active: true },
@@ -148,6 +164,13 @@ const DEFAULT_SETTINGS = {
     serverUrl: "",
     status: "offline",
     connectors: { yahoo: true, binance: false, forex: true }
+  },
+  madsSupervisor: {
+    enabled: true,
+    apiUrl: process.env.MADS_API_URL || "http://127.0.0.1:4311",
+    syncIntervalMinutes: 5,
+    autoDailyReview: true,
+    dailyReviewTime: "23:58"
   }
 };
 
@@ -256,10 +279,33 @@ function saveSettings(updatedSettings) {
   }
 }
 
-// Global active notification cooldowns keyed by alert id.
+// Persist cooldowns so service restarts cannot resend the same alert.
 const ALERT_COOLDOWN_MS = Number(process.env.ALERT_COOLDOWN_MS || 30 * 60 * 1000);
-const triggeredAlerts = new Map();
 const notifications = createNotificationService({ db, getSettings });
+const tradeNotificationMonitor = createTradeNotificationMonitor({
+  db,
+  getSettings,
+  notifications,
+  postCloseAnalyzer: async (trade) => {
+    const report = await analyze({ db, getSettings });
+    const text = [
+      'AI Post-Close Trade Review',
+      (trade.engineName || trade.engineId) + ' ' + (trade.symbol || 'UNKNOWN') + ' PnL ' + Number(trade.pnl || 0).toFixed(2),
+      'Mode: ' + (report.market_mode || 'UNKNOWN') + ' | Source: ' + (report.source || '-'),
+      '',
+      report.report_th || report.summary || 'No analysis text.',
+    ];
+    if ((report.safe_actions || []).length) {
+      text.push('', 'Safe actions:');
+      for (const action of report.safe_actions) text.push('- ' + action.engineId + ' ' + action.action + ': ' + action.reason);
+    }
+    await notifications.sendChannels({
+      text: text.join('\n'),
+      type: 'post_close_ai_analysis',
+      meta: { eventKey: trade.eventKey, engineId: trade.engineId, reportId: report.id || null },
+    });
+  },
+});
 const sendTelegramMessage = (...args) => notifications.sendTelegramMessage(...args);
 const sendLineMessage = (...args) => notifications.sendLineMessage(...args);
 
@@ -276,15 +322,25 @@ async function checkPriceAlert(asset, currentSettings) {
     }
 
     if (!isTriggered) {
-      triggeredAlerts.delete(alert.id);
+      db.prepare('DELETE FROM alert_delivery_state WHERE alert_id = ?').run(alert.id);
       continue;
     }
 
-    const nextAllowedAt = triggeredAlerts.get(alert.id) || 0;
+    const deliveryState = db.prepare(
+      'SELECT next_allowed_at FROM alert_delivery_state WHERE alert_id = ?',
+    ).get(alert.id);
+    const nextAllowedAt = Number(deliveryState?.next_allowed_at || 0);
     if (now < nextAllowedAt) continue;
 
     if (isTriggered) {
-      triggeredAlerts.set(alert.id, now + ALERT_COOLDOWN_MS);
+      db.prepare(`
+        INSERT INTO alert_delivery_state (alert_id, next_allowed_at, last_triggered_at, last_price)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(alert_id) DO UPDATE SET
+          next_allowed_at=excluded.next_allowed_at,
+          last_triggered_at=excluded.last_triggered_at,
+          last_price=excluded.last_price
+      `).run(alert.id, now + ALERT_COOLDOWN_MS, new Date(now).toISOString(), asset.currentPrice);
       
       const emoji = alert.condition === 'above' ? '📈' : '📉';
       const condText = alert.condition === 'above' ? 'ทะลุสูงกว่า' : 'ดิ่งต่ำกว่า';
@@ -737,7 +793,8 @@ app.post('/api/ai/chat', async (req, res) => {
           if (!endpoint || endpoint.trim() === '') {
             throw new Error("Custom provider requires a server endpoint URL");
           }
-          const customUrl = endpoint.trim().replace(/\/$/, '') + '/v1/chat/completions';
+          const customBase = endpoint.trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
+          const customUrl = customBase + '/v1/chat/completions';
           const headers = { 'Content-Type': 'application/json' };
           if (apiKey && apiKey.trim() !== '') {
             headers['Authorization'] = `Bearer ${apiKey}`;
@@ -980,7 +1037,7 @@ app.post('/api/ai/verify', async (req, res) => {
       }
     } else if (provider === 'Custom') {
       const baseUrl = endpoint.trim().replace(/\/$/, '');
-      const customUrl = `${baseUrl}/v1/chat/completions`;
+      const customUrl = `${baseUrl.replace(/\/v1$/i, '')}/v1/chat/completions`;
       const healthUrl = `${baseUrl}/api/health`;
       
       let is9Router = false;
@@ -1189,14 +1246,41 @@ app.post('/api/mt5/order', async (req, res) => {
 });
 
 installNotificationRoutes(app, { notifications });
+installTradeNotificationRoutes(app, { monitor: tradeNotificationMonitor });
+installPortfolioStrategyRoutes(app, { db, getSettings, fetchImpl: fetch });
 installTradingControlRoutes(app, { db, getSettings, notifications, sendTelegramMessage });
 installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction, notifications, sendTelegramMessage });
 installMadsBridgeRoutes(app, { db, getSettings, collectTradingOverview, dispatchControlCommand, recordControlAction });
+installLiveReadinessRoutes(app, { db, getSettings, collectTradingOverview, dispatchControlCommand });
+installResearchOsRoutes(app, {
+  rootDir: path.join(__dirname, '..', '..'),
+  getSettings,
+  dispatchControlCommand,
+});
+const madsSupervisor = installMadsSupervisorRoutes(app, {
+  db,
+  getSettings,
+  collectTradingOverview,
+  dispatchControlCommand,
+  fetchImpl: fetch,
+});
 
 const CLIENT_DIST = path.join(__dirname, '..', 'client', 'dist');
 app.use(express.static(CLIENT_DIST));
 app.get('*', (_req, res) => res.sendFile(path.join(CLIENT_DIST, 'index.html')));
 
-app.listen(PORT, () => {
+const httpServer = app.listen(PORT, () => {
   console.log(`AI Hedgefund API Server running on http://localhost:${PORT}`);
+  madsSupervisor.start();
+  tradeNotificationMonitor.start();
 });
+
+function shutdown(signal) {
+  console.log(`Received ${signal}; stopping supervisory timers`);
+  madsSupervisor.stop();
+  tradeNotificationMonitor.stop();
+  httpServer.close(() => process.exit(0));
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));

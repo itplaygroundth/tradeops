@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "optimizer_shadow_gate": {
+    "min_trades": 10,
+    "min_profit_factor": 1.15,
+    "max_drawdown_pct": 8.0,
+    "min_expectancy_pct": 0.0
+  },
+  "walk_forward_promotion_gate": {
+    "min_pass_rate": 0.6,
+    "min_windows": 2
+  }
+}

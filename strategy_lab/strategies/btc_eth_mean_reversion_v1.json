@@ -1,0 +1,38 @@
+{
+  "name": "btc_eth_mean_reversion_v1",
+  "version": 1,
+  "market": "crypto",
+  "symbols": ["BTCUSDT", "ETHUSDT"],
+  "timeframes": {
+    "entry": "M15",
+    "confirm": "H1",
+    "regime": "H4"
+  },
+  "type": "mean_reversion",
+  "entry_rules": [
+    {
+      "action": "LONG",
+      "when": "price_deviates_below_mean_and_rsi_oversold"
+    }
+  ],
+  "exit_rules": [
+    {
+      "action": "HOLD",
+      "when": "price_reverts_to_mean_or_max_hold_bars"
+    }
+  ],
+  "risk_rules": {
+    "risk_pct": 0.003,
+    "max_positions": 1
+  },
+  "parameters": {
+    "mean_window": 20,
+    "entry_deviation_pct": 0.6,
+    "exit_deviation_pct": 0.0,
+    "max_oversold_rsi": 35,
+    "max_hold_bars": 12,
+    "fee_bps": 10,
+    "slippage_bps": 2
+  },
+  "status": "draft"
+}

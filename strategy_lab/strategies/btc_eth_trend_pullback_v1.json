@@ -1,0 +1,38 @@
+{
+  "name": "btc_eth_trend_pullback_v1",
+  "version": 1,
+  "market": "crypto",
+  "symbols": ["BTCUSDT", "ETHUSDT"],
+  "timeframes": {
+    "entry": "M15",
+    "confirm": "H1",
+    "regime": "H4"
+  },
+  "type": "trend_following",
+  "entry_rules": [
+    {
+      "action": "LONG",
+      "when": "fast_sma_above_slow_sma_and_rsi_below_max_entry_rsi"
+    }
+  ],
+  "exit_rules": [
+    {
+      "action": "HOLD",
+      "when": "fast_sma_below_slow_sma_or_max_hold_bars"
+    }
+  ],
+  "risk_rules": {
+    "risk_pct": 0.005,
+    "max_positions": 1
+  },
+  "parameters": {
+    "fast_sma": 9,
+    "slow_sma": 21,
+    "max_entry_rsi": 72,
+    "max_hold_bars": 12,
+    "fee_bps": 10,
+    "slippage_bps": 2
+  },
+  "status": "draft"
+}
+
