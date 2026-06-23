@@ -22,6 +22,7 @@ import {
 import { installPortfolioStrategyRoutes } from './services/portfolioStrategy.js';
 import { installLiveReadinessRoutes } from './services/liveReadiness.js';
 import { installResearchOsRoutes } from './services/researchOsStatus.js';
+import { installDashboardVersionRoutes } from './services/dashboardVersions.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
@@ -1252,6 +1253,7 @@ installTradingControlRoutes(app, { db, getSettings, notifications, sendTelegramM
 installAiAnalystRoutes(app, { db, getSettings, dispatchControlCommand, recordControlAction, notifications, sendTelegramMessage });
 installMadsBridgeRoutes(app, { db, getSettings, collectTradingOverview, dispatchControlCommand, recordControlAction });
 installLiveReadinessRoutes(app, { db, getSettings, collectTradingOverview, dispatchControlCommand });
+installDashboardVersionRoutes(app);
 installResearchOsRoutes(app, {
   rootDir: path.join(__dirname, '..', '..'),
   getSettings,

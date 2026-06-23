@@ -184,6 +184,79 @@ function SmallMetric({ label, value, tone = 'neutral' }) {
   );
 }
 
+function DashboardVersions({ versions, loading, error, onRefresh, onOpenVersion }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>Dashboard Versions</h1>
+          <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+            Versioned prototypes for focused command centers before they are merged into the main TradeOps dashboard.
+          </p>
+        </div>
+        <button className="btn-secondary" onClick={onRefresh} disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <RefreshCw size={16} />
+          {loading ? 'Refreshing' : 'Refresh'}
+        </button>
+      </header>
+
+      {error && (
+        <div className="glass-panel" style={{ padding: '1rem', borderColor: 'rgba(244, 63, 94, 0.35)', color: 'var(--accent-rose)' }}>
+          {error}
+        </div>
+      )}
+
+      <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
+        <SmallMetric label="Versions" value={versions.length} tone={versions.length ? 'good' : 'neutral'} />
+        <SmallMetric label="Prototype" value={versions.filter((item) => item.status === 'prototype').length} tone="good" />
+        <SmallMetric label="Fail-Closed" value={versions.filter((item) => item.safetyProfile?.failClosed).length} tone="good" />
+        <SmallMetric label="Manual Approval" value={versions.filter((item) => item.safetyProfile?.requiresManualApproval).length} tone="good" />
+      </section>
+
+      <section className="glass-panel" style={{ padding: '1.25rem', borderRadius: '14px' }}>
+        <h2 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>Prototype Catalog</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
+          {versions.map((item) => (
+            <div key={item.id} style={{ padding: '1rem', border: '1px solid var(--glass-border)', borderRadius: '8px', display: 'grid', gap: '0.8rem', background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 800 }}>{item.title}</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: '0.25rem' }}>
+                    {item.id} · {item.version} · {item.owner}
+                  </div>
+                </div>
+                <span style={{ color: item.status === 'prototype' ? 'var(--accent-amber)' : 'var(--accent-emerald)', fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase' }}>
+                  {item.status}
+                </span>
+              </div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: 1.5 }}>{item.description}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
+                {(item.modules || []).map((module) => (
+                  <span key={module} style={{ padding: '0.35rem 0.55rem', border: '1px solid var(--glass-border)', borderRadius: '8px', color: 'var(--text-muted)', fontSize: '0.74rem' }}>
+                    {module}
+                  </span>
+                ))}
+              </div>
+              <div style={{ display: 'grid', gap: '0.3rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                <div>Execution: <strong style={{ color: 'var(--accent-amber)' }}>{item.safetyProfile?.execution || '-'}</strong></div>
+                <div>Dispatch: <strong style={{ color: 'var(--accent-cyan)' }}>{item.safetyProfile?.dispatch || '-'}</strong></div>
+                <div>Approval: <strong style={{ color: item.safetyProfile?.requiresManualApproval ? 'var(--accent-emerald)' : 'var(--accent-rose)' }}>{item.safetyProfile?.requiresManualApproval ? 'required' : 'not required'}</strong></div>
+              </div>
+              <button className="primary-btn" onClick={() => onOpenVersion(item)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                <Cpu size={16} />
+                Open Prototype
+              </button>
+            </div>
+          ))}
+          {!versions.length && (
+            <div style={{ color: 'var(--text-muted)' }}>No dashboard versions registered yet.</div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ResearchOsDashboard({ data, loading, error, actionStatus, gateStatus, walkForwardStatus, promotionStatus, shadowStatus, reviewStatus, handoffStatus, enableStatus, decisionStatus, stagedDispatchStatus, onRefresh, onRunPipeline, onRunGates, onRunWalkForward, onRunPromotion, onDeployShadow, onRunReview, onBuildHandoff, onRequestEnable, onDecision, onStageDispatch }) {
   const research = data?.researchLab || {};
   const strategy = data?.strategyLab || {};
@@ -209,9 +282,9 @@ function ResearchOsDashboard({ data, loading, error, actionStatus, gateStatus, w
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>TradeOps Research OS</h1>
+          <h1 style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)' }}>Research OS Prototype v1</h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-            Command center for paper research, hypotheses, strategy gates, and registry health.
+            Versioned command center for paper research, hypotheses, strategy gates, shadow signals, and staged dispatch safety.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.65rem', flexWrap: 'wrap' }}>
@@ -1024,6 +1097,8 @@ export default function App() {
   const [aiAnalystStatus, setAiAnalystStatus] = useState({ loading: false, msg: '', type: '' });
   const [researchOs, setResearchOs] = useState(null);
   const [researchOsStatus, setResearchOsStatus] = useState({ loading: false, msg: '', type: '' });
+  const [dashboardVersions, setDashboardVersions] = useState([]);
+  const [dashboardVersionsStatus, setDashboardVersionsStatus] = useState({ loading: false, msg: '', type: '' });
   const [researchOsActionStatus, setResearchOsActionStatus] = useState({ loading: false, msg: '', type: '', steps: [] });
   const [strategyGateStatus, setStrategyGateStatus] = useState({ loading: false, msg: '', type: '', steps: [] });
   const [walkForwardStatus, setWalkForwardStatus] = useState({ loading: false, msg: '', type: '', steps: [] });
@@ -1233,6 +1308,23 @@ export default function App() {
     }
   };
 
+  const fetchDashboardVersions = async (silent = false) => {
+    if (!silent) setDashboardVersionsStatus({ loading: true, msg: '', type: '' });
+    try {
+      const res = await fetch(`${API_BASE}/api/dashboard-versions`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setDashboardVersions(data.versions || []);
+      setDashboardVersionsStatus({ loading: false, msg: '', type: '' });
+    } catch (err) {
+      setDashboardVersionsStatus({
+        loading: false,
+        msg: `Dashboard version registry offline: ${err.message}`,
+        type: 'error'
+      });
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     const pollResearchOs = async () => {
@@ -1240,6 +1332,7 @@ export default function App() {
       await fetchResearchOs(true);
     };
     pollResearchOs();
+    fetchDashboardVersions(true);
     const id = setInterval(pollResearchOs, 15000);
     return () => { cancelled = true; clearInterval(id); };
   }, []);
@@ -2230,6 +2323,7 @@ export default function App() {
             { id: 'forex', label: 'ตลาด Forex', icon: DollarSign },
             { id: 'mt5', label: 'MT5 Positions', icon: Activity },
             { id: 'trading-control', label: 'Trading Control', icon: ShieldCheck },
+            { id: 'dashboard-versions', label: 'Dashboard Versions', icon: Cpu },
             { id: 'research-os', label: 'Research OS', icon: Cpu },
             { id: 'portfolio-strategy', label: 'Portfolio Strategy', icon: PieChart },
             { id: 'settings', label: 'ตั้งค่า & แจ้งเตือน', icon: Settings },
@@ -3410,6 +3504,17 @@ export default function App() {
               )}
             </section>
           </div>
+        )}
+
+        {/* DASHBOARD VERSIONS TAB */}
+        {activeTab === 'dashboard-versions' && (
+          <DashboardVersions
+            versions={dashboardVersions}
+            loading={dashboardVersionsStatus.loading}
+            error={dashboardVersionsStatus.type === 'error' ? dashboardVersionsStatus.msg : ''}
+            onRefresh={() => fetchDashboardVersions(false)}
+            onOpenVersion={(version) => setActiveTab(version.tab || 'research-os')}
+          />
         )}
 
         {/* RESEARCH OS TAB */}
