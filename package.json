@@ -1,0 +1,14 @@
+{
+  "name": "research-os-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone Research OS dashboard that reuses TradeOps settings and notification APIs.",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check public/app.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

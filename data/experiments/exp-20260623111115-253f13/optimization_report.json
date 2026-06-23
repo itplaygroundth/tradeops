@@ -1,0 +1,158 @@
+{
+  "best": {
+    "approved_for_forward_test": false,
+    "expectancy_pct": -1.0941,
+    "gate_reasons": [
+      "expectancy is not positive",
+      "profit factor below 1.15",
+      "max drawdown above 8%"
+    ],
+    "max_drawdown_pct": 8.7526,
+    "parameters": {
+      "entry_deviation_pct": 0.6,
+      "exit_deviation_pct": -0.1,
+      "fee_bps": 10,
+      "max_hold_bars": 8,
+      "max_oversold_rsi": 35,
+      "mean_window": 34,
+      "slippage_bps": 2
+    },
+    "profit_factor": 0.2948,
+    "score": -7.14501,
+    "sharpe": -8.1974,
+    "total_pnl_pct": -8.7526,
+    "trades": 8,
+    "win_rate": 0.25
+  },
+  "passed": 0,
+  "strategy_name": "btc_eth_mean_reversion_v1",
+  "symbol": "BTCUSDT",
+  "tested": 243,
+  "top": [
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -1.0941,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15",
+        "max drawdown above 8%"
+      ],
+      "max_drawdown_pct": 8.7526,
+      "parameters": {
+        "entry_deviation_pct": 0.6,
+        "exit_deviation_pct": -0.1,
+        "fee_bps": 10,
+        "max_hold_bars": 8,
+        "max_oversold_rsi": 35,
+        "mean_window": 34,
+        "slippage_bps": 2
+      },
+      "profit_factor": 0.2948,
+      "score": -7.14501,
+      "sharpe": -8.1974,
+      "total_pnl_pct": -8.7526,
+      "trades": 8,
+      "win_rate": 0.25
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -1.0941,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15",
+        "max drawdown above 8%"
+      ],
+      "max_drawdown_pct": 8.7526,
+      "parameters": {
+        "entry_deviation_pct": 0.6,
+        "exit_deviation_pct": -0.1,
+        "fee_bps": 10,
+        "max_hold_bars": 8,
+        "max_oversold_rsi": 42,
+        "mean_window": 34,
+        "slippage_bps": 2
+      },
+      "profit_factor": 0.2948,
+      "score": -7.14501,
+      "sharpe": -8.1974,
+      "total_pnl_pct": -8.7526,
+      "trades": 8,
+      "win_rate": 0.25
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -1.0941,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15",
+        "max drawdown above 8%"
+      ],
+      "max_drawdown_pct": 8.7526,
+      "parameters": {
+        "entry_deviation_pct": 0.6,
+        "exit_deviation_pct": 0.0,
+        "fee_bps": 10,
+        "max_hold_bars": 8,
+        "max_oversold_rsi": 35,
+        "mean_window": 34,
+        "slippage_bps": 2
+      },
+      "profit_factor": 0.2948,
+      "score": -7.14501,
+      "sharpe": -8.1974,
+      "total_pnl_pct": -8.7526,
+      "trades": 8,
+      "win_rate": 0.25
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -1.0941,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15",
+        "max drawdown above 8%"
+      ],
+      "max_drawdown_pct": 8.7526,
+      "parameters": {
+        "entry_deviation_pct": 0.6,
+        "exit_deviation_pct": 0.0,
+        "fee_bps": 10,
+        "max_hold_bars": 8,
+        "max_oversold_rsi": 42,
+        "mean_window": 34,
+        "slippage_bps": 2
+      },
+      "profit_factor": 0.2948,
+      "score": -7.14501,
+      "sharpe": -8.1974,
+      "total_pnl_pct": -8.7526,
+      "trades": 8,
+      "win_rate": 0.25
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -1.0941,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15",
+        "max drawdown above 8%"
+      ],
+      "max_drawdown_pct": 8.7526,
+      "parameters": {
+        "entry_deviation_pct": 0.6,
+        "exit_deviation_pct": 0.15,
+        "fee_bps": 10,
+        "max_hold_bars": 8,
+        "max_oversold_rsi": 35,
+        "mean_window": 34,
+        "slippage_bps": 2
+      },
+      "profit_factor": 0.2948,
+      "score": -7.14501,
+      "sharpe": -8.1974,
+      "total_pnl_pct": -8.7526,
+      "trades": 8,
+      "win_rate": 0.25
+    }
+  ]
+}

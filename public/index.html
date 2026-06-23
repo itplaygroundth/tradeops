@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Research OS Dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">R</div>
+        <div>
+          <div class="brand-title">Research OS</div>
+          <div class="brand-sub">Strategy Operations</div>
+        </div>
+      </div>
+      <nav>
+        <button class="nav-item active" data-view="overview">Overview</button>
+        <button class="nav-item" data-view="agents">Agent Status</button>
+        <button class="nav-item" data-view="experiments">Experiment Runs</button>
+        <button class="nav-item" data-view="pipeline">Pipeline</button>
+        <button class="nav-item" data-view="approval">Approval Gate</button>
+        <button class="nav-item" data-view="settings">Settings & Alerts</button>
+      </nav>
+      <div class="side-status">
+        <span id="apiDot" class="dot muted"></span>
+        <span id="apiStatus">Connecting</span>
+      </div>
+    </aside>
+
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">Prototype v1 / Evidence-gated quant research</div>
+          <h1>Research Operations Board</h1>
+          <p>AI-assisted backtest, optimization, robustness, review, and staged dispatch control.</p>
+        </div>
+        <div class="actions">
+          <button id="refreshBtn" class="btn secondary"><span class="btn-icon">R</span>Refresh</button>
+          <button id="runPipelineBtn" class="btn primary"><span class="btn-icon">P</span>Run Pipeline</button>
+        </div>
+      </header>
+
+      <section class="status-strip">
+        <div>
+          <span class="strip-label">API</span>
+          <strong id="stripApi">connecting</strong>
+        </div>
+        <div>
+          <span class="strip-label">Execution</span>
+          <strong id="stripExecution">disabled</strong>
+        </div>
+        <div>
+          <span class="strip-label">Latest Verdict</span>
+          <strong id="stripVerdict">none</strong>
+        </div>
+        <div>
+          <span class="strip-label">Agents</span>
+          <strong id="stripAgents">0/0</strong>
+        </div>
+      </section>
+
+      <section id="toast" class="toast hidden"></section>
+
+      <section class="view" data-view-panel="overview">
+        <section class="market-tape" aria-label="Research OS live tape">
+          <div id="tickerTrack" class="ticker-track"></div>
+        </section>
+        <div class="grid trading-floor">
+          <section class="panel market-board">
+            <div class="panel-head compact-head">
+              <h2>Agent Dealing Desk</h2>
+              <span id="floorClock" class="pill muted">--:--:--</span>
+            </div>
+            <div id="agentFloor" class="floor-grid"></div>
+          </section>
+          <section class="panel activity-board">
+            <div class="panel-head compact-head">
+              <h2>Experiment Tape</h2>
+              <span id="activityPulse" class="pill muted">idle</span>
+            </div>
+            <div id="activityTape" class="activity-tape"></div>
+          </section>
+        </div>
+        <div class="metrics" id="summaryMetrics"></div>
+        <div class="grid two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Live Readiness</h2>
+              <span id="readinessStatus" class="pill muted">loading</span>
+            </div>
+            <div id="readinessBody" class="stack small"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Latest MADS Review</h2>
+              <span id="reviewSource" class="pill muted">none</span>
+            </div>
+            <pre id="reviewOutput" class="review-box">No review yet.</pre>
+          </section>
+        </div>
+      </section>
+
+      <section class="view hidden" data-view-panel="agents">
+        <div class="metrics" id="agentMetrics"></div>
+        <div class="grid two">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>AI Agent Workbench</h2>
+                <p>Current testing, strategy-selection, review, promotion, and dispatch safety agents.</p>
+              </div>
+              <span id="agentWorkbenchStatus" class="pill muted">loading</span>
+            </div>
+            <div id="agentCards" class="agent-grid"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Strategy Selection State</h2>
+              <span id="selectionMode" class="pill muted">unknown</span>
+            </div>
+            <div id="selectionState" class="stack small"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view hidden" data-view-panel="experiments">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Experiment Runner</h2>
+              <p>Run baseline, optimization, synthetic robustness tests, and deterministic AI-style evaluation.</p>
+            </div>
+            <span id="experimentStatus" class="pill muted">idle</span>
+          </div>
+          <form id="experimentForm" class="form compact">
+            <div class="form-row three">
+              <label>Strategy Proposal <select id="experimentProposal"></select></label>
+              <label>Symbol <input id="experimentSymbol" value="BTCUSDT" /></label>
+              <label>Candles <input id="experimentCount" type="number" min="160" max="1000" value="520" /></label>
+            </div>
+            <button id="runExperimentBtn" class="btn primary" type="submit">Run Experiment</button>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Experiment Registry</h2>
+            <button id="refreshExperimentsBtn" class="btn secondary">Refresh Experiments</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Strategy</th>
+                  <th>Symbol</th>
+                  <th>Baseline</th>
+                  <th>Optimization</th>
+                  <th>Stress</th>
+                  <th>Verdict</th>
+                  <th>Advice</th>
+                </tr>
+              </thead>
+              <tbody id="experimentRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view hidden" data-view-panel="pipeline">
+        <div class="command-row">
+          <button id="runGatesBtn" class="btn secondary">Run Strategy Gates</button>
+          <button id="runWalkForwardBtn" class="btn secondary">Run Walk-Forward</button>
+          <button id="runPromotionBtn" class="btn secondary">Run Promotion</button>
+          <button id="deployShadowBtn" class="btn secondary">Deploy Shadow</button>
+          <button id="runReviewBtn" class="btn secondary">MADS Review</button>
+        </div>
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Strategy Pipeline</h2>
+            <span id="pipelineStatus" class="pill muted">idle</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Strategy</th>
+                  <th>Stage</th>
+                  <th>Batch</th>
+                  <th>Walk-Forward</th>
+                  <th>Shadow</th>
+                  <th>Risk Flags</th>
+                </tr>
+              </thead>
+              <tbody id="lineageRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view hidden" data-view-panel="approval">
+        <div class="command-row">
+          <button id="buildHandoffBtn" class="btn secondary">Build Handoff</button>
+          <button id="requestEnableBtn" class="btn secondary">Request Enable</button>
+          <button id="approveStageBtn" class="btn secondary">Approve Stage</button>
+          <button id="stageDispatchBtn" class="btn danger-outline">Stage Dispatch</button>
+        </div>
+        <div class="grid two">
+          <section class="panel">
+            <h2>Dispatch Plan</h2>
+            <div id="dispatchPlan" class="stack small"></div>
+          </section>
+          <section class="panel">
+            <h2>Latest Dispatch Attempt</h2>
+            <div id="stagedDispatch" class="stack small"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view hidden" data-view-panel="settings">
+        <div class="grid two">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Notification Settings</h2>
+              <span id="notificationReady" class="pill muted">loading</span>
+            </div>
+            <form id="settingsForm" class="form">
+              <label>Telegram Bot Token <input id="telegramBotToken" type="password" autocomplete="off" /></label>
+              <label>Telegram Chat ID <input id="telegramChatId" autocomplete="off" /></label>
+              <label>LINE Channel Access Token <input id="lineChannelAccessToken" type="password" autocomplete="off" /></label>
+              <label>LINE Target ID <input id="lineTargetId" autocomplete="off" /></label>
+              <label>LINE Notify Token <input id="lineNotifyToken" type="password" autocomplete="off" /></label>
+              <div class="form-row">
+                <label>Daily Report Time <input id="dailyReportTime" type="time" /></label>
+                <label class="check"><input id="autoSendDailyReport" type="checkbox" /> Auto daily report</label>
+              </div>
+              <button class="btn primary" type="submit">Save Settings</button>
+            </form>
+          </section>
+          <section class="panel">
+            <h2>Notification Tests</h2>
+            <div class="command-row">
+              <button id="testTelegramBtn" class="btn secondary">Test Telegram</button>
+              <button id="testLineBtn" class="btn secondary">Test LINE</button>
+              <button id="sendDailyBtn" class="btn secondary">Send Daily Trade Summary</button>
+            </div>
+            <div id="notificationAudit" class="stack small"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

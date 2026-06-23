@@ -1,0 +1,74 @@
+{
+  "approved_for_forward_test": false,
+  "expectancy_pct": -2.4929,
+  "gate_reasons": [
+    "expectancy is not positive",
+    "profit factor below 1.15",
+    "max drawdown above 8%"
+  ],
+  "max_drawdown_pct": 14.9575,
+  "profit_factor": 0.0093,
+  "sharpe": -16.2657,
+  "strategy_name": "btc_eth_mean_reversion_v1",
+  "symbol": "BTCUSDT",
+  "timeframe": "M15",
+  "total_pnl_pct": -14.9575,
+  "trade_log": [
+    {
+      "entry_index": 41,
+      "entry_price": 77091.87964699339,
+      "exit_index": 53,
+      "exit_price": 74324.20447069335,
+      "pnl_pct": -3.830099487745434,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 54,
+      "entry_price": 74196.28090522904,
+      "exit_index": 65,
+      "exit_price": 74478.90453664162,
+      "pnl_pct": 0.1409134743203379,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 90,
+      "entry_price": 75756.80207338587,
+      "exit_index": 102,
+      "exit_price": 72600.7220411859,
+      "pnl_pct": -4.406068189022373,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 103,
+      "entry_price": 72397.4591280903,
+      "exit_index": 115,
+      "exit_price": 72569.28965581927,
+      "pnl_pct": -0.002656687405337421,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 205,
+      "entry_price": 97088.59713680686,
+      "exit_index": 217,
+      "exit_price": 91317.39846356213,
+      "pnl_pct": -6.184260029952406,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 218,
+      "entry_price": 90892.31605810551,
+      "exit_index": 219,
+      "exit_price": 90496.59976229843,
+      "pnl_pct": -0.6753682610025153,
+      "reason": "final_close",
+      "side": "LONG"
+    }
+  ],
+  "trades": 6,
+  "win_rate": 0.1667
+}

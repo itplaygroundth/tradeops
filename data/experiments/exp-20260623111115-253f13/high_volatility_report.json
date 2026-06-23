@@ -1,0 +1,106 @@
+{
+  "approved_for_forward_test": true,
+  "expectancy_pct": 1.6342,
+  "gate_reasons": [],
+  "max_drawdown_pct": 3.1531,
+  "profit_factor": 4.2162,
+  "sharpe": 8.7002,
+  "strategy_name": "btc_eth_mean_reversion_v1",
+  "symbol": "BTCUSDT",
+  "timeframe": "M15",
+  "total_pnl_pct": 16.3416,
+  "trade_log": [
+    {
+      "entry_index": 37,
+      "entry_price": 68418.73173298313,
+      "exit_index": 49,
+      "exit_price": 68820.00223109039,
+      "pnl_pct": 0.34649216076277656,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 50,
+      "entry_price": 67843.89997210747,
+      "exit_index": 62,
+      "exit_price": 65867.5460289389,
+      "pnl_pct": -3.1530901141902197,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 74,
+      "entry_price": 60978.91479713489,
+      "exit_index": 82,
+      "exit_price": 64565.43145724282,
+      "pnl_pct": 5.641568525841405,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 92,
+      "entry_price": 58929.885204858714,
+      "exit_index": 104,
+      "exit_price": 59255.72646296057,
+      "pnl_pct": 0.31293041377754327,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 109,
+      "entry_price": 55715.350392701795,
+      "exit_index": 119,
+      "exit_price": 56257.333407416496,
+      "pnl_pct": 0.7327714371256925,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 151,
+      "entry_price": 58132.23587304466,
+      "exit_index": 158,
+      "exit_price": 61530.82432826674,
+      "pnl_pct": 5.606306105693713,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 169,
+      "entry_price": 57401.05938004348,
+      "exit_index": 174,
+      "exit_price": 60232.8500577481,
+      "pnl_pct": 4.693342186170777,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 189,
+      "entry_price": 58889.8268194614,
+      "exit_index": 193,
+      "exit_price": 61439.256297939355,
+      "pnl_pct": 4.0891509181946555,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 206,
+      "entry_price": 56787.60649866022,
+      "exit_index": 218,
+      "exit_price": 55965.377253092905,
+      "pnl_pct": -1.687902625701815,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 219,
+      "entry_price": 55183.264122924826,
+      "exit_index": 219,
+      "exit_price": 55183.264122924826,
+      "pnl_pct": -0.24,
+      "reason": "final_close",
+      "side": "LONG"
+    }
+  ],
+  "trades": 10,
+  "win_rate": 0.7
+}
