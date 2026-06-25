@@ -5,3 +5,4 @@ __pycache__/
 **/.env
 **/__pycache__/
 trading/*/data/
+backups/
