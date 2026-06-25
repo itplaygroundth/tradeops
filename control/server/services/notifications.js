@@ -68,13 +68,24 @@ export function createNotificationService({ db, getSettings }) {
         body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
       });
       const result = await response.json().catch(() => ({}));
-      const ok = Boolean(response.ok && result.ok);
+      let ok = Boolean(response.ok && result.ok);
+      let error = ok ? '' : (result.description || `Telegram HTTP ${response.status}`);
+      if (!ok) {
+        const fallback = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text }),
+        });
+        const fallbackResult = await fallback.json().catch(() => ({}));
+        ok = Boolean(fallback.ok && fallbackResult.ok);
+        error = ok ? 'Markdown failed; plain-text fallback succeeded' : (fallbackResult.description || error);
+      }
       record({
         ...meta,
         channel: 'telegram',
         status: ok ? 'success' : 'failed',
         message: text,
-        error: ok ? '' : (result.description || `Telegram HTTP ${response.status}`),
+        error,
       });
       return ok;
     } catch (error) {
