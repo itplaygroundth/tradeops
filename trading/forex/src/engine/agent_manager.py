@@ -29,14 +29,19 @@ from engine.timeframe_filter import MultiTimeframeFilter
 from engine.weekend_reopen_guard import WeekendReopenGuard
 from engine.xau_pullback_short import XauPullbackShortFilter
 from engine.agent_execution_policy import AgentExecutionPolicy
-from engine.regime_entry_filter import RegimeEntryFilter
 from storage.trading_journal import is_exit_deal, deal_reason_label
+from storage.trade_event_outbox import TradeEventOutbox
+from mt5_bridge.pip_calc import get_pip_size
 
 logger = logging.getLogger("agent_manager")
 
 # Absolute path so the file lands where the dashboard server serves it
 # (mtai/dashboard), regardless of the process CWD.
 STATE_FILE = Path(__file__).resolve().parent.parent.parent / "dashboard" / "live_state.json"
+RESET_CUTOFF_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "trading_reset.json"
+DEFAULT_SHADOW_GUARD_POLICY_PATH = (
+    Path(__file__).resolve().parents[4] / "strategy_lab" / "handoff" / "shadow_guard_policy.json"
+)
 
 
 def _atomic_write_state(state: dict, *, indent=None) -> None:
@@ -72,6 +77,8 @@ MANAGED_MAGIC = int(os.getenv("MTAI_MAGIC", "20260101"))
 DAILY_PROFIT_TARGET_USD = float(os.getenv("MTAI_DAILY_PROFIT_TARGET_USD", "20.0"))
 # Micro-mode override: daily target in cents for cent accounts
 DAILY_PROFIT_TARGET_CENTS = float(os.getenv("MTAI_DAILY_PROFIT_TARGET_CENTS", "500"))
+DAILY_LOSS_STOP_USD = float(os.getenv("MTAI_DAILY_LOSS_STOP_USD", "10.0"))
+DAILY_LOSS_STOP_CENTS = float(os.getenv("MTAI_DAILY_LOSS_STOP_CENTS", "500"))
 ADAPTIVE_CAUTION_DD = float(os.getenv("ADAPTIVE_CAUTION_DD", "0.015"))
 ADAPTIVE_DEFENSE_DD = float(os.getenv("ADAPTIVE_DEFENSE_DD", "0.03"))
 ADAPTIVE_FLOATING_LOSS_CAUTION_USD = float(os.getenv("ADAPTIVE_FLOATING_LOSS_CAUTION_USD", "5.0"))
@@ -100,7 +107,6 @@ class ForexAgentManager:
         self.weekend_reopen_guard = WeekendReopenGuard()
         self.xau_pullback_short = XauPullbackShortFilter()
         self.agent_execution_policy = AgentExecutionPolicy()
-        self.regime_entry_filter = RegimeEntryFilter()
 
         dnas = create_population(agent_count)
         self.agents: List[ForexAgent] = [
@@ -127,6 +133,17 @@ class ForexAgentManager:
         self._manual_entries_paused = False
         self._manual_pause_reason = ""
         self._last_block_log = {}
+        self._signal_stability = {}
+        if "PYTEST_CURRENT_TEST" in os.environ and "FOREX_SHADOW_GUARD_POLICY" not in os.environ:
+            self._shadow_guard_policy_path = Path("__pytest_no_shadow_guard_policy__.json")
+        else:
+            self._shadow_guard_policy_path = Path(os.getenv("FOREX_SHADOW_GUARD_POLICY", str(DEFAULT_SHADOW_GUARD_POLICY_PATH)))
+        self.trade_event_outbox = None
+        if "PYTEST_CURRENT_TEST" not in os.environ:
+            self.trade_event_outbox = TradeEventOutbox(
+                "mtai",
+                Path(__file__).resolve().parent.parent.parent / "data" / "trade_event_outbox.db",
+            )
         # Symbol/strategy/regime attribution tracking for walk-forward analysis
         self._attribution = {
             "by_symbol": {},
@@ -326,6 +343,17 @@ class ForexAgentManager:
         """Loads recent deals from MT5 bridge and adds them to the order history."""
         try:
             deals = await self.mt5.get_recent_deals(hours=hours, limit=limit)
+            reset_cutoff = 0.0
+            try:
+                if RESET_CUTOFF_FILE.exists():
+                    reset_cutoff = float(json.loads(RESET_CUTOFF_FILE.read_text()).get("cutoff_ts") or 0)
+            except Exception:
+                reset_cutoff = 0.0
+            if reset_cutoff > 0:
+                deals = [
+                    deal for deal in deals
+                    if float(deal.get("time") or 0) >= reset_cutoff
+                ]
             inserted_count = 0
             updated_count = 0
             daily_pnl_backfill = {}
@@ -568,18 +596,13 @@ class ForexAgentManager:
         summary["xau_pullback_short"] = self.xau_pullback_short.summary()
         summary["weekend_reopen_guard"] = self.weekend_reopen_guard.summary()
         summary["agent_execution_policy"] = self.agent_execution_policy.summary()
-        summary["regime_entry_filter"] = self.regime_entry_filter.summary()
-        summary["attribution"] = self.attribution_summary()
         summary["entry_audit"] = self._entry_audit[:100]
+        summary["signal_quality"] = self._signal_quality_summary()
+        summary["trade_recommendations"] = self._trade_recommendations()
         summary["control"] = self.control_status()
 
     async def _check_paper_positions(self, symbol: str, price: float):
         """Simulates SL/TP trigger evaluations for paper trading positions."""
-        regime = None
-        try:
-            regime, _ = await self.regime_service.get(symbol)
-        except Exception:
-            regime = "UNKNOWN"
         for agent in self.agents:
             if agent.dna.symbol == symbol and agent.is_in_trade:
                 direction = 1 if agent._open_side == "BUY" else -1
@@ -628,6 +651,26 @@ class ForexAgentManager:
                         f"Entry={agent._open_entry:.5f}, Exit={exit_price:.5f}, "
                         f"PnL=${pnl:.2f} ({pnl_pct:+.2f}%)"
                     )
+
+                    closed_entry = {
+                        "timestamp": time.time(),
+                        "agent": agent.dna.name,
+                        "symbol": symbol,
+                        "ticket": agent._open_ticket,
+                        "action": "CLOSE",
+                        "side": agent._open_side,
+                        "volume": getattr(agent, "_open_lot", 0.0),
+                        "entry_price": agent._open_entry,
+                        "price": exit_price,
+                        "pnl": round(pnl, 2),
+                        "pnl_pct": round(pnl_pct, 4),
+                        "strategy": max(agent.dna.strategy_weights, key=lambda key: agent.dna.strategy_weights[key]),
+                        "timeframe": agent.dna.timeframe,
+                        "reason": "stop_loss" if sl_hit else "take_profit",
+                        "type": "paper",
+                        "status": "closed",
+                    }
+                    self._record_closed_trade(closed_entry)
 
                     # Reset agent state
                     agent._open_ticket = None
@@ -689,20 +732,12 @@ class ForexAgentManager:
 
     async def _sync_positions(self):
         """Syncs active live positions on MT5 to update agent states."""
-        regimes = {}
-        for agent in self.agents:
-            if agent.is_in_trade:
-                sym = agent.dna.symbol
-                if sym not in regimes:
-                    try:
-                        regimes[sym], _ = await self.regime_service.get(sym)
-                    except Exception:
-                        regimes[sym] = "UNKNOWN"
         try:
             positions = await self.mt5.get_positions()
             closed_tickets = await self._apply_weekend_reopen_guard(positions)
             if closed_tickets:
                 positions = [pos for pos in positions if pos.get("ticket") not in closed_tickets]
+            self._adopt_live_positions(positions)
             await self._apply_live_exit_management(positions)
             await self._refresh_account_risk(positions=positions)
             active_tickets = {pos["ticket"] for pos in positions}
@@ -726,6 +761,23 @@ class ForexAgentManager:
                 pnl_pct = 0.0
                 agent.record_trade_result(pnl, pnl_pct)
                 self.risk_guardian.on_position_closed(pnl)
+                self._record_closed_trade({
+                    "timestamp": time.time(),
+                    "agent": agent.dna.name,
+                    "symbol": agent.dna.symbol,
+                    "ticket": ticket,
+                    "pnl": 0.0,
+                    "pnl_pct": 0.0,
+                    "type": "closed",
+                    "status": "closed",
+                    "action": "CLOSE",
+                    "side": agent._open_side,
+                    "entry_price": agent._open_entry,
+                    "price": 0.0,
+                    "strategy": max(agent.dna.strategy_weights, key=lambda key: agent.dna.strategy_weights[key]),
+                    "timeframe": agent.dna.timeframe,
+                    "reason": "broker_close_pnl_unavailable",
+                })
             else:
                 pnl = history.get("pnl", 0.0)
                 pnl_pct = (pnl / self._account_balance) * 100 if self._account_balance else 0.0
@@ -734,43 +786,31 @@ class ForexAgentManager:
                 try:
                     _strat = max(agent.dna.strategy_weights, key=lambda k: agent.dna.strategy_weights[k])
                     self.strategy_performance_guard.record(_strat, pnl)
-                    # Record attribution for walk-forward analysis
-                    self._record_attribution(
-                        symbol=agent.dna.symbol,
-                        strategy=_strat,
-                        timeframe=agent.dna.timeframe,
-                        regime=regimes.get(agent.dna.symbol, "UNKNOWN"),
-                        pnl=pnl,
-                    )
                 except Exception:
                     pass
                 logger.info(
                     f"[LIVE CLOSE] {agent.dna.name} closed trade on {agent.dna.symbol} (ticket {ticket}). "
                     f"PnL=${pnl:.2f} ({pnl_pct:+.2f}%)"
                 )
-                # record closure in order history
-                try:
-                    closed_entry = {
-                        "timestamp": time.time(),
-                        "agent": agent.dna.name,
-                        "symbol": agent.dna.symbol,
-                        "ticket": ticket,
-                        "pnl": pnl,
-                        "type": "closed",
-                        "status": "closed",
-                        "action": agent._open_side,
-                        "price": agent._open_entry,
-                    }
-                    self._order_history.insert(0, closed_entry)
-                    if len(self._order_history) > 500:
-                        self._order_history.pop()
-                    try:
-                        from storage.history_db import insert_order
-                        insert_order(closed_entry)
-                    except Exception:
-                        pass
-                except Exception:
-                    pass
+                closed_entry = {
+                    "timestamp": time.time(),
+                    "agent": agent.dna.name,
+                    "symbol": agent.dna.symbol,
+                    "ticket": ticket,
+                    "pnl": pnl,
+                    "pnl_pct": pnl_pct,
+                    "type": "closed",
+                    "status": "closed",
+                    "action": "CLOSE",
+                    "side": agent._open_side,
+                    "entry_price": agent._open_entry,
+                    "price": history.get("exit_price") or history.get("price") or 0.0,
+                    "volume": history.get("volume") or 0.0,
+                    "strategy": max(agent.dna.strategy_weights, key=lambda key: agent.dna.strategy_weights[key]),
+                    "timeframe": agent.dna.timeframe,
+                    "reason": history.get("reason") or history.get("exit_reason") or "broker_close",
+                }
+                self._record_closed_trade(closed_entry)
 
             # record PnL into daily/equity tracking
             try:
@@ -785,6 +825,44 @@ class ForexAgentManager:
             agent._open_sl = 0.0
             agent._open_tp = 0.0
             agent._open_risk_amount = 0.0
+
+    def _adopt_live_positions(self, positions: List[dict]):
+        """Restore ownership of managed MT5 positions after a process restart."""
+        owned_tickets = {
+            agent._open_ticket for agent in self.agents if agent.is_in_trade
+        }
+        for position in self._managed_positions(positions):
+            ticket = position.get("ticket")
+            symbol = str(position.get("symbol") or "")
+            if not ticket or ticket in owned_tickets or not symbol:
+                continue
+            agent = next(
+                (
+                    candidate for candidate in self.agents
+                    if not candidate.is_in_trade and candidate.dna.symbol == symbol
+                ),
+                None,
+            )
+            if agent is None:
+                logger.warning(
+                    "[PositionAdopt] no idle agent for ticket=%s symbol=%s",
+                    ticket,
+                    symbol,
+                )
+                continue
+            agent._open_ticket = ticket
+            agent._open_entry = float(position.get("price_open") or 0.0)
+            agent._open_side = self._position_side(position)
+            agent._open_sl = float(position.get("sl") or 0.0)
+            agent._open_tp = float(position.get("tp") or 0.0)
+            agent._open_risk_amount = 0.0
+            owned_tickets.add(ticket)
+            logger.warning(
+                "[PositionAdopt] restored ticket=%s symbol=%s agent=%s",
+                ticket,
+                symbol,
+                agent.dna.name,
+            )
 
     def _leader_asset_gate(self, symbol: str) -> Dict:
         default_gate = {
@@ -823,6 +901,26 @@ class ForexAgentManager:
         if self._manual_entries_paused:
             logger.warning(f"[Control] {symbol} entries paused: {self._manual_pause_reason or 'manual pause'}")
             return
+        shadow_guard = self._shadow_guard_decision(symbol, regime)
+        if not shadow_guard["allowed"]:
+            self._log_blocked(
+                f"shadow_guard:{symbol}:{shadow_guard['regime']}",
+                f"[ShadowGuard] {symbol} entries blocked: {shadow_guard['reason']}",
+            )
+            self._record_entry_audit({
+                "timestamp": time.time(),
+                "status": "blocked",
+                "symbol": symbol,
+                "block_stage": "shadow_guard_policy",
+                "reason": shadow_guard["reason"],
+                "regime": shadow_guard["regime"],
+                "signal": {
+                    "regime": shadow_guard["regime"],
+                    "source": shadow_guard["source"],
+                    "policy_path": str(self._shadow_guard_policy_path),
+                },
+            })
+            return
         agents_for_symbol = [a for a in self.agents if a.dna.symbol == symbol and not a.is_in_trade]
         gate = self._leader_asset_gate(symbol)
         account_risk = await self._refresh_account_risk() if not self.paper_mode else self.account_risk_monitor.current
@@ -846,21 +944,20 @@ class ForexAgentManager:
                 f">= target {self._daily_target_in_account_units():.2f}"
             )
             return
+        if self._daily_loss_stop_reached():
+            today = time.strftime("%Y-%m-%d", time.localtime())
+            pnl = self._daily_pnl.get(today, 0.0)
+            logger.warning(
+                f"[DailyLossStop] entries blocked: daily realized PnL {pnl:.2f} "
+                f"<= -{self._daily_loss_stop_in_account_units():.2f}"
+            )
+            return
 
         adaptive = self._adaptive_guard(account_risk)
         if adaptive["mode"] == "HARD_STOP":
             self._log_blocked(
                 f"adaptive:{adaptive['mode']}:{adaptive['reason']}",
                 f"[AdaptiveGuard] entries blocked: {adaptive['reason']}",
-            )
-            return
-
-        # Regime-based entry filter (evidence-backed: XAUUSDm negative in trending regimes)
-        regime_filter = self.regime_entry_filter.evaluate(symbol, regime or "UNKNOWN")
-        if not regime_filter.allowed:
-            self._log_blocked(
-                f"regime_filter:{symbol}:{regime}",
-                f"[RegimeFilter] {symbol} entries blocked: {regime_filter.reason}",
             )
             return
 
@@ -975,6 +1072,14 @@ class ForexAgentManager:
                 })
                 self._record_entry_audit(audit)
                 continue
+            if not self.paper_mode:
+                stability = self._update_signal_stability(agent, symbol, signal)
+                audit["signal_stability"] = stability
+                if not stability["stable"]:
+                    reason = "signal {} stable {}/2".format(stability["action"], stability["count"])
+                    audit.update({"status": "blocked", "block_stage": "signal_stability", "reason": reason})
+                    self._record_entry_audit(audit)
+                    continue
             action = "BUY" if signal["action"] == "LONG" else "SELL"
             audit["action"] = action
 
@@ -993,7 +1098,7 @@ class ForexAgentManager:
                     audit.update({"status": "blocked", "block_stage": "position_dedup_guard", "reason": dedup.reason})
                     self._record_entry_audit(audit)
                     continue
-                mtf = await self.timeframe_filter.evaluate(self.mt5, symbol, action, agent.dna.timeframe)
+                mtf = await (self.timeframe_filter.evaluate_mean_reversion(self.mt5, symbol, agent.dna.timeframe) if dominant_strategy == "mean_reversion" else self.timeframe_filter.evaluate(self.mt5, symbol, action, agent.dna.timeframe))
                 audit["timeframe_filter"] = mtf.__dict__ if hasattr(mtf, "__dict__") else {"allowed": mtf.allowed, "reason": mtf.reason}
                 if not mtf.allowed:
                     logger.warning(f"[MTF] {agent.dna.name} {symbol} {action} blocked: {mtf.reason}")
@@ -1007,7 +1112,7 @@ class ForexAgentManager:
             target_profit_remaining = max(self._daily_target_in_account_units() - self._daily_pnl.get(day_key, 0.0), 0.0)
             
             # Simple mock lookup to pass to dynamic risk / lot sizing without server dependency in tests
-            async def get_price_func(sym):
+            def get_price_func(sym):
                 return price
 
             risk_result = self.risk_guardian.validate(
@@ -1042,6 +1147,16 @@ class ForexAgentManager:
                 self._record_entry_audit(audit)
                 continue
 
+            if not self.paper_mode:
+                pre_order = await self._pre_order_revalidation(agent, symbol, action, signal, dominant_strategy, risk_result, audit, regime=regime)
+                audit["pre_order_revalidation"] = pre_order
+                if not pre_order.get("allowed"):
+                    reason = pre_order.get("reason")
+                    logger.warning(f"[PreOrder] {agent.dna.name} {symbol} {action} blocked: {reason}")
+                    audit.update({"status": "blocked", "block_stage": "pre_order_revalidation", "reason": reason})
+                    self._record_entry_audit(audit)
+                    continue
+
             # Execute
             audit.update({"status": "approved", "reason": "all entry guards passed"})
             if self.paper_mode:
@@ -1060,6 +1175,49 @@ class ForexAgentManager:
                     })
                     self.position_dedup_guard.record_open(symbol)
 
+    def _update_signal_stability(self, agent, symbol: str, signal: dict) -> Dict:
+        action = str(signal.get("action") or "HOLD")
+        key = (symbol, agent.dna.name)
+        now = time.time()
+        current = self._signal_stability.get(key, {})
+        previous_action = current.get("action")
+        count = int(current.get("count") or 0) + 1 if previous_action == action else 1
+        self._signal_stability[key] = {"action": action, "count": count, "updated_at": now, "previous_action": previous_action}
+        return {"action": action, "count": count, "stable": action != "HOLD" and count >= 2, "previous_action": previous_action}
+
+    async def _pre_order_revalidation(self, agent, symbol: str, action: str, signal: dict, dominant_strategy: str, risk: RiskResult, audit: Dict, regime: str = None) -> Dict:
+        try:
+            positions = await self.mt5.get_positions()
+            account_risk = await self._refresh_account_risk(positions=positions, close_on_hard=False)
+        except Exception as e:
+            return {"allowed": False, "reason": f"pre-order account/position refresh failed: {e}"}
+        if account_risk.blocks_entries or account_risk.mode == "WARNING":
+            return {"allowed": False, "reason": f"pre-order account risk {account_risk.mode}: {account_risk.reason}"}
+        dedup = self.position_dedup_guard.evaluate(symbol, action, positions)
+        if not dedup.allowed:
+            return {"allowed": False, "reason": f"pre-order dedup: {dedup.reason}"}
+        try:
+            tick = await self.mt5.get_price(symbol)
+        except Exception as e:
+            return {"allowed": False, "reason": f"pre-order price unavailable: {e}"}
+        pip_size = get_pip_size(symbol)
+        spread_pips = max(float(tick.ask) - float(tick.bid), 0.0) / pip_size if pip_size else 0.0
+        max_spread = 45.0 if self._symbol_group(symbol) == "XAU" else (3.0 if self._symbol_group(symbol) == "JPY" else 2.5)
+        if spread_pips > max_spread:
+            return {"allowed": False, "reason": f"pre-order spread {spread_pips:.2f}pip > {max_spread:.2f}pip"}
+        fresh_price = (float(tick.bid) + float(tick.ask)) / 2.0
+        fresh_signal = agent.generate_signal(fresh_price, regime=regime)
+        if fresh_signal.get("action") != signal.get("action"):
+            return {"allowed": False, "reason": "pre-order signal changed {} -> {}".format(signal.get("action"), fresh_signal.get("action")), "fresh_signal": fresh_signal}
+        try:
+            self.timeframe_filter.invalidate(symbol)
+            mtf = await (self.timeframe_filter.evaluate_mean_reversion(self.mt5, symbol, agent.dna.timeframe) if dominant_strategy == "mean_reversion" else self.timeframe_filter.evaluate(self.mt5, symbol, action, agent.dna.timeframe))
+        except Exception as e:
+            return {"allowed": False, "reason": f"pre-order MTF failed: {e}"}
+        if not mtf.allowed:
+            return {"allowed": False, "reason": f"pre-order MTF: {mtf.reason}", "mtf": mtf.__dict__}
+        return {"allowed": True, "reason": "pre-order checks passed", "spread_pips": spread_pips, "fresh_signal": fresh_signal, "mtf": mtf.__dict__}
+
     def control_status(self) -> Dict:
         return {
             "entries_paused": self._manual_entries_paused,
@@ -1067,6 +1225,9 @@ class ForexAgentManager:
             "paper_mode": self.paper_mode,
             "account_risk_mode": self.account_risk_monitor.current.mode,
             "account_risk_reason": self.account_risk_monitor.current.reason,
+            "daily_pnl": self._daily_pnl,
+            "daily_profit_target": self._daily_target_in_account_units(),
+            "daily_loss_stop": self._daily_loss_stop_in_account_units(),
             "mads_defensive_policy": self.risk_guardian.external_policy(),
         }
 
@@ -1096,6 +1257,68 @@ class ForexAgentManager:
             self._last_block_log[key] = now
             logger.warning(message)
 
+    def _shadow_guard_decision(self, symbol: str, regime: str = None) -> Dict:
+        policy = self._load_shadow_guard_policy()
+        blocked = self._shadow_guard_blocked_regimes(policy)
+        if not blocked:
+            return {"allowed": True, "reason": "no shadow guard blocked regimes", "regime": regime or "unknown", "source": "none"}
+        candidates = []
+        if regime:
+            candidates.append(("runtime_regime", regime))
+        for timeframe in ("M15", "H1"):
+            try:
+                hist = self.signal_engine.get_history(symbol, timeframe)
+                if getattr(hist, "count", 0) >= 20:
+                    heuristic, _ = hist.market_regime()
+                    candidates.append((f"history_{timeframe}", heuristic))
+            except Exception:
+                logger.debug("shadow guard history regime failed for %s %s", symbol, timeframe, exc_info=True)
+        for source, candidate in candidates:
+            normalised = self._normalise_shadow_regime(candidate)
+            if normalised in blocked:
+                return {
+                    "allowed": False,
+                    "reason": f"regime {candidate} blocked by shadow guard policy",
+                    "regime": normalised,
+                    "source": source,
+                }
+        return {"allowed": True, "reason": "regime allowed by shadow guard policy", "regime": regime or "unknown", "source": "runtime_regime"}
+
+    def _load_shadow_guard_policy(self) -> Dict:
+        try:
+            if not self._shadow_guard_policy_path.exists():
+                return {}
+            return json.loads(self._shadow_guard_policy_path.read_text())
+        except Exception:
+            logger.warning("Failed to load shadow guard policy: %s", self._shadow_guard_policy_path, exc_info=True)
+            return {}
+
+    @classmethod
+    def _shadow_guard_blocked_regimes(cls, policy: Dict) -> set:
+        raw = policy.get("no_trade_regimes") or policy.get("enforcement", {}).get("block_new_entries_when_regime_in") or []
+        return {cls._normalise_shadow_regime(item) for item in raw}
+
+    @staticmethod
+    def _normalise_shadow_regime(regime) -> str:
+        value = str(regime or "unknown").strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "high_vol": "high_volatility",
+            "highvol": "high_volatility",
+            "high_volatility": "high_volatility",
+            "highvolatility": "high_volatility",
+            "volatile": "high_volatility",
+            "volatility": "high_volatility",
+            "high": "high_volatility",
+            "sideway": "sideways",
+            "sideways": "sideways",
+            "range": "sideways",
+            "ranging": "sideways",
+            "trend_up": "trend",
+            "trend_down": "trend",
+            "trending": "trend",
+        }
+        return aliases.get(value, value)
+
     def _record_entry_audit(self, audit: Dict):
         try:
             entry = dict(audit or {})
@@ -1105,6 +1328,151 @@ class ForexAgentManager:
                 self._entry_audit.pop()
         except Exception:
             pass
+
+    def _signal_quality_summary(self) -> Dict:
+        cutoff = time.time() - 86400
+        audits = [
+            dict(item)
+            for item in self._entry_audit
+            if float(item.get("timestamp") or 0.0) >= cutoff
+        ]
+        by_stage: Dict[str, int] = {}
+        by_symbol: Dict[str, int] = {}
+        by_strategy: Dict[str, int] = {}
+        for item in audits:
+            stage = str(item.get("block_stage") or item.get("status") or "unknown")
+            symbol = str(item.get("symbol") or "UNKNOWN")
+            strategy = str(item.get("strategy") or "unknown")
+            by_stage[stage] = by_stage.get(stage, 0) + 1
+            by_symbol[symbol] = by_symbol.get(symbol, 0) + 1
+            by_strategy[strategy] = by_strategy.get(strategy, 0) + 1
+        signal_only = [
+            item for item in self._order_history
+            if str(item.get("type") or "").lower() == "signal_only"
+            and float(item.get("timestamp") or 0.0) >= cutoff
+        ]
+        min_forward_samples = int(os.getenv("SIGNAL_QUALITY_MIN_FORWARD_SAMPLES", "20"))
+        ready = len(signal_only) >= min_forward_samples and not self._manual_entries_paused
+        return {
+            "mode": "signal_only_forward_test",
+            "window_hours": 24,
+            "audit_events": len(audits),
+            "signal_only_candidates": len(signal_only),
+            "by_block_stage": by_stage,
+            "by_symbol": by_symbol,
+            "by_strategy": by_strategy,
+            "min_forward_samples": min_forward_samples,
+            "ready_for_execution": False,
+            "reason": (
+                "execution locked until forward signal sample reaches "
+                f"{min_forward_samples} and expectancy review is positive"
+            ) if not ready else "manual review required before execution unlock",
+        }
+
+    def _trade_recommendations(self) -> Dict:
+        min_confidence = int(os.getenv("FOREX_RECOMMENDATION_MIN_CONFIDENCE", "55"))
+        recent_audits = list(self._entry_audit[:200])
+        mtf_summary = self.timeframe_filter.summary()
+        mtf_latest = mtf_summary.get("latest", {}) if isinstance(mtf_summary, dict) else {}
+        symbols = sorted({agent.dna.symbol for agent in self.agents})
+        recommendations = []
+        symbol_rows = []
+
+        for symbol in symbols:
+            agents = [agent for agent in self.agents if agent.dna.symbol == symbol and not agent.is_in_trade]
+            latest_mtf = dict(mtf_latest.get(symbol) or {})
+            symbol_candidates = []
+            for agent in agents:
+                strategy = max(agent.dna.strategy_weights, key=lambda key: agent.dna.strategy_weights[key])
+                try:
+                    price_snapshot = self._latest_prices.get(symbol) or {}
+                    current_price = float(price_snapshot.get("price") or 0.0)
+                    signal = dict(agent.generate_signal(current_price))
+                except Exception as exc:
+                    signal = {"action": "HOLD", "confidence": 0, "reason": f"signal unavailable: {exc}"}
+                action = str(signal.get("action") or "HOLD")
+                confidence = int(signal.get("confidence") or 0)
+                if action == "HOLD" or confidence < min_confidence:
+                    continue
+                order_action = "BUY" if action == "LONG" else "SELL"
+                primary_trend = latest_mtf.get("primary_trend", "")
+                higher_trend = latest_mtf.get("higher_trend", "")
+                primary_tf = latest_mtf.get("primary_timeframe") or agent.dna.timeframe
+                higher_tf = latest_mtf.get("higher_timeframe") or ""
+                mtf_aligned = (
+                    (order_action == "BUY" and primary_trend == "up" and higher_trend == "up")
+                    or (order_action == "SELL" and primary_trend == "down" and higher_trend == "down")
+                    or (
+                        strategy == "mean_reversion"
+                        and primary_trend == "range"
+                        and higher_trend == "range"
+                    )
+                )
+                if not mtf_aligned:
+                    continue
+                symbol_candidates.append({
+                    "symbol": symbol,
+                    "action": order_action,
+                    "signal_action": action,
+                    "timeframe": primary_tf,
+                    "higher_timeframe": higher_tf,
+                    "strategy": strategy,
+                    "confidence": confidence,
+                    "reason": signal.get("reason") or "agent signal",
+                    "mtf": {
+                        "primary_trend": primary_trend,
+                        "higher_trend": higher_trend,
+                    },
+                    "execution_mode": (
+                        "signal_only"
+                        if os.getenv("DISABLE_ORDERS", "false").lower() in ("1", "true", "yes", "on")
+                        else ("paper" if self.paper_mode else "demo")
+                    ),
+                    "executable": False,
+                    "execution_note": "orders are disabled until forward review is positive",
+                })
+
+            best = sorted(symbol_candidates, key=lambda item: item["confidence"], reverse=True)[:3]
+            if best:
+                recommendations.extend(best)
+            latest_blocks = [
+                item for item in recent_audits
+                if item.get("symbol") == symbol
+            ][:5]
+            symbol_rows.append({
+                "symbol": symbol,
+                "best": best[0] if best else None,
+                "alternatives": best[1:],
+                "status": "candidate_found" if best else "no_signal",
+                "message": (
+                    "candidate found; execution remains locked by signal-only mode"
+                    if best else "no signal found across available timeframes"
+                ),
+                "timeframe_context": latest_mtf,
+                "recent_blocks": [
+                    {
+                        "stage": item.get("block_stage") or item.get("status"),
+                        "strategy": item.get("strategy"),
+                        "reason": item.get("reason"),
+                        "timeframe": item.get("timeframe"),
+                    }
+                    for item in latest_blocks
+                ],
+            })
+
+        best_overall = sorted(recommendations, key=lambda item: item["confidence"], reverse=True)[:5]
+        return {
+            "mode": "advisory",
+            "min_confidence": min_confidence,
+            "ready_for_execution": False,
+            "best_overall": best_overall,
+            "symbols": symbol_rows,
+            "message": (
+                "no signal found in any timeframe"
+                if not best_overall else
+                "recommendations are advisory; live execution is locked until forward review passes"
+            ),
+        }
 
     async def _paper_execute(self, agent: ForexAgent, signal: dict, price: float, risk: RiskResult, audit: Optional[dict] = None):
         """Simulates order execution for paper mode."""
@@ -1162,6 +1530,30 @@ class ForexAgentManager:
                 tp=risk.tp_price,
                 comment=f"MTAI-{agent.dna.name}",
             )
+            if result.get("status") == "skipped" or result.get("reason") == "orders_disabled":
+                logger.warning(f"[SignalOnly] {agent.dna.name} {action} {agent.dna.symbol} skipped: orders disabled")
+                order = {
+                    "timestamp": time.time(),
+                    "agent": agent.dna.name,
+                    "symbol": agent.dna.symbol,
+                    "action": action,
+                    "volume": risk.lot_size,
+                    "price": price,
+                    "sl": risk.sl_price,
+                    "tp": risk.tp_price,
+                    "type": "signal_only",
+                    "status": "blocked",
+                    "ticket": None,
+                    "reason": "orders_disabled",
+                    "audit": audit or {},
+                }
+                self._order_history.insert(0, order)
+                if len(self._order_history) > 500:
+                    self._order_history.pop()
+                if audit is not None:
+                    audit.update({"status": "blocked", "block_stage": "signal_only", "reason": "orders_disabled"})
+                    self._record_entry_audit(audit)
+                return
             agent._open_ticket = result["order_id"]
             agent._open_entry = result["price"]
             agent._open_side = action
@@ -1392,6 +1784,33 @@ class ForexAgentManager:
             if len(self._equity_curve) > 240:
                 self._equity_curve.pop(0)
 
+    def _record_closed_trade(self, trade: dict):
+        trade["canonical_trade_id"] = self._canonical_trade_id(trade)
+        self._order_history.insert(0, trade)
+        if len(self._order_history) > 500:
+            self._order_history.pop()
+        try:
+            from storage.history_db import insert_order
+            insert_order(trade)
+        except Exception:
+            pass
+        if self.trade_event_outbox is None:
+            return
+        try:
+            trade["canonical_trade_id"] = self._canonical_trade_id(trade)
+            trade["event_id"] = self.trade_event_outbox.emit("trade.closed", trade)
+        except Exception as error:
+            logger.warning("Failed to enqueue trade.closed event: %s", error)
+
+    @staticmethod
+    def _canonical_trade_id(trade: dict) -> str:
+        symbol = trade.get("symbol") or "UNKNOWN"
+        ticket = trade.get("ticket") or trade.get("order_id") or trade.get("position_id") or "no-ticket"
+        timestamp = float(trade.get("timestamp") or time.time())
+        timestamp = int(timestamp * 1000) / 1000
+        pnl = float(trade.get("pnl") or 0.0)
+        return f"{symbol}:{ticket}:{timestamp:.3f}:{pnl:.2f}"
+
     def _record_trade_pnl(self, ts: float, pnl: float):
         day = time.strftime("%Y-%m-%d", time.localtime(ts))
         self._daily_pnl[day] = round(self._daily_pnl.get(day, 0.0) + pnl, 2)
@@ -1401,6 +1820,12 @@ class ForexAgentManager:
         day = time.strftime("%Y-%m-%d", time.localtime(ts))
         target = self._daily_target_in_account_units()
         return self._daily_pnl.get(day, 0.0) >= target
+
+    def _daily_loss_stop_reached(self, now: Optional[float] = None) -> bool:
+        ts = time.time() if now is None else now
+        day = time.strftime("%Y-%m-%d", time.localtime(ts))
+        stop = self._daily_loss_stop_in_account_units()
+        return self._daily_pnl.get(day, 0.0) <= -stop
 
     def _daily_target_in_account_units(self) -> float:
         """Return daily profit target in account-currency units.
@@ -1413,6 +1838,12 @@ class ForexAgentManager:
         if is_cent_currency(self._account_currency):
             return DAILY_PROFIT_TARGET_CENTS
         return DAILY_PROFIT_TARGET_USD
+
+    def _daily_loss_stop_in_account_units(self) -> float:
+        from mt5_bridge.pip_calc import is_cent_currency
+        if is_cent_currency(self._account_currency):
+            return DAILY_LOSS_STOP_CENTS
+        return DAILY_LOSS_STOP_USD
 
     def _adaptive_guard(self, account_risk=None) -> Dict:
         account_risk = account_risk or self.account_risk_monitor.current
