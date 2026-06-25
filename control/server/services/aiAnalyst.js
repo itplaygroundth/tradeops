@@ -168,6 +168,10 @@ function extractJson(text) {
   }
 }
 
+function normalizeOpenAiBase(endpoint) {
+  return String(endpoint || '').trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
+}
+
 async function callLlm(settings, prompt) {
   const cfg = settings.llmConfig || {};
   const provider = cfg.provider || 'Gemini';
@@ -194,8 +198,8 @@ async function callLlm(settings, prompt) {
     const baseUrl = provider === 'Ollama'
       ? `${endpoint || 'http://127.0.0.1:11434'}/api/chat`
       : provider === 'Custom'
-        ? `${endpoint.replace(/\/$/, '')}/v1/chat/completions`
-        : endpoint || 'https://api.openai.com/v1/chat/completions';
+        ? `${normalizeOpenAiBase(endpoint)}/v1/chat/completions`
+        : `${normalizeOpenAiBase(endpoint || 'https://api.openai.com')}/v1/chat/completions`;
 
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
