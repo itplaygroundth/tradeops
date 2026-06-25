@@ -9,6 +9,7 @@ import os
 import socket
 import sys
 import subprocess
+import time
 from pathlib import Path
 
 logging.basicConfig(
@@ -635,6 +636,57 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
                     self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
+            if self.path.startswith("/api/control/reset-risk"):
+                if AGENT_MANAGER is None:
+                    self.send_response(503); self.end_headers(); return
+                content_len = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_len) if content_len else b""
+                try:
+                    data = json.loads(body.decode() or "{}")
+                except Exception:
+                    self.send_response(400); self.end_headers(); return
+                reason = data.get("reason") or "manual demo risk baseline reset"
+                equity = float(data.get("equity") or AGENT_MANAGER._account_equity or AGENT_MANAGER._account_balance or 0.0)
+                current_day = int(time.time() / 86400)
+                audit_payload = {
+                    "action": "control_reset_risk",
+                    "source": "hedgefund-control",
+                    "reason": reason,
+                    "path": self.path,
+                    "equity": equity,
+                    "current_day": current_day,
+                }
+                try:
+                    AGENT_MANAGER.account_risk_monitor.reset(equity=equity, current_day=current_day)
+                    result = AGENT_MANAGER.pause_entries(f"{reason}; entries remain paused after risk reset")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "equity": equity,
+                        "current_day": current_day,
+                        "control": result,
+                    }).encode())
+                    try:
+                        from storage.manual_audit import record_manual_action
+                        record_manual_action({**audit_payload, "status": "success", "result": result})
+                    except Exception:
+                        pass
+                except Exception as e:
+                    error_text = str(e)
+                    try:
+                        from storage.manual_audit import record_manual_action
+                        record_manual_action({**audit_payload, "status": "failed", "error": error_text})
+                    except Exception:
+                        pass
+                    self.send_response(500)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": error_text}).encode())
                 return
             if self.path.startswith("/api/control/pause") or self.path.startswith("/api/control/resume"):
                 if AGENT_MANAGER is None:
