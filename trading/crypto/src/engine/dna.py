@@ -8,7 +8,12 @@ import random
 from dataclasses import dataclass, field
 from typing import Dict
 
-CRYPTO_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+def _env_pairs(name: str = "CRYPTO_PAIRS") -> list[str]:
+    raw = os.getenv(name, "BTCUSDT,ETHUSDT")
+    pairs = [item.strip().upper() for item in raw.split(",") if item.strip()]
+    return pairs or ["BTCUSDT", "ETHUSDT"]
+
+CRYPTO_SYMBOLS = _env_pairs()
 TIMEFRAMES = ["M5", "M15", "H1", "H4"]
 TF_SECONDS = {"M5": 300, "M15": 900, "H1": 3600, "H4": 14400}
 

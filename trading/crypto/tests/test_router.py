@@ -21,7 +21,7 @@ def test_init_bybit():
 
 
 @pytest.mark.asyncio
-async def test_set_mode_propagates_to_feed():
+async def test_set_mode_rebuilds_feed_on_correct_network():
     r = ExchangeRouter(paper_mode=True)
     await r.set_mode("live")
     assert r.paper_mode is False

@@ -10,14 +10,21 @@ _FEEDS = {
 
 
 class ExchangeRouter:
-    def __init__(self, exchange: str = "binance", paper_mode: bool = True):
+    def __init__(self, exchange: str = "binance", paper_mode: bool = True, mode: str = None):
         exchange = exchange.lower()
         if exchange not in _FEEDS:
             raise ValueError(f"Unknown exchange: {exchange}")
         self._exchange = exchange
-        self._paper_mode = paper_mode
+        self._mode = mode or ("paper" if paper_mode else "live")
+        self._paper_mode = self._mode == "paper"
         self._tick_cb = None
-        self._feed: ExchangeFeed = _FEEDS[exchange](paper_mode=paper_mode)
+        self._feed: ExchangeFeed = self._build_feed(exchange)
+
+    def _build_feed(self, exchange: str) -> ExchangeFeed:
+        feed_cls = _FEEDS[exchange]
+        if exchange == "binance":
+            return feed_cls(paper_mode=self._paper_mode, mode=self._mode)
+        return feed_cls(paper_mode=self._paper_mode)
 
     # ---- properties ----------------------------------------------------
     @property
@@ -36,6 +43,22 @@ class ExchangeRouter:
     def live_trading_supported(self) -> bool:
         return bool(getattr(self._feed, "supports_live_trading", False))
 
+    @property
+    def network(self) -> str:
+        return str(getattr(self._feed, "network", "paper" if self._paper_mode else "production"))
+
+    @property
+    def credential_status(self) -> str:
+        return str(getattr(self._feed, "credential_status", "not_supported"))
+
+    @property
+    def supports_short(self) -> bool:
+        return bool(getattr(self._feed, "supports_short", False))
+
+    @property
+    def uses_ticket_positions(self) -> bool:
+        return bool(getattr(self._feed, "uses_ticket_positions", False))
+
     # ---- control -------------------------------------------------------
     async def switch_exchange(self, exchange: str) -> None:
         exchange = exchange.lower()
@@ -51,13 +74,27 @@ class ExchangeRouter:
         except Exception:
             pass
         self._exchange = exchange
-        self._feed = _FEEDS[exchange](paper_mode=self._paper_mode)
+        self._feed = self._build_feed(exchange)
         if self._tick_cb is not None:
             self._feed.set_tick_callback(self._tick_cb)
 
-    def set_mode(self, paper: bool) -> None:
-        self._paper_mode = paper
-        self._feed.paper_mode = paper
+    async def set_mode(self, mode) -> None:
+        if isinstance(mode, bool):
+            mode = "paper" if mode else "live"
+        if mode not in ("paper", "demo", "live"):
+            raise ValueError(f"Unsupported mode: {mode}")
+        old = self._feed
+        try:
+            await old.close()
+        except Exception:
+            pass
+        self._mode = mode
+        self._paper_mode = mode == "paper"
+        self._feed = self._build_feed(self._exchange)
+        if self._tick_cb is not None:
+            self._feed.set_tick_callback(self._tick_cb)
+        if getattr(old, "_pairs", None):
+            await self._feed.subscribe(list(old._pairs))
 
     def set_tick_callback(self, cb) -> None:
         # cb signature: cb(symbol, price, volume, timestamp, is_buy)
@@ -82,3 +119,9 @@ class ExchangeRouter:
 
     async def get_recent_deals(self, hours=24, limit=200) -> list[dict]:
         return await self._feed.get_recent_deals(hours=hours, limit=limit)
+
+    async def get_account(self) -> dict:
+        getter = getattr(self._feed, "get_account", None)
+        if getter is None:
+            return {}
+        return await getter()

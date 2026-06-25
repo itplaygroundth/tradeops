@@ -4,6 +4,7 @@ import socket
 import threading
 import time
 import urllib.request
+import urllib.error
 
 import pytest
 
@@ -108,10 +109,16 @@ def test_api_mode_get(server):
 
 def test_api_mode_post(server):
     base, router, manager = server
-    status, body = _send(f"{base}/api/mode", "POST", {"mode": "live"})
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        _send(f"{base}/api/mode", "POST", {"mode": "live"})
+    assert exc.value.code == 403
+
+    status, body = _send(f"{base}/api/mode", "POST", {"mode": "demo"})
     assert status == 200
-    assert body["mode"] == "live"
+    assert body["mode"] == "demo"
+    assert body["network"] == "testnet"
     assert router.paper_mode is False
+    assert manager.paper_mode is False
 
 
 def test_api_exchange_get_and_post(server):

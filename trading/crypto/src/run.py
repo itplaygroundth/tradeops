@@ -31,7 +31,13 @@ logger = logging.getLogger("run")
 AGENT_MANAGER = None
 
 ROOT = Path(__file__).parent.parent
-DEFAULT_PAIRS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+def _env_pairs(name: str = "CRYPTO_PAIRS") -> list[str]:
+    raw = os.getenv(name, "BTCUSDT,ETHUSDT")
+    pairs = [item.strip().upper() for item in raw.split(",") if item.strip()]
+    return pairs or ["BTCUSDT", "ETHUSDT"]
+
+DEFAULT_PAIRS = _env_pairs()
+RUNTIME_STATE_PATH = ROOT / "data" / "runtime_state.json"
 
 
 def build_server(host, port, router, manager, dashboard_dir, loop):
@@ -83,7 +89,8 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
                 return
 
             if path == "/api/mode":
-                mode = "paper" if router.paper_mode else "live"
+                mode = getattr(manager, "runtime_mode", None) if manager is not None else None
+                mode = mode or ("paper" if router.paper_mode else "live")
                 if manager is not None:
                     account = {
                         "balance": manager._account_balance,
@@ -91,11 +98,22 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
                     }
                 else:
                     account = {"balance": 0.0, "equity": 0.0}
-                self._json({"mode": mode, "account": account})
+                self._json({
+                    "mode": mode,
+                    "network": router.network,
+                    "credential_status": router.credential_status,
+                    "live_trading_supported": router.live_trading_supported,
+                    "account": account,
+                })
                 return
 
             if path == "/api/exchange":
-                self._json({"exchange": router.exchange_name})
+                self._json({
+                    "exchange": router.exchange_name,
+                    "network": router.network,
+                    "credential_status": router.credential_status,
+                    "live_trading_supported": router.live_trading_supported,
+                })
                 return
 
             if path == "/api/pairs":
@@ -121,9 +139,8 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
                 return
 
             if path == "/api/positions":
-                # Paper positions live on the manager's agents, not the exchange
-                # feed (which is empty in paper mode).
-                if router.paper_mode and manager is not None:
+                # Paper and Binance Spot positions are managed by the agents.
+                if manager is not None and not router.uses_ticket_positions:
                     self._json({"positions": manager.get_open_positions()})
                     return
                 try:
@@ -188,14 +205,32 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
 
             if path == "/api/mode":
                 mode = data.get("mode")
-                if mode not in ("paper", "live"):
+                if mode not in ("paper", "demo", "live"):
                     self._json({"error": "invalid mode"}, status=400)
                     return
+                if mode == "live" and (
+                    os.getenv("ALLOW_LIVE_MODE", "").lower() != "true"
+                    or not os.getenv("LIVE_PROMOTION_TOKEN")
+                    or data.get("promotion_token") != os.getenv("LIVE_PROMOTION_TOKEN")
+                ):
+                    self._json({"error": "live production mode is locked by readiness policy"}, status=403)
+                    return
+                if mode != getattr(manager, "runtime_mode", mode) and manager.get_open_positions():
+                    self._json({"error": "cannot change mode while positions are open"}, status=409)
+                    return
                 paper = mode == "paper"
-                router.set_mode(paper)
+                self._await(router.set_mode(mode))
                 if manager is not None:
                     manager.paper_mode = paper
-                self._json({"mode": mode})
+                    manager.runtime_mode = mode
+                    for agent in getattr(manager, "agents", []):
+                        agent.paper_mode = paper
+                self._json({
+                    "mode": mode,
+                    "network": router.network,
+                    "credential_status": router.credential_status,
+                    "live_trading_supported": router.live_trading_supported,
+                })
                 return
 
             if path == "/api/exchange":
@@ -231,6 +266,22 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
                     self._json({"error": "manager unavailable"}, status=503)
                     return
                 self._json({"success": True, "control": manager.resume_entries()})
+                return
+
+            if path == "/api/control/risk-policy":
+                if manager is None:
+                    self._json({"error": "manager unavailable"}, status=503)
+                    return
+                try:
+                    result = manager.set_risk_policy(
+                        data.get("mode", "NORMAL"),
+                        data.get("risk_scale", 1.0),
+                        data.get("max_positions", 3),
+                    )
+                except (TypeError, ValueError) as e:
+                    self._json({"error": str(e)}, status=400)
+                    return
+                self._json({"success": True, "control": result})
                 return
 
             if path == "/api/control/close-position":
@@ -305,20 +356,27 @@ def build_server(host, port, router, manager, dashboard_dir, loop):
 
 async def main():
     parser = argparse.ArgumentParser(description="Crypto AI backend")
-    parser.add_argument("--mode", choices=["paper", "live"],
+    parser.add_argument("--mode", choices=["paper", "demo", "live"],
                         default=os.getenv("MODE", "paper"))
     parser.add_argument("--exchange", choices=["binance", "bybit"],
                         default=os.getenv("EXCHANGE", "binance"))
     args = parser.parse_args()
 
     paper = args.mode == "paper"
-    router = ExchangeRouter(exchange=args.exchange, paper_mode=paper)
+    router = ExchangeRouter(exchange=args.exchange, paper_mode=paper, mode=args.mode)
 
     global AGENT_MANAGER
     manager = None
     try:
         from engine.agent_manager import CryptoAgentManager
-        manager = CryptoAgentManager(router, paper_mode=paper)
+        manager = CryptoAgentManager(router, paper_mode=paper, runtime_mode=args.mode)
+        try:
+            if RUNTIME_STATE_PATH.exists():
+                manager.restore_runtime_state(json.loads(RUNTIME_STATE_PATH.read_text()))
+        except Exception as e:
+            logger.warning(f"runtime state restore failed: {e}")
+        if os.getenv("START_PAUSED", "true").lower() == "true":
+            manager.pause_entries("startup safety lock")
     except ImportError as e:
         logger.warning(f"engine unavailable, serving API only: {e}")
     AGENT_MANAGER = manager
@@ -344,10 +402,14 @@ async def main():
     logger.info(f"Subscribed to {pairs} on {router.exchange_name} (mode={args.mode})")
 
     state_path = dashboard_dir / "live_state.json"
+    RUNTIME_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     while True:
         try:
             if AGENT_MANAGER is not None:
                 state_path.write_text(json.dumps(AGENT_MANAGER.to_state_dict()))
+                runtime_tmp = RUNTIME_STATE_PATH.with_suffix(".tmp")
+                runtime_tmp.write_text(json.dumps(AGENT_MANAGER.runtime_state()))
+                runtime_tmp.replace(RUNTIME_STATE_PATH)
         except Exception as e:
             logger.warning(f"state write failed: {e}")
         await asyncio.sleep(2)

@@ -8,6 +8,31 @@ from engine.risk_guardian import (
 )
 
 
+def test_mads_caution_policy_scales_crypto_risk_and_exposure():
+    guardian = CryptoRiskGuardian()
+    guardian.set_external_policy("CAUTION", 0.5, 1)
+    result = guardian.validate(
+        symbol="BTCUSDT", action="BUY", entry_price=50000.0,
+        sl_pct=0.02, tp_pct=0.04,
+        account_balance=1000.0, account_equity=1000.0, current_day=1,
+    )
+    assert result.allowed
+    assert result.notional == pytest.approx(25.0)
+    assert result.risk_amount == pytest.approx(0.5)
+
+
+def test_mads_hard_stop_blocks_crypto_entries():
+    guardian = CryptoRiskGuardian()
+    guardian.set_external_policy("HARD_STOP", 0, 0)
+    result = guardian.validate(
+        symbol="BTCUSDT", action="BUY", entry_price=50000.0,
+        sl_pct=0.02, tp_pct=0.04,
+        account_balance=1000.0, account_equity=1000.0, current_day=1,
+    )
+    assert not result.allowed
+    assert "MADS defensive policy HARD_STOP" in result.reason
+
+
 def test_position_sizing_math():
     rg = CryptoRiskGuardian()
     res = rg.validate(
@@ -17,11 +42,10 @@ def test_position_sizing_math():
     )
     assert res.allowed
     # risk_amount = 1000 * 0.01 = 10 USDT
-    assert res.risk_amount == pytest.approx(10.0)
-    # notional = risk_amount / sl_pct = 10 / 0.02 = 500 USDT
-    # qty = notional / price = 500 / 50000 = 0.01
-    assert res.qty == pytest.approx(0.01, rel=1e-6)
-    assert res.notional == pytest.approx(500.0, rel=1e-6)
+    assert res.risk_amount == pytest.approx(1.0)
+    # The 5% notional cap limits a 1,000 USDT account to 50 USDT exposure.
+    assert res.qty == pytest.approx(0.001, rel=1e-6)
+    assert res.notional == pytest.approx(50.0, rel=1e-6)
     # SL/TP prices
     assert res.sl_price == pytest.approx(50000.0 * (1 - 0.02))
     assert res.tp_price == pytest.approx(50000.0 * (1 + 0.04))

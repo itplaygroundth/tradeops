@@ -16,9 +16,11 @@ logger = logging.getLogger("risk_guardian")
 MICRO_MODE = os.getenv("MICRO_MODE", "").lower() in ("1", "true", "yes")
 
 # ── Hard Rules ───────────────────────────────────────────
-MAX_RISK_PCT = 0.01           # 1% of balance risked per trade
+MAX_RISK_PCT = float(os.getenv("CRYPTO_MAX_RISK_PCT", "0.002"))
+MAX_NOTIONAL_PCT = float(os.getenv("CRYPTO_MAX_NOTIONAL_PCT", "0.05"))
 MIN_RR_RATIO = float(os.getenv("CRYPTO_MIN_RR_RATIO", "1.15" if MICRO_MODE else "1.3"))
 MAX_CONCURRENT_POSITIONS = int(os.getenv("CRYPTO_MAX_CONCURRENT_POSITIONS", "1"))  # max open trades per pair
+MAX_TOTAL_POSITIONS = int(os.getenv("CRYPTO_MAX_TOTAL_POSITIONS", "3"))
 DAILY_DRAWDOWN_LIMIT = 0.05   # 5% daily loss → stop all
 DAILY_REALIZED_LOSS_LIMIT_USDT = 20.0  # fixed daily stop loss in USDT
 DAILY_PROFIT_TARGET_USDT = float(os.getenv("CRYPTO_DAILY_PROFIT_TARGET_USDT",
@@ -51,6 +53,22 @@ class CryptoRiskGuardian:
         # Per-pair open-position counts. The cap is per pair, so one busy
         # symbol must not starve the others.
         self._open_positions: dict[str, int] = {}
+        self._external_risk_scale = 1.0
+        self._external_max_positions = MAX_TOTAL_POSITIONS
+        self._external_mode = "NORMAL"
+
+    def set_external_policy(self, mode: str, risk_scale: float, max_positions: int):
+        self._external_mode = str(mode or "NORMAL").upper()
+        self._external_risk_scale = max(0.0, min(1.0, float(risk_scale)))
+        self._external_max_positions = max(0, min(MAX_TOTAL_POSITIONS, int(max_positions)))
+        return self.external_policy()
+
+    def external_policy(self):
+        return {
+            "mode": self._external_mode,
+            "risk_scale": self._external_risk_scale,
+            "max_positions": self._external_max_positions,
+        }
 
     def validate(
         self,
@@ -76,6 +94,8 @@ class CryptoRiskGuardian:
         # Circuit breaker
         if self._is_paused:
             return RiskResult(False, reason="Circuit breaker: daily loss limit hit")
+        if self._external_risk_scale <= 0 or self._external_max_positions <= 0:
+            return RiskResult(False, reason=f"MADS defensive policy {self._external_mode}: entries stopped")
 
         # Daily profit target: once the day's realized net PnL reaches the
         # target, stop opening new positions. Existing positions are left to
@@ -105,6 +125,8 @@ class CryptoRiskGuardian:
         # Max concurrent positions (per pair)
         if self._open_positions.get(symbol, 0) >= MAX_CONCURRENT_POSITIONS:
             return RiskResult(False, reason=f"Max {MAX_CONCURRENT_POSITIONS} positions open on {symbol}")
+        if sum(self._open_positions.values()) >= self._external_max_positions:
+            return RiskResult(False, reason=f"Max {self._external_max_positions} total positions open")
 
         # SL must be valid
         if sl_pct < MIN_SL_PCT:
@@ -127,8 +149,11 @@ class CryptoRiskGuardian:
             return RiskResult(False, reason=f"R:R {rr_ratio:.1f} < minimum {MIN_RR_RATIO}")
 
         # Position sizing from price %
-        risk_amount = account_balance * MAX_RISK_PCT
-        notional = risk_amount / sl_pct
+        requested_risk = account_balance * MAX_RISK_PCT * self._external_risk_scale
+        risk_based_notional = requested_risk / sl_pct
+        notional_cap = account_balance * MAX_NOTIONAL_PCT * self._external_risk_scale
+        notional = min(risk_based_notional, notional_cap)
+        risk_amount = notional * sl_pct
         qty = notional / entry_price
 
         # SL/TP prices

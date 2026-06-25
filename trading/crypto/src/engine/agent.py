@@ -185,6 +185,63 @@ class CryptoAgent:
         self.dna.strategy_weights = {k: v / total for k, v in clean.items()}
         logger.info(f"Agent {self.dna.id} ({self.dna.symbol}) weights updated")
 
+    def runtime_state(self) -> dict:
+        return {
+            "dna": {
+                "id": self.dna.id,
+                "name": self.dna.name,
+                "symbol": self.dna.symbol,
+                "strategy_weights": self.dna.strategy_weights,
+                "sl_pct": self.dna.sl_pct,
+                "tp_pct": self.dna.tp_pct,
+                "risk_pct": self.dna.risk_pct,
+                "timeframe": self.dna.timeframe,
+                "regime_bias": self.dna.regime_bias,
+            },
+            "stats": {
+                "trades_count": self.trades_count,
+                "wins": self.wins,
+                "losses": self.losses,
+                "total_pnl": self.total_pnl,
+                "total_pnl_pct": self.total_pnl_pct,
+                "gross_profit": self.gross_profit,
+                "gross_loss": self.gross_loss,
+                "max_dd_pct": self.max_dd_pct,
+                "peak_pnl": self._peak_pnl,
+                "consecutive_losses": self._consecutive_losses,
+            },
+            "position": {
+                "ticket": self._open_ticket,
+                "entry": self._open_entry,
+                "side": self._open_side,
+                "sl": self._open_sl,
+                "tp": self._open_tp,
+                "qty": self._open_qty,
+                "risk_amount": self._open_risk_amount,
+            },
+        }
+
+    def restore_runtime_state(self, state: dict) -> None:
+        stats = state.get("stats") or {}
+        self.trades_count = int(stats.get("trades_count", 0))
+        self.wins = int(stats.get("wins", 0))
+        self.losses = int(stats.get("losses", 0))
+        self.total_pnl = float(stats.get("total_pnl", 0.0))
+        self.total_pnl_pct = float(stats.get("total_pnl_pct", 0.0))
+        self.gross_profit = float(stats.get("gross_profit", 0.0))
+        self.gross_loss = float(stats.get("gross_loss", 0.0))
+        self.max_dd_pct = float(stats.get("max_dd_pct", 0.0))
+        self._peak_pnl = float(stats.get("peak_pnl", self.total_pnl))
+        self._consecutive_losses = int(stats.get("consecutive_losses", 0))
+        position = state.get("position") or {}
+        self._open_ticket = position.get("ticket")
+        self._open_entry = float(position.get("entry", 0.0))
+        self._open_side = str(position.get("side", ""))
+        self._open_sl = float(position.get("sl", 0.0))
+        self._open_tp = float(position.get("tp", 0.0))
+        self._open_qty = float(position.get("qty", 0.0))
+        self._open_risk_amount = float(position.get("risk_amount", 0.0))
+
     def to_dict(self) -> dict:
         return {
             "id": self.dna.id,
