@@ -1,0 +1,37 @@
+{
+  "citations": [
+    {
+      "paper_id": "2506.11921v1",
+      "title": "Dynamic Grid Trading Strategy: From Zero Expectation to Market Outperformance",
+      "url": "http://arxiv.org/abs/2506.11921v1"
+    }
+  ],
+  "confidence": 0.4,
+  "created_at": 1782307380.3833961,
+  "entry_idea": "Use paper signal as a filter candidate; no direct entry until backtested.",
+  "exit_idea": "Exit on signal decay, risk stop, or time stop.",
+  "expected_failure_modes": [
+    "overfit backtest",
+    "insufficient trades",
+    "market regime mismatch"
+  ],
+  "hypothesis_id": "hyp_979e8c3796",
+  "market": "crypto",
+  "regime": "unknown",
+  "risk_idea": "Use conservative sizing until walk-forward validates the edge.",
+  "source_paper_id": "2506.11921v1",
+  "strategy_family": "research_filter",
+  "testable_parameters": {
+    "lookback": [
+      20,
+      50,
+      100
+    ],
+    "threshold": [
+      0.5,
+      1.0,
+      1.5
+    ]
+  },
+  "title": "research_filter hypothesis from Dynamic Grid Trading Strategy: From Zero Expectation to Market Outperformance"
+}

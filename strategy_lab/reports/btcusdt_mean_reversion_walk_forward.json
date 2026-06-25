@@ -1,0 +1,121 @@
+{
+  "approved_for_forward_test": false,
+  "gate_reasons": [
+    "walk-forward pass rate below 60%"
+  ],
+  "pass_rate": 0.3333,
+  "passed_windows": 1,
+  "strategy_name": "btc_eth_mean_reversion_wf_candidate_v1",
+  "symbol": "BTCUSDT",
+  "window_reports": [
+    {
+      "index": 0,
+      "passed": true,
+      "reasons": [],
+      "test": {
+        "approved_for_forward_test": false,
+        "expectancy_pct": 0.0281,
+        "gate_reasons": [
+          "not enough trades",
+          "profit factor below 1.15"
+        ],
+        "max_drawdown_pct": 0.6638,
+        "profit_factor": 1.1271,
+        "total_pnl_pct": 0.0844,
+        "trades": 3,
+        "win_rate": 0.6667
+      },
+      "test_end": 360,
+      "test_start": 240,
+      "train": {
+        "approved_for_forward_test": false,
+        "expectancy_pct": -0.325,
+        "gate_reasons": [
+          "expectancy is not positive",
+          "profit factor below 1.15"
+        ],
+        "max_drawdown_pct": 1.625,
+        "profit_factor": 0.213,
+        "total_pnl_pct": -1.625,
+        "trades": 5,
+        "win_rate": 0.2
+      },
+      "train_end": 240,
+      "train_start": 0
+    },
+    {
+      "index": 1,
+      "passed": false,
+      "reasons": [
+        "test window has too few trades",
+        "test expectancy is not positive",
+        "test profit factor below 1.05"
+      ],
+      "test": {
+        "approved_for_forward_test": false,
+        "expectancy_pct": 0.0,
+        "gate_reasons": [
+          "not enough trades",
+          "expectancy is not positive",
+          "profit factor below 1.15"
+        ],
+        "max_drawdown_pct": 0.0,
+        "profit_factor": 0.0,
+        "total_pnl_pct": 0,
+        "trades": 0,
+        "win_rate": 0.0
+      },
+      "test_end": 480,
+      "test_start": 360,
+      "train": {
+        "approved_for_forward_test": false,
+        "expectancy_pct": -0.0716,
+        "gate_reasons": [
+          "expectancy is not positive",
+          "profit factor below 1.15"
+        ],
+        "max_drawdown_pct": 0.6986,
+        "profit_factor": 0.7371,
+        "total_pnl_pct": -0.3581,
+        "trades": 5,
+        "win_rate": 0.6
+      },
+      "train_end": 360,
+      "train_start": 120
+    },
+    {
+      "index": 2,
+      "passed": false,
+      "reasons": [
+        "test window has too few trades"
+      ],
+      "test": {
+        "approved_for_forward_test": false,
+        "expectancy_pct": 0.2278,
+        "gate_reasons": [
+          "not enough trades"
+        ],
+        "max_drawdown_pct": 0.0,
+        "profit_factor": 999.0,
+        "total_pnl_pct": 0.2278,
+        "trades": 1,
+        "win_rate": 1.0
+      },
+      "test_end": 600,
+      "test_start": 480,
+      "train": {
+        "approved_for_forward_test": true,
+        "expectancy_pct": 0.2061,
+        "gate_reasons": [],
+        "max_drawdown_pct": 0.6638,
+        "profit_factor": 2.5524,
+        "total_pnl_pct": 1.0304,
+        "trades": 5,
+        "win_rate": 0.8
+      },
+      "train_end": 480,
+      "train_start": 240
+    }
+  ],
+  "windows": 3
+}

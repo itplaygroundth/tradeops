@@ -1,0 +1,1 @@
+{"id":"enable-request-1782307365731","created_at":"2026-06-24T13:22:45.731Z","status":"BLOCKED","requested_by":"research-os-dashboard","reason":"limited live review request","blockers":["handoff manifest is not ready_for_manual_enable"],"order_execution":"disabled","next_required_action":"build a ready handoff manifest first"}

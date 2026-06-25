@@ -1,0 +1,197 @@
+{
+  "best": {
+    "approved_for_forward_test": true,
+    "expectancy_pct": 0.3893,
+    "gate_reasons": [],
+    "max_drawdown_pct": 0.1522,
+    "parameters": {
+      "entry_deviation_pct": 0.4,
+      "exit_deviation_pct": 0.0,
+      "fee_bps": 10,
+      "max_hold_bars": 20,
+      "max_oversold_rsi": 35,
+      "mean_window": 20,
+      "slippage_bps": 2
+    },
+    "profit_factor": 13.7909,
+    "score": 6.71379,
+    "sharpe": 13.3983,
+    "total_pnl_pct": 1.9464,
+    "trades": 5,
+    "win_rate": 0.8
+  },
+  "passed": 42,
+  "strategy_name": "btc_eth_mean_reversion_v1",
+  "symbol": "ETHUSDT",
+  "tested": 243,
+  "top": [
+    {
+      "approved_for_forward_test": true,
+      "expectancy_pct": 0.3893,
+      "gate_reasons": [],
+      "max_drawdown_pct": 0.1522,
+      "parameters": {
+        "entry_deviation_pct": 0.4,
+        "exit_deviation_pct": 0.0,
+        "fee_bps": 10,
+        "max_hold_bars": 20,
+        "max_oversold_rsi": 35,
+        "mean_window": 20,
+        "slippage_bps": 2
+      },
+      "profit_factor": 13.7909,
+      "score": 6.71379,
+      "sharpe": 13.3983,
+      "total_pnl_pct": 1.9464,
+      "trades": 5,
+      "win_rate": 0.8
+    },
+    {
+      "approved_for_forward_test": true,
+      "expectancy_pct": 0.3792,
+      "gate_reasons": [],
+      "max_drawdown_pct": 0.1522,
+      "parameters": {
+        "entry_deviation_pct": 0.4,
+        "exit_deviation_pct": 0.0,
+        "fee_bps": 10,
+        "max_hold_bars": 12,
+        "max_oversold_rsi": 35,
+        "mean_window": 34,
+        "slippage_bps": 2
+      },
+      "profit_factor": 15.9515,
+      "score": 6.70627,
+      "sharpe": 12.0075,
+      "total_pnl_pct": 2.2752,
+      "trades": 6,
+      "win_rate": 0.8333
+    },
+    {
+      "approved_for_forward_test": true,
+      "expectancy_pct": 0.3738,
+      "gate_reasons": [],
+      "max_drawdown_pct": 0.1522,
+      "parameters": {
+        "entry_deviation_pct": 0.4,
+        "exit_deviation_pct": 0.0,
+        "fee_bps": 10,
+        "max_hold_bars": 12,
+        "max_oversold_rsi": 35,
+        "mean_window": 20,
+        "slippage_bps": 2
+      },
+      "profit_factor": 13.2831,
+      "score": 6.64407,
+      "sharpe": 12.577,
+      "total_pnl_pct": 1.8692,
+      "trades": 5,
+      "win_rate": 0.8
+    },
+    {
+      "approved_for_forward_test": true,
+      "expectancy_pct": 0.3738,
+      "gate_reasons": [],
+      "max_drawdown_pct": 0.1522,
+      "parameters": {
+        "entry_deviation_pct": 0.4,
+        "exit_deviation_pct": 0.15,
+        "fee_bps": 10,
+        "max_hold_bars": 12,
+        "max_oversold_rsi": 35,
+        "mean_window": 20,
+        "slippage_bps": 2
+      },
+      "profit_factor": 13.2831,
+      "score": 6.64407,
+      "sharpe": 12.577,
+      "total_pnl_pct": 1.8692,
+      "trades": 5,
+      "win_rate": 0.8
+    },
+    {
+      "approved_for_forward_test": true,
+      "expectancy_pct": 0.3623,
+      "gate_reasons": [],
+      "max_drawdown_pct": 0.1522,
+      "parameters": {
+        "entry_deviation_pct": 0.4,
+        "exit_deviation_pct": -0.1,
+        "fee_bps": 10,
+        "max_hold_bars": 12,
+        "max_oversold_rsi": 35,
+        "mean_window": 34,
+        "slippage_bps": 2
+      },
+      "profit_factor": 15.2857,
+      "score": 6.62854,
+      "sharpe": 11.2875,
+      "total_pnl_pct": 2.1739,
+      "trades": 6,
+      "win_rate": 0.8333
+    },
+    {
+      "approved_for_forward_test": true,
+      "expectancy_pct": 0.3617,
+      "gate_reasons": [],
+      "max_drawdown_pct": 0.2245,
+      "parameters": {
+        "entry_deviation_pct": 0.6,
+        "exit_deviation_pct": 0.15,
+        "fee_bps": 10,
+        "max_hold_bars": 8,
+        "max_oversold_rsi": 35,
+        "mean_window": 34,
+        "slippage_bps": 2
+      },
+      "profit_factor": 5.8019,
+      "score": 6.571535,
+      "sharpe": 9.3065,
+      "total_pnl_pct": 1.8086,
+      "trades": 5,
+      "win_rate": 0.4
+    },
+    {
+      "approved_for_forward_test": true,
+      "expectancy_pct": 0.3617,
+      "gate_reasons": [],
+      "max_drawdown_pct": 0.2245,
+      "parameters": {
+        "entry_deviation_pct": 0.6,
+        "exit_deviation_pct": 0.15,
+        "fee_bps": 10,
+        "max_hold_bars": 8,
+        "max_oversold_rsi": 42,
+        "mean_window": 34,
+        "slippage_bps": 2
+      },
+      "profit_factor": 5.8019,
+      "score": 6.571535,
+      "sharpe": 9.3065,
+      "total_pnl_pct": 1.8086,
+      "trades": 5,
+      "win_rate": 0.4
+    },
+    {
+      "approved_for_forward_test": true,
+      "expectancy_pct": 0.348,
+      "gate_reasons": [],
+      "max_drawdown_pct": 0.1645,
+      "parameters": {
+        "entry_deviation_pct": 0.4,
+        "exit_deviation_pct": 0.0,
+        "fee_bps": 10,
+        "max_hold_bars": 20,
+        "max_oversold_rsi": 35,
+        "mean_window": 34,
+        "slippage_bps": 2
+      },
+      "profit_factor": 7.5943,
+      "score": 6.559695,
+      "sharpe": 10.4709,
+      "total_pnl_pct": 2.0882,
+      "trades": 6,
+      "win_rate": 0.6667
+    }
+  ]
+}

@@ -1,0 +1,480 @@
+{
+  "files": [
+    "research_lab/hypotheses/hyp_af7a3892a2.json",
+    "research_lab/hypotheses/hyp_618895b7a3.json",
+    "research_lab/hypotheses/hyp_9c23396810.json",
+    "research_lab/hypotheses/hyp_b1eb5cfc77.json",
+    "research_lab/hypotheses/hyp_979e8c3796.json",
+    "research_lab/hypotheses/hyp_960f12553e.json",
+    "research_lab/hypotheses/hyp_ac4229fdc8.json",
+    "research_lab/hypotheses/hyp_214a8e5bd9.json",
+    "research_lab/hypotheses/hyp_921c8e572b.json",
+    "research_lab/hypotheses/hyp_1b67f04fe0.json",
+    "research_lab/hypotheses/hyp_967bf2bdd5.json",
+    "research_lab/hypotheses/hyp_61c4d9bdc3.json",
+    "research_lab/hypotheses/hyp_0dde59bde2.json",
+    "research_lab/hypotheses/hyp_60157eddb4.json",
+    "research_lab/hypotheses/hyp_e60a4690e0.json",
+    "research_lab/hypotheses/hyp_04f301dbc0.json"
+  ],
+  "hypotheses": 16,
+  "papers": 16,
+  "top": [
+    {
+      "citations": [
+        {
+          "paper_id": "2602.00776v1",
+          "title": "Explainable Patterns in Cryptocurrency Microstructure",
+          "url": "http://arxiv.org/abs/2602.00776v1"
+        }
+      ],
+      "confidence": 0.725,
+      "created_at": 1782307380.3833296,
+      "entry_idea": "Enter only when liquidity imbalance supports the direction and spread is below cap.",
+      "exit_idea": "Exit when imbalance fades, spread expands, or adverse selection risk rises.",
+      "expected_failure_modes": [
+        "order book spoofing/noise",
+        "execution cost exceeds edge",
+        "liquidity disappears"
+      ],
+      "hypothesis_id": "hyp_af7a3892a2",
+      "market": "crypto",
+      "regime": "market_microstructure",
+      "risk_idea": "Reduce size when spread, slippage, or permanent impact proxy rises.",
+      "source_paper_id": "2602.00776v1",
+      "strategy_family": "order_flow_liquidity",
+      "testable_parameters": {
+        "imbalance_window": [
+          10,
+          20,
+          40
+        ],
+        "max_hold_bars": [
+          4,
+          8,
+          12
+        ],
+        "max_spread_bps": [
+          3,
+          5,
+          8
+        ],
+        "min_depth_imbalance": [
+          0.15,
+          0.25,
+          0.35
+        ]
+      },
+      "title": "order_flow_liquidity hypothesis from Explainable Patterns in Cryptocurrency Microstructure"
+    },
+    {
+      "citations": [
+        {
+          "paper_id": "2606.16961v1",
+          "title": "Beyond the Smile: A Hybrid Convolutional VAE for Crypto Volatility Surfaces",
+          "url": "http://arxiv.org/abs/2606.16961v1"
+        }
+      ],
+      "confidence": 0.675,
+      "created_at": 1782307380.3833494,
+      "entry_idea": "Use volatility anomaly as a filter; avoid entries during unstable high-error regimes.",
+      "exit_idea": "Exit or block entries when volatility regime moves outside calibrated bounds.",
+      "expected_failure_modes": [
+        "volatility model overfits",
+        "regime shift not detected quickly",
+        "options-derived signal unavailable"
+      ],
+      "hypothesis_id": "hyp_618895b7a3",
+      "market": "crypto",
+      "regime": "high_volatility",
+      "risk_idea": "Use as a global risk throttle for strategies during high-volatility regimes.",
+      "source_paper_id": "2606.16961v1",
+      "strategy_family": "volatility_regime_filter",
+      "testable_parameters": {
+        "atr_period": [
+          14,
+          21
+        ],
+        "max_atr_pct": [
+          1.5,
+          2.5,
+          4.0
+        ],
+        "vol_zscore_limit": [
+          1.0,
+          1.5,
+          2.0
+        ],
+        "vol_zscore_window": [
+          50,
+          100
+        ]
+      },
+      "title": "volatility_regime_filter hypothesis from Beyond the Smile: A Hybrid Convolutional VAE for Crypto Volatility Surfaces"
+    },
+    {
+      "citations": [
+        {
+          "paper_id": "2505.17388v1",
+          "title": "Stochastic Price Dynamics in Response to Order Flow Imbalance: Evidence from CSI 300 Index Futures",
+          "url": "http://arxiv.org/abs/2505.17388v1"
+        }
+      ],
+      "confidence": 0.65,
+      "created_at": 1782307380.383369,
+      "entry_idea": "Enter only when liquidity imbalance supports the direction and spread is below cap.",
+      "exit_idea": "Exit when imbalance fades, spread expands, or adverse selection risk rises.",
+      "expected_failure_modes": [
+        "order book spoofing/noise",
+        "execution cost exceeds edge",
+        "liquidity disappears"
+      ],
+      "hypothesis_id": "hyp_9c23396810",
+      "market": "multi_asset",
+      "regime": "market_microstructure",
+      "risk_idea": "Reduce size when spread, slippage, or permanent impact proxy rises.",
+      "source_paper_id": "2505.17388v1",
+      "strategy_family": "order_flow_liquidity",
+      "testable_parameters": {
+        "imbalance_window": [
+          10,
+          20,
+          40
+        ],
+        "max_hold_bars": [
+          4,
+          8,
+          12
+        ],
+        "max_spread_bps": [
+          3,
+          5,
+          8
+        ],
+        "min_depth_imbalance": [
+          0.15,
+          0.25,
+          0.35
+        ]
+      },
+      "title": "order_flow_liquidity hypothesis from Stochastic Price Dynamics in Response to Order Flow Imbalance: Evidence from CSI 300 Index Futures"
+    },
+    {
+      "citations": [
+        {
+          "paper_id": "2508.06788v4",
+          "title": "Returns and Order Flow Imbalances: Intraday Dynamics and Macroeconomic News Effects",
+          "url": "http://arxiv.org/abs/2508.06788v4"
+        }
+      ],
+      "confidence": 0.65,
+      "created_at": 1782307380.3833814,
+      "entry_idea": "Enter only when liquidity imbalance supports the direction and spread is below cap.",
+      "exit_idea": "Exit when imbalance fades, spread expands, or adverse selection risk rises.",
+      "expected_failure_modes": [
+        "order book spoofing/noise",
+        "execution cost exceeds edge",
+        "liquidity disappears"
+      ],
+      "hypothesis_id": "hyp_b1eb5cfc77",
+      "market": "multi_asset",
+      "regime": "high_volatility",
+      "risk_idea": "Reduce size when spread, slippage, or permanent impact proxy rises.",
+      "source_paper_id": "2508.06788v4",
+      "strategy_family": "order_flow_liquidity",
+      "testable_parameters": {
+        "imbalance_window": [
+          10,
+          20,
+          40
+        ],
+        "max_hold_bars": [
+          4,
+          8,
+          12
+        ],
+        "max_spread_bps": [
+          3,
+          5,
+          8
+        ],
+        "min_depth_imbalance": [
+          0.15,
+          0.25,
+          0.35
+        ]
+      },
+      "title": "order_flow_liquidity hypothesis from Returns and Order Flow Imbalances: Intraday Dynamics and Macroeconomic News Effects"
+    },
+    {
+      "citations": [
+        {
+          "paper_id": "2506.11921v1",
+          "title": "Dynamic Grid Trading Strategy: From Zero Expectation to Market Outperformance",
+          "url": "http://arxiv.org/abs/2506.11921v1"
+        }
+      ],
+      "confidence": 0.4,
+      "created_at": 1782307380.3833961,
+      "entry_idea": "Use paper signal as a filter candidate; no direct entry until backtested.",
+      "exit_idea": "Exit on signal decay, risk stop, or time stop.",
+      "expected_failure_modes": [
+        "overfit backtest",
+        "insufficient trades",
+        "market regime mismatch"
+      ],
+      "hypothesis_id": "hyp_979e8c3796",
+      "market": "crypto",
+      "regime": "unknown",
+      "risk_idea": "Use conservative sizing until walk-forward validates the edge.",
+      "source_paper_id": "2506.11921v1",
+      "strategy_family": "research_filter",
+      "testable_parameters": {
+        "lookback": [
+          20,
+          50,
+          100
+        ],
+        "threshold": [
+          0.5,
+          1.0,
+          1.5
+        ]
+      },
+      "title": "research_filter hypothesis from Dynamic Grid Trading Strategy: From Zero Expectation to Market Outperformance"
+    },
+    {
+      "citations": [
+        {
+          "paper_id": "2604.20949v1",
+          "title": "Early Detection of Latent Microstructure Regimes in Limit Order Books",
+          "url": "http://arxiv.org/abs/2604.20949v1"
+        }
+      ],
+      "confidence": 0.6,
+      "created_at": 1782307380.3834045,
+      "entry_idea": "Enter only when liquidity imbalance supports the direction and spread is below cap.",
+      "exit_idea": "Exit when imbalance fades, spread expands, or adverse selection risk rises.",
+      "expected_failure_modes": [
+        "order book spoofing/noise",
+        "execution cost exceeds edge",
+        "liquidity disappears"
+      ],
+      "hypothesis_id": "hyp_960f12553e",
+      "market": "multi_asset",
+      "regime": "market_microstructure",
+      "risk_idea": "Reduce size when spread, slippage, or permanent impact proxy rises.",
+      "source_paper_id": "2604.20949v1",
+      "strategy_family": "order_flow_liquidity",
+      "testable_parameters": {
+        "imbalance_window": [
+          10,
+          20,
+          40
+        ],
+        "max_hold_bars": [
+          4,
+          8,
+          12
+        ],
+        "max_spread_bps": [
+          3,
+          5,
+          8
+        ],
+        "min_depth_imbalance": [
+          0.15,
+          0.25,
+          0.35
+        ]
+      },
+      "title": "order_flow_liquidity hypothesis from Early Detection of Latent Microstructure Regimes in Limit Order Books"
+    },
+    {
+      "citations": [
+        {
+          "paper_id": "2506.07711v6",
+          "title": "The Subtle Interplay between Square-root Impact, Order Imbalance & Volatility: A Unifying Framework",
+          "url": "http://arxiv.org/abs/2506.07711v6"
+        }
+      ],
+      "confidence": 0.575,
+      "created_at": 1782307380.3834162,
+      "entry_idea": "Enter only when liquidity imbalance supports the direction and spread is below cap.",
+      "exit_idea": "Exit when imbalance fades, spread expands, or adverse selection risk rises.",
+      "expected_failure_modes": [
+        "order book spoofing/noise",
+        "execution cost exceeds edge",
+        "liquidity disappears"
+      ],
+      "hypothesis_id": "hyp_ac4229fdc8",
+      "market": "multi_asset",
+      "regime": "market_microstructure",
+      "risk_idea": "Reduce size when spread, slippage, or permanent impact proxy rises.",
+      "source_paper_id": "2506.07711v6",
+      "strategy_family": "order_flow_liquidity",
+      "testable_parameters": {
+        "imbalance_window": [
+          10,
+          20,
+          40
+        ],
+        "max_hold_bars": [
+          4,
+          8,
+          12
+        ],
+        "max_spread_bps": [
+          3,
+          5,
+          8
+        ],
+        "min_depth_imbalance": [
+          0.15,
+          0.25,
+          0.35
+        ]
+      },
+      "title": "order_flow_liquidity hypothesis from The Subtle Interplay between Square-root Impact, Order Imbalance & Volatility: A Unifying Framework"
+    },
+    {
+      "citations": [
+        {
+          "paper_id": "2507.16701v1",
+          "title": "Binary Tree Option Pricing Under Market Microstructure Effects: A Random Forest Approach",
+          "url": "http://arxiv.org/abs/2507.16701v1"
+        }
+      ],
+      "confidence": 0.575,
+      "created_at": 1782307380.383425,
+      "entry_idea": "Enter only when liquidity imbalance supports the direction and spread is below cap.",
+      "exit_idea": "Exit when imbalance fades, spread expands, or adverse selection risk rises.",
+      "expected_failure_modes": [
+        "order book spoofing/noise",
+        "execution cost exceeds edge",
+        "liquidity disappears"
+      ],
+      "hypothesis_id": "hyp_214a8e5bd9",
+      "market": "multi_asset",
+      "regime": "market_microstructure",
+      "risk_idea": "Reduce size when spread, slippage, or permanent impact proxy rises.",
+      "source_paper_id": "2507.16701v1",
+      "strategy_family": "order_flow_liquidity",
+      "testable_parameters": {
+        "imbalance_window": [
+          10,
+          20,
+          40
+        ],
+        "max_hold_bars": [
+          4,
+          8,
+          12
+        ],
+        "max_spread_bps": [
+          3,
+          5,
+          8
+        ],
+        "min_depth_imbalance": [
+          0.15,
+          0.25,
+          0.35
+        ]
+      },
+      "title": "order_flow_liquidity hypothesis from Binary Tree Option Pricing Under Market Microstructure Effects: A Random Forest Approach"
+    },
+    {
+      "citations": [
+        {
+          "paper_id": "2606.15715v1",
+          "title": "Trading in the Sunshine or in the Shade: Market Impact and Adverse Selection on Hyperliquid",
+          "url": "http://arxiv.org/abs/2606.15715v1"
+        }
+      ],
+      "confidence": 0.55,
+      "created_at": 1782307380.383431,
+      "entry_idea": "Enter only when liquidity imbalance supports the direction and spread is below cap.",
+      "exit_idea": "Exit when imbalance fades, spread expands, or adverse selection risk rises.",
+      "expected_failure_modes": [
+        "order book spoofing/noise",
+        "execution cost exceeds edge",
+        "liquidity disappears"
+      ],
+      "hypothesis_id": "hyp_921c8e572b",
+      "market": "crypto",
+      "regime": "market_microstructure",
+      "risk_idea": "Reduce size when spread, slippage, or permanent impact proxy rises.",
+      "source_paper_id": "2606.15715v1",
+      "strategy_family": "order_flow_liquidity",
+      "testable_parameters": {
+        "imbalance_window": [
+          10,
+          20,
+          40
+        ],
+        "max_hold_bars": [
+          4,
+          8,
+          12
+        ],
+        "max_spread_bps": [
+          3,
+          5,
+          8
+        ],
+        "min_depth_imbalance": [
+          0.15,
+          0.25,
+          0.35
+        ]
+      },
+      "title": "order_flow_liquidity hypothesis from Trading in the Sunshine or in the Shade: Market Impact and Adverse Selection on Hyperliquid"
+    },
+    {
+      "citations": [
+        {
+          "paper_id": "2606.20145v1",
+          "title": "Trends, Volatility, Correlations, and Critical Phenomena in Financial Markets",
+          "url": "http://arxiv.org/abs/2606.20145v1"
+        }
+      ],
+      "confidence": 0.475,
+      "created_at": 1782307380.3834429,
+      "entry_idea": "Use volatility anomaly as a filter; avoid entries during unstable high-error regimes.",
+      "exit_idea": "Exit or block entries when volatility regime moves outside calibrated bounds.",
+      "expected_failure_modes": [
+        "volatility model overfits",
+        "regime shift not detected quickly",
+        "options-derived signal unavailable"
+      ],
+      "hypothesis_id": "hyp_1b67f04fe0",
+      "market": "multi_asset",
+      "regime": "high_volatility",
+      "risk_idea": "Use as a global risk throttle for strategies during high-volatility regimes.",
+      "source_paper_id": "2606.20145v1",
+      "strategy_family": "volatility_regime_filter",
+      "testable_parameters": {
+        "atr_period": [
+          14,
+          21
+        ],
+        "max_atr_pct": [
+          1.5,
+          2.5,
+          4.0
+        ],
+        "vol_zscore_limit": [
+          1.0,
+          1.5,
+          2.0
+        ],
+        "vol_zscore_window": [
+          50,
+          100
+        ]
+      },
+      "title": "volatility_regime_filter hypothesis from Trends, Volatility, Correlations, and Critical Phenomena in Financial Markets"
+    }
+  ]
+}

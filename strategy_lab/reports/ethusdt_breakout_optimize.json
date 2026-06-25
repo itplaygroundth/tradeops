@@ -1,0 +1,251 @@
+{
+  "best": {
+    "approved_for_forward_test": false,
+    "expectancy_pct": -0.1717,
+    "gate_reasons": [
+      "expectancy is not positive",
+      "profit factor below 1.15"
+    ],
+    "max_drawdown_pct": 1.2277,
+    "parameters": {
+      "atr_period": 14,
+      "breakout_lookback": 34,
+      "fast_sma": 12,
+      "fee_bps": 10,
+      "max_atr_pct": 1.5,
+      "max_entry_rsi": 72,
+      "max_hold_bars": 20,
+      "min_atr_pct": 0.03,
+      "slippage_bps": 2,
+      "slow_sma": 55
+    },
+    "profit_factor": 0.2685,
+    "score": -0.828235,
+    "sharpe": -9.3502,
+    "total_pnl_pct": -1.0301,
+    "trades": 6,
+    "win_rate": 0.1667
+  },
+  "passed": 0,
+  "strategy_name": "btc_eth_breakout_atr_v1",
+  "symbol": "ETHUSDT",
+  "tested": 2187,
+  "top": [
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1717,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 1.2277,
+      "parameters": {
+        "atr_period": 14,
+        "breakout_lookback": 34,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 1.5,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 20,
+        "min_atr_pct": 0.03,
+        "slippage_bps": 2,
+        "slow_sma": 55
+      },
+      "profit_factor": 0.2685,
+      "score": -0.828235,
+      "sharpe": -9.3502,
+      "total_pnl_pct": -1.0301,
+      "trades": 6,
+      "win_rate": 0.1667
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1717,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 1.2277,
+      "parameters": {
+        "atr_period": 14,
+        "breakout_lookback": 34,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 2.5,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 20,
+        "min_atr_pct": 0.03,
+        "slippage_bps": 2,
+        "slow_sma": 55
+      },
+      "profit_factor": 0.2685,
+      "score": -0.828235,
+      "sharpe": -9.3502,
+      "total_pnl_pct": -1.0301,
+      "trades": 6,
+      "win_rate": 0.1667
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1717,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 1.2277,
+      "parameters": {
+        "atr_period": 14,
+        "breakout_lookback": 34,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 4.0,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 20,
+        "min_atr_pct": 0.03,
+        "slippage_bps": 2,
+        "slow_sma": 55
+      },
+      "profit_factor": 0.2685,
+      "score": -0.828235,
+      "sharpe": -9.3502,
+      "total_pnl_pct": -1.0301,
+      "trades": 6,
+      "win_rate": 0.1667
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1717,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 1.2277,
+      "parameters": {
+        "atr_period": 14,
+        "breakout_lookback": 34,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 1.5,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 20,
+        "min_atr_pct": 0.05,
+        "slippage_bps": 2,
+        "slow_sma": 55
+      },
+      "profit_factor": 0.2685,
+      "score": -0.828235,
+      "sharpe": -9.3502,
+      "total_pnl_pct": -1.0301,
+      "trades": 6,
+      "win_rate": 0.1667
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1717,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 1.2277,
+      "parameters": {
+        "atr_period": 14,
+        "breakout_lookback": 34,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 2.5,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 20,
+        "min_atr_pct": 0.05,
+        "slippage_bps": 2,
+        "slow_sma": 55
+      },
+      "profit_factor": 0.2685,
+      "score": -0.828235,
+      "sharpe": -9.3502,
+      "total_pnl_pct": -1.0301,
+      "trades": 6,
+      "win_rate": 0.1667
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1717,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 1.2277,
+      "parameters": {
+        "atr_period": 14,
+        "breakout_lookback": 34,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 4.0,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 20,
+        "min_atr_pct": 0.05,
+        "slippage_bps": 2,
+        "slow_sma": 55
+      },
+      "profit_factor": 0.2685,
+      "score": -0.828235,
+      "sharpe": -9.3502,
+      "total_pnl_pct": -1.0301,
+      "trades": 6,
+      "win_rate": 0.1667
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1717,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 1.2277,
+      "parameters": {
+        "atr_period": 14,
+        "breakout_lookback": 34,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 1.5,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 20,
+        "min_atr_pct": 0.1,
+        "slippage_bps": 2,
+        "slow_sma": 55
+      },
+      "profit_factor": 0.2685,
+      "score": -0.828235,
+      "sharpe": -9.3502,
+      "total_pnl_pct": -1.0301,
+      "trades": 6,
+      "win_rate": 0.1667
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1717,
+      "gate_reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 1.2277,
+      "parameters": {
+        "atr_period": 14,
+        "breakout_lookback": 34,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 2.5,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 20,
+        "min_atr_pct": 0.1,
+        "slippage_bps": 2,
+        "slow_sma": 55
+      },
+      "profit_factor": 0.2685,
+      "score": -0.828235,
+      "sharpe": -9.3502,
+      "total_pnl_pct": -1.0301,
+      "trades": 6,
+      "win_rate": 0.1667
+    }
+  ]
+}

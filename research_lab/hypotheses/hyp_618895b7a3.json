@@ -1,0 +1,45 @@
+{
+  "citations": [
+    {
+      "paper_id": "2606.16961v1",
+      "title": "Beyond the Smile: A Hybrid Convolutional VAE for Crypto Volatility Surfaces",
+      "url": "http://arxiv.org/abs/2606.16961v1"
+    }
+  ],
+  "confidence": 0.675,
+  "created_at": 1782307380.3833494,
+  "entry_idea": "Use volatility anomaly as a filter; avoid entries during unstable high-error regimes.",
+  "exit_idea": "Exit or block entries when volatility regime moves outside calibrated bounds.",
+  "expected_failure_modes": [
+    "volatility model overfits",
+    "regime shift not detected quickly",
+    "options-derived signal unavailable"
+  ],
+  "hypothesis_id": "hyp_618895b7a3",
+  "market": "crypto",
+  "regime": "high_volatility",
+  "risk_idea": "Use as a global risk throttle for strategies during high-volatility regimes.",
+  "source_paper_id": "2606.16961v1",
+  "strategy_family": "volatility_regime_filter",
+  "testable_parameters": {
+    "atr_period": [
+      14,
+      21
+    ],
+    "max_atr_pct": [
+      1.5,
+      2.5,
+      4.0
+    ],
+    "vol_zscore_limit": [
+      1.0,
+      1.5,
+      2.0
+    ],
+    "vol_zscore_window": [
+      50,
+      100
+    ]
+  },
+  "title": "volatility_regime_filter hypothesis from Beyond the Smile: A Hybrid Convolutional VAE for Crypto Volatility Surfaces"
+}

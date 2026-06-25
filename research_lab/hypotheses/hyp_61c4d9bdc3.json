@@ -1,0 +1,37 @@
+{
+  "citations": [
+    {
+      "paper_id": "2606.20079v1",
+      "title": "How to spot outliers: an Ensemble Anomaly Detection Framework",
+      "url": "http://arxiv.org/abs/2606.20079v1"
+    }
+  ],
+  "confidence": 0.225,
+  "created_at": 1782307380.383484,
+  "entry_idea": "Use paper signal as a filter candidate; no direct entry until backtested.",
+  "exit_idea": "Exit on signal decay, risk stop, or time stop.",
+  "expected_failure_modes": [
+    "overfit backtest",
+    "insufficient trades",
+    "market regime mismatch"
+  ],
+  "hypothesis_id": "hyp_61c4d9bdc3",
+  "market": "multi_asset",
+  "regime": "unknown",
+  "risk_idea": "Use conservative sizing until walk-forward validates the edge.",
+  "source_paper_id": "2606.20079v1",
+  "strategy_family": "research_filter",
+  "testable_parameters": {
+    "lookback": [
+      20,
+      50,
+      100
+    ],
+    "threshold": [
+      0.5,
+      1.0,
+      1.5
+    ]
+  },
+  "title": "research_filter hypothesis from How to spot outliers: an Ensemble Anomaly Detection Framework"
+}

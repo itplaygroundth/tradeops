@@ -1,0 +1,219 @@
+{
+  "found": 8,
+  "keywords": [
+    "crypto mean reversion",
+    "volatility regime trading",
+    "dynamic grid trading",
+    "order flow imbalance",
+    "market microstructure crypto",
+    "walk forward optimization trading",
+    "breakout trading volatility filter"
+  ],
+  "stored": 16,
+  "top": [
+    {
+      "abstract": "We document stable cross-asset patterns in cryptocurrency limit-order-book microstructure: the same engineered order book and trade features exhibit remarkably similar predictive importance and SHAP dependence shapes across assets spanning an order of magnitude in market capitalization (BTC, LTC, ETC, ENJ, ROSE). The data covers Binance Futures perpetual contract order books and trades on 1-second frequency starting from January 1st, 2022 up to October 12th, 2025. Using a unified CatBoost modeling pipeline with a direction-aware GMADL objective and time-series cross validation, we show that feature rankings and partial effects are stable across assets despite heterogeneous liquidity and volatility. We connect these SHAP structures to microstructure theory (order flow imbalance, spread, and adverse selection) and validate tradability via a conservative top-of-book taker backtest as well as fixed depth maker backtest. Our primary novelty is a robustness analysis of a major flash crash, where the divergent performance of our taker and maker strategies empirically validates classic microstructure theories of adverse selection and highlights the systemic risks of algorithmic trading. Our results suggest a portable microstructure representation of short-horizon returns and motivate universal feature libraries for crypto markets.",
+      "authors": [
+        "Bartosz Bieganowski",
+        "Robert \u015alepaczuk"
+      ],
+      "discovered_at": 1782307380.2860405,
+      "keywords": [
+        "order flow imbalance"
+      ],
+      "paper_id": "2602.00776v1",
+      "published_at": "2026-01-31T15:33:06Z",
+      "raw": {
+        "arxiv_id": "http://arxiv.org/abs/2602.00776v1"
+      },
+      "score": 25.0,
+      "source": "arxiv",
+      "title": "Explainable Patterns in Cryptocurrency Microstructure",
+      "url": "http://arxiv.org/abs/2602.00776v1"
+    },
+    {
+      "abstract": "We present a convolutional variational autoencoder for cryptocurrency implied-volatility surfaces, together with a deployable predictor that combines it with a quadratic smile re-fit through a deterministic per-tenor routing rule. Trained on 6,034 fully-filled hourly Binance Options surfaces of BTC and ETH spanning May-October 2023 and parameterised on a common $6 \\times 7$ tenor-delta grid, the model attains a hidden-cell surface-completion RMSE in the 0.94-1.56 vol-point range across both markets and mask rates 10-50%. The hybrid predictor attains 0.83 vol points at 50% masking against 7.00 for the smile re-fit alone, an eightfold reduction obtained at no additional inference cost. Under structurally-correlated hole patterns that emulate the withdrawal of an entire tenor of strikes, the smile re-fit incurs 9.6-13.1 vol points of error while the learned model remains at 1.5-1.9, isolating a regime in which the generative model is the only viable predictor. Joint training on BTC and ETH improves the in-distribution model on both markets by 9-27% relative to the better-performing single-symbol counterpart, indicating a substantially shared vol-surface manifold across the two largest cryptocurrencies over the observation window. The hybrid is calendar- and butterfly-arbitrage-free at the listed strikes, a property that the parametric smile re-fit alone fails at high mask rates. The per-snapshot reconstruction error of the trained model flags the late-October ETF-anticipation rally and the August $17$, $2023$ flash crash as elevated-error periods without supervision. All training and evaluation infrastructure is released to support reproducible follow-on work.",
+      "authors": [
+        "Sadanand Singh",
+        "Allam Reddy",
+        "Manan Chopra"
+      ],
+      "discovered_at": 1782051054.618026,
+      "keywords": [
+        "volatility"
+      ],
+      "paper_id": "2606.16961v1",
+      "published_at": "2026-06-15T17:01:00Z",
+      "raw": {
+        "arxiv_id": "http://arxiv.org/abs/2606.16961v1"
+      },
+      "score": 23.0,
+      "source": "arxiv",
+      "title": "Beyond the Smile: A Hybrid Convolutional VAE for Crypto Volatility Surfaces",
+      "url": "http://arxiv.org/abs/2606.16961v1"
+    },
+    {
+      "abstract": "We conduct modeling of the price dynamics following order flow imbalance in market microstructure and apply the model to the analysis of Chinese CSI 300 Index Futures. There are three findings. The first is that the order flow imbalance is analogous to a shock to the market. Unlike the common practice of using Hawkes processes, we model the impact of order flow imbalance as an Ornstein-Uhlenbeck process with memory and mean-reverting characteristics driven by a jump-type L\u00e9vy process. Motivated by the empirically stable correlation between order flow imbalance and contemporaneous price changes, we propose a modified asset price model where the drift term of canonical geometric Brownian motion is replaced by an Ornstein-Uhlenbeck process. We establish stochastic differential equations and derive the logarithmic return process along with its mean and variance processes under initial boundary conditions, and evolution of cost-effectiveness ratio with order flow imbalance as the trading trigger point, termed as the quasi-Sharpe ratio or response ratio. Secondly, our results demonstrate horizon-dependent heterogeneity in how conventional metrics interact with order flow imbalance. This underscores the critical role of forecast horizon selection for strategies. Thirdly, we identify regime-dependent dynamics in the memory and forecasting power of order flow imbalance. This taxonomy provides both a screening protocol for existing indicators and an ex-ante evaluation paradigm for novel metrics.",
+      "authors": [
+        "Chen Hu",
+        "Kouxiao Zhang"
+      ],
+      "discovered_at": 1782307380.2865262,
+      "keywords": [
+        "order flow imbalance"
+      ],
+      "paper_id": "2505.17388v1",
+      "published_at": "2025-05-23T01:53:28Z",
+      "raw": {
+        "arxiv_id": "http://arxiv.org/abs/2505.17388v1"
+      },
+      "score": 22.0,
+      "source": "arxiv",
+      "title": "Stochastic Price Dynamics in Response to Order Flow Imbalance: Evidence from CSI 300 Index Futures",
+      "url": "http://arxiv.org/abs/2505.17388v1"
+    },
+    {
+      "abstract": "We study the interaction between returns and order flow imbalances in the S&P 500 E-mini futures market using a structural VAR model identified through heteroskedasticity. The model is estimated at one-second frequency for each 15-minute interval, capturing both intraday variation and endogeneity due to time aggregation. We find that macroeconomic news announcements sharply reshape price-flow dynamics: price impact rises, flow impact declines, return volatility spikes, and flow volatility falls. Pooling across days, both price and flow impacts are significant at the one-second horizon, with estimates broadly consistent with stylized limit-order-book predictions. Impulse responses indicate that shocks dissipate almost entirely within a second. Structural parameters and volatilities also exhibit pronounced intraday variation tied to liquidity, trading intensity, and spreads. These results provide new evidence on high-frequency price formation and liquidity, highlighting the role of public information and order submission in shaping market quality.",
+      "authors": [
+        "Makoto Takahashi"
+      ],
+      "discovered_at": 1782307380.2861211,
+      "keywords": [
+        "order flow imbalance"
+      ],
+      "paper_id": "2508.06788v4",
+      "published_at": "2025-08-09T02:34:23Z",
+      "raw": {
+        "arxiv_id": "http://arxiv.org/abs/2508.06788v4"
+      },
+      "score": 22.0,
+      "source": "arxiv",
+      "title": "Returns and Order Flow Imbalances: Intraday Dynamics and Macroeconomic News Effects",
+      "url": "http://arxiv.org/abs/2508.06788v4"
+    },
+    {
+      "abstract": "We propose a profitable trading strategy for the cryptocurrency market based on grid trading. Starting with an analysis of the expected value of the traditional grid strategy, we show that under simple assumptions, its expected return is essentially zero. We then introduce a novel Dynamic Grid-based Trading (DGT) strategy that adapts to market conditions by dynamically resetting grid positions. Our backtesting results using minute-level data from Bitcoin and Ethereum between January 2021 and July 2024 demonstrate that the DGT strategy significantly outperforms both the traditional grid and buy-and-hold strategies in terms of internal rate of return and risk control.",
+      "authors": [
+        "Kai-Yuan Chen",
+        "Kai-Hsin Chen",
+        "Jyh-Shing Roger Jang"
+      ],
+      "discovered_at": 1782307380.2862945,
+      "keywords": [
+        "dynamic grid trading"
+      ],
+      "paper_id": "2506.11921v1",
+      "published_at": "2025-06-13T16:11:44Z",
+      "raw": {
+        "arxiv_id": "http://arxiv.org/abs/2506.11921v1"
+      },
+      "score": 20.0,
+      "source": "arxiv",
+      "title": "Dynamic Grid Trading Strategy: From Zero Expectation to Market Outperformance",
+      "url": "http://arxiv.org/abs/2506.11921v1"
+    },
+    {
+      "abstract": "Limit order books can transition rapidly from stable to stressed conditions, yet standard early-warning signals such as order flow imbalance and short-term volatility are inherently reactive. We formalise this limitation via a three-regime causal data-generating process (stable $\\to$ latent build-up $\\to$ stress) in which a latent deterioration phase creates a prediction window prior to observable stress. Under mild assumptions on temporal drift and regime persistence, we establish identifiability of the latent build-up regime and derive guarantees for strictly positive expected lead-time and non-trivial probability of early detection. We propose a trigger-based detector combining MAX aggregation of complementary signal channels, a rising-edge condition, and adaptive thresholding. Across 200 simulations, the method achieves mean lead-time $+18.6 \\pm 3.2$ timesteps with perfect precision and moderate coverage, outperforming classical change-point and microstructure baselines. A preliminary application to one week of BTC/USDT order book data shows consistent positive lead-times while baselines remain reactive. Results degrade in low signal-to-noise and short build-up regimes, consistent with theory.",
+      "authors": [
+        "Prakul Sunil Hiremath",
+        "Vruksha Arun Hiremath"
+      ],
+      "discovered_at": 1782307380.28585,
+      "keywords": [
+        "order flow imbalance"
+      ],
+      "paper_id": "2604.20949v1",
+      "published_at": "2026-04-22T17:47:52Z",
+      "raw": {
+        "arxiv_id": "http://arxiv.org/abs/2604.20949v1"
+      },
+      "score": 20.0,
+      "source": "arxiv",
+      "title": "Early Detection of Latent Microstructure Regimes in Limit Order Books",
+      "url": "http://arxiv.org/abs/2604.20949v1"
+    },
+    {
+      "abstract": "In this work, we aim to reconcile several apparently contradictory observations in market microstructure: is the famous \"square-root law\" of metaorder impact, which decays with time, compatible with the random-walk nature of prices and the linear impact of order imbalances? Can one entirely explain the volatility of prices as resulting from the flow of uninformed metaorders that mechanically impact them? We introduce a new theoretical framework to describe metaorders with different signs, sizes and durations, which all impact prices as a square-root of volume but with a subsequent time decay. We show that, as in the original propagator model, price diffusion is ensured by the long memory of cross-correlations between metaorders. In order to account for the effect of strongly fluctuating volumes q of individual trades, we further introduce two q-dependent exponents, which allow us to describe how the moments of generalized volume imbalance and the correlation between price changes and generalized order flow imbalance scale with T. We predict in particular that the corresponding power-laws depend in a non-monotonic fashion on a parameter a, which allows one to put the same weight on all child orders or to overweight large ones, a behaviour that is clearly borne out by empirical data. We also predict that the correlation between price changes and volume imbalances should display a maximum as a function of a, which again matches observations. Such noteworthy agreement between theory and data suggests that our framework correctly captures the basic mechanism at the heart of price formation, namely the average impact of metaorders. We argue that our results support the \"Order-Driven\" theory of excess volatility, and are at odds with the idea that a \"Fundamental\" component accounts for a large share of the volatility of financial markets.",
+      "authors": [
+        "Guillaume Maitrier",
+        "Jean-Philippe Bouchaud"
+      ],
+      "discovered_at": 1782307380.2864094,
+      "keywords": [
+        "order flow imbalance"
+      ],
+      "paper_id": "2506.07711v6",
+      "published_at": "2025-06-09T12:53:25Z",
+      "raw": {
+        "arxiv_id": "http://arxiv.org/abs/2506.07711v6"
+      },
+      "score": 19.0,
+      "source": "arxiv",
+      "title": "The Subtle Interplay between Square-root Impact, Order Imbalance & Volatility: A Unifying Framework",
+      "url": "http://arxiv.org/abs/2506.07711v6"
+    },
+    {
+      "abstract": "We propose a machine learning-based extension of the classical binomial option pricing model that incorporates key market microstructure effects. Traditional models assume frictionless markets, overlooking empirical features such as bid-ask spreads, discrete price movements, and serial return correlations. Our framework augments the binomial tree with path-dependent transition probabilities estimated via Random Forest classifiers trained on high-frequency market data. This approach preserves no-arbitrage conditions while embedding real-world trading dynamics into the pricing model. Using 46,655 minute-level observations of SPY from January to June 2025, we achieve an AUC of 88.25% in forecasting one-step price movements. Order flow imbalance is identified as the most influential predictor, contributing 43.2% to feature importance. After resolving time-scaling inconsistencies in tree construction, our model yields option prices that deviate by 13.79% from Black-Scholes benchmarks, highlighting the impact of microstructure on fair value estimation. While computational limitations restrict the model to short-term derivatives, our results offer a robust, data-driven alternative to classical pricing methods grounded in empirical market behavior.",
+      "authors": [
+        "Akash Deep",
+        "Chris Monico",
+        "W. Brent Lindquist",
+        "Svetlozar T. Rachev",
+        "Frank J. Fabozzi"
+      ],
+      "discovered_at": 1782307380.2862284,
+      "keywords": [
+        "order flow imbalance"
+      ],
+      "paper_id": "2507.16701v1",
+      "published_at": "2025-07-22T15:37:08Z",
+      "raw": {
+        "arxiv_id": "http://arxiv.org/abs/2507.16701v1"
+      },
+      "score": 19.0,
+      "source": "arxiv",
+      "title": "Binary Tree Option Pricing Under Market Microstructure Effects: A Random Forest Approach",
+      "url": "http://arxiv.org/abs/2507.16701v1"
+    },
+    {
+      "abstract": "Sunshine trading theory predicts that publicly disclosing trading intentions can reduce adverse selection and attract liquidity provision, lowering execution costs. Evidence is scarce, because explicit preannouncement of large orders is rare in traditional markets. We study Hyperliquid, a fully on-chain limit order book for cryptocurrency perpetual futures, where protocol-native TWAP orders disclose their terms from inception and remain visible while active, a natural form of sunshine trading. Using address-level data, we reconstruct 4.3 million hidden metaorders and compare them with 465,000 visible TWAP executions. The two execution styles differ sharply: hidden metaorders follow front-loaded, U-shaped schedules consistent with transient-impact optimal execution, whereas TWAPs trade nearly uniformly. We test the preannouncement predictions of Admati and Pfleiderer (1991). Visible TWAPs face lower execution costs than comparable hidden metaorders and leave a smaller permanent price impact. Hidden metaorders executed alongside already-visible same-direction TWAP flow incur higher permanent costs: adverse-selection costs shift toward non-announcers. Finally, visible TWAP programs elicit liquidity provision: while active, displayed depth rises and the book tilts toward the absorbing side, the more so the larger the announced order.",
+      "authors": [
+        "Davide Barone",
+        "Fabrizio Lillo"
+      ],
+      "discovered_at": 1782051054.618139,
+      "keywords": [
+        "trading"
+      ],
+      "paper_id": "2606.15715v1",
+      "published_at": "2026-06-14T10:07:34Z",
+      "raw": {
+        "arxiv_id": "http://arxiv.org/abs/2606.15715v1"
+      },
+      "score": 18.0,
+      "source": "arxiv",
+      "title": "Trading in the Sunshine or in the Shade: Market Impact and Adverse Selection on Hyperliquid",
+      "url": "http://arxiv.org/abs/2606.15715v1"
+    },
+    {
+      "abstract": "We forecast future volatilities and correlations of financial markets based on the current trends in these markets. This complements previous work that models future expected returns by a cubic polynomial of the current trend strength. Empirically, we observe that volatilities and correlations tend to increase day after day in times of strong up- or down-trends. This effect is particularly pronounced in down-trends. It can be accurately quantified by quadratic polynomials of today's trend strengths, which refine common mean-reversion models of volatilities and correlations. Our results improve the prediction of market risk by accounting for market trends. They also support a recent proposal to model financial markets by a lattice gas near its critical point.",
+      "authors": [
+        "Sara A. Safari",
+        "Christoph Schmidhuber"
+      ],
+      "discovered_at": 1782051054.617757,
+      "keywords": [
+        "volatility"
+      ],
+      "paper_id": "2606.20145v1",
+      "published_at": "2026-06-18T12:07:48Z",
+      "raw": {
+        "arxiv_id": "http://arxiv.org/abs/2606.20145v1"
+      },
+      "score": 15.0,
+      "source": "arxiv",
+      "title": "Trends, Volatility, Correlations, and Critical Phenomena in Financial Markets",
+      "url": "http://arxiv.org/abs/2606.20145v1"
+    }
+  ]
+}

@@ -1,0 +1,103 @@
+{
+  "files": [
+    "strategy_lab/strategies/generated/generated_order_flow_liquidity_filter_v1.json",
+    "strategy_lab/strategies/generated/generated_volatility_regime_filter_v1.json"
+  ],
+  "hypotheses": 16,
+  "items": [
+    {
+      "entry_rules": [
+        {
+          "action": "LONG",
+          "when": "market_structure_break_with_liquidity_filter"
+        }
+      ],
+      "exit_rules": [
+        {
+          "action": "HOLD",
+          "when": "liquidity_imbalance_fades_or_time_stop"
+        }
+      ],
+      "market": "crypto",
+      "name": "generated_order_flow_liquidity_filter_v1",
+      "parameters": {
+        "fast_sma": 9,
+        "fee_bps": 10,
+        "imbalance_window": 10,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 4,
+        "max_spread_bps": 3,
+        "min_depth_imbalance": 0.15,
+        "research_confidence": 0.2,
+        "slippage_bps": 2,
+        "slow_sma": 21,
+        "source_hypothesis_id": "hyp_04f301dbc0",
+        "source_paper_id": "2606.16269v1"
+      },
+      "risk_rules": {
+        "max_positions": 1,
+        "risk_pct": 0.0025
+      },
+      "status": "draft",
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": {
+        "confirm": "H1",
+        "entry": "M15",
+        "regime": "H4"
+      },
+      "type": "market_structure",
+      "version": 1
+    },
+    {
+      "entry_rules": [
+        {
+          "action": "LONG",
+          "when": "market_structure_break_and_volatility_below_cap"
+        }
+      ],
+      "exit_rules": [
+        {
+          "action": "HOLD",
+          "when": "volatility_exceeds_cap_or_structure_fails"
+        }
+      ],
+      "market": "crypto",
+      "name": "generated_volatility_regime_filter_v1",
+      "parameters": {
+        "atr_period": 14,
+        "fast_sma": 9,
+        "fee_bps": 10,
+        "max_atr_pct": 1.5,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 12,
+        "research_confidence": 0.475,
+        "slippage_bps": 2,
+        "slow_sma": 21,
+        "source_hypothesis_id": "hyp_1b67f04fe0",
+        "source_paper_id": "2606.20145v1",
+        "vol_zscore_limit": 1.0,
+        "vol_zscore_window": 50
+      },
+      "risk_rules": {
+        "max_positions": 1,
+        "risk_pct": 0.002
+      },
+      "status": "draft",
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "timeframes": {
+        "confirm": "H1",
+        "entry": "M15",
+        "regime": "H4"
+      },
+      "type": "market_structure",
+      "version": 1
+    }
+  ],
+  "proposals": 2
+}

@@ -1,0 +1,47 @@
+{
+  "citations": [
+    {
+      "paper_id": "2606.16269v1",
+      "title": "Revisiting Trade-sign Long-memory and Square-root Law price impact",
+      "url": "http://arxiv.org/abs/2606.16269v1"
+    }
+  ],
+  "confidence": 0.2,
+  "created_at": 1782307380.383536,
+  "entry_idea": "Enter only when liquidity imbalance supports the direction and spread is below cap.",
+  "exit_idea": "Exit when imbalance fades, spread expands, or adverse selection risk rises.",
+  "expected_failure_modes": [
+    "order book spoofing/noise",
+    "execution cost exceeds edge",
+    "liquidity disappears"
+  ],
+  "hypothesis_id": "hyp_04f301dbc0",
+  "market": "multi_asset",
+  "regime": "market_microstructure",
+  "risk_idea": "Reduce size when spread, slippage, or permanent impact proxy rises.",
+  "source_paper_id": "2606.16269v1",
+  "strategy_family": "order_flow_liquidity",
+  "testable_parameters": {
+    "imbalance_window": [
+      10,
+      20,
+      40
+    ],
+    "max_hold_bars": [
+      4,
+      8,
+      12
+    ],
+    "max_spread_bps": [
+      3,
+      5,
+      8
+    ],
+    "min_depth_imbalance": [
+      0.15,
+      0.25,
+      0.35
+    ]
+  },
+  "title": "order_flow_liquidity hypothesis from Revisiting Trade-sign Long-memory and Square-root Law price impact"
+}

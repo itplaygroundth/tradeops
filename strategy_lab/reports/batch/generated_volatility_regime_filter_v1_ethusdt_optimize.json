@@ -1,0 +1,132 @@
+{
+  "best": {
+    "approved_for_forward_test": false,
+    "expectancy_pct": -0.1531,
+    "gate_reasons": [
+      "not enough trades",
+      "expectancy is not positive",
+      "profit factor below 1.15"
+    ],
+    "max_drawdown_pct": 0.5981,
+    "parameters": {
+      "atr_period": 14,
+      "fast_sma": 12,
+      "fee_bps": 10,
+      "max_atr_pct": 1.5,
+      "max_entry_rsi": 60,
+      "max_hold_bars": 20,
+      "research_confidence": 0.475,
+      "slippage_bps": 2,
+      "slow_sma": 55,
+      "source_hypothesis_id": "hyp_1b67f04fe0",
+      "source_paper_id": "2606.20145v1",
+      "vol_zscore_limit": 1.0,
+      "vol_zscore_window": 50
+    },
+    "profit_factor": 0.488,
+    "score": -0.304545,
+    "sharpe": -5.4628,
+    "total_pnl_pct": -0.3062,
+    "trades": 2,
+    "win_rate": 0.5
+  },
+  "passed": 0,
+  "strategy_name": "generated_volatility_regime_filter_v1",
+  "symbol": "ETHUSDT",
+  "tested": 81,
+  "top": [
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1531,
+      "gate_reasons": [
+        "not enough trades",
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 0.5981,
+      "parameters": {
+        "atr_period": 14,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 1.5,
+        "max_entry_rsi": 60,
+        "max_hold_bars": 20,
+        "research_confidence": 0.475,
+        "slippage_bps": 2,
+        "slow_sma": 55,
+        "source_hypothesis_id": "hyp_1b67f04fe0",
+        "source_paper_id": "2606.20145v1",
+        "vol_zscore_limit": 1.0,
+        "vol_zscore_window": 50
+      },
+      "profit_factor": 0.488,
+      "score": -0.304545,
+      "sharpe": -5.4628,
+      "total_pnl_pct": -0.3062,
+      "trades": 2,
+      "win_rate": 0.5
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1689,
+      "gate_reasons": [
+        "not enough trades",
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 0.6297,
+      "parameters": {
+        "atr_period": 14,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 1.5,
+        "max_entry_rsi": 68,
+        "max_hold_bars": 20,
+        "research_confidence": 0.475,
+        "slippage_bps": 2,
+        "slow_sma": 55,
+        "source_hypothesis_id": "hyp_1b67f04fe0",
+        "source_paper_id": "2606.20145v1",
+        "vol_zscore_limit": 1.0,
+        "vol_zscore_window": 50
+      },
+      "profit_factor": 0.4635,
+      "score": -0.403315,
+      "sharpe": -5.82,
+      "total_pnl_pct": -0.3379,
+      "trades": 2,
+      "win_rate": 0.5
+    },
+    {
+      "approved_for_forward_test": false,
+      "expectancy_pct": -0.1689,
+      "gate_reasons": [
+        "not enough trades",
+        "expectancy is not positive",
+        "profit factor below 1.15"
+      ],
+      "max_drawdown_pct": 0.6297,
+      "parameters": {
+        "atr_period": 14,
+        "fast_sma": 12,
+        "fee_bps": 10,
+        "max_atr_pct": 1.5,
+        "max_entry_rsi": 72,
+        "max_hold_bars": 20,
+        "research_confidence": 0.475,
+        "slippage_bps": 2,
+        "slow_sma": 55,
+        "source_hypothesis_id": "hyp_1b67f04fe0",
+        "source_paper_id": "2606.20145v1",
+        "vol_zscore_limit": 1.0,
+        "vol_zscore_window": 50
+      },
+      "profit_factor": 0.4635,
+      "score": -0.403315,
+      "sharpe": -5.82,
+      "total_pnl_pct": -0.3379,
+      "trades": 2,
+      "win_rate": 0.5
+    }
+  ]
+}
