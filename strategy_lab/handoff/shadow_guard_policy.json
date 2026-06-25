@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "generated_at": "2026-06-25T08:44:01.491Z",
+  "source": "research-os-dashboard-algotrader-qa",
+  "qa_status": "ready",
+  "qa_safe_action": "shadow_only_with_regime_guard",
+  "latest_experiment_id": "exp-20260625083417-431564",
+  "strategy": "generated_order_flow_liquidity_filter_v1",
+  "symbol": "BTCUSDT",
+  "timeframe": "M15",
+  "mode": "shadow_with_regime_no_trade_guard",
+  "allowed_regimes": [
+    "sideways",
+    "crash"
+  ],
+  "no_trade_regimes": [
+    "high_volatility"
+  ],
+  "no_trade_details": [
+    {
+      "regime": "high_volatility",
+      "reasons": [
+        "expectancy is not positive",
+        "profit factor below 1.15",
+        "max drawdown above 8%"
+      ],
+      "max_drawdown_pct": 77.785,
+      "expectancy_pct": -3.4608,
+      "profit_factor": 0.1972
+    }
+  ],
+  "order_execution": "disabled_in_research_os",
+  "policy": "trade only in regimes that passed stress; block entries in failed regimes until retested",
+  "enforcement": {
+    "pre_order_required": true,
+    "block_new_entries_when_regime_in": [
+      "high_volatility"
+    ],
+    "require_signal_attribution": true,
+    "require_backtest_live_parity": true,
+    "require_explicit_approval_before_live": true
+  }
+}

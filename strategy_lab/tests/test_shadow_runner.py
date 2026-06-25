@@ -44,6 +44,18 @@ def _candles():
     ]
 
 
+def _guard_policy():
+    return {
+        "version": 1,
+        "mode": "shadow_with_regime_no_trade_guard",
+        "no_trade_regimes": ["high_volatility"],
+        "enforcement": {
+            "pre_order_required": True,
+            "block_new_entries_when_regime_in": ["high_volatility"],
+        },
+    }
+
+
 def test_shadow_runner_writes_signal_without_enabling_execution(tmp_path):
     deployments = tmp_path / "deployments.json"
     signals = tmp_path / "signals.jsonl"
@@ -81,3 +93,29 @@ def test_shadow_runner_skips_when_execution_is_enabled(tmp_path):
     assert result["signals"] == 0
     assert result["skipped"][0]["reason"] == "deployment is not active signal-only shadow"
     assert signals.exists() is False
+
+
+def test_shadow_runner_blocks_actionable_signal_in_no_trade_regime(tmp_path):
+    deployment = _deployment()
+    deployment["current_regime"] = "high_volatility"
+    deployments = tmp_path / "deployments.json"
+    signals = tmp_path / "signals.jsonl"
+    guard = tmp_path / "shadow_guard_policy.json"
+    deployments.write_text(json.dumps({"version": 1, "deployments": [deployment]}))
+    guard.write_text(json.dumps(_guard_policy()))
+
+    result = run_shadow_signals(
+        deployments_path=deployments,
+        signals_path=signals,
+        guard_policy_path=guard,
+        candles_by_symbol={"BTCUSDT": _candles()},
+    )
+
+    assert result["ok"] is True
+    assert result["signals"] == 1
+    assert result["items"][0]["action"] == "HOLD"
+    assert result["items"][0]["regime"] == "high_volatility"
+    assert result["items"][0]["guard_status"] == "blocked_no_trade_regime"
+    assert "shadow guard blocked" in result["items"][0]["reason"]
+    updated = json.loads(deployments.read_text())
+    assert updated["deployments"][0]["latest_signal"]["action"] == "HOLD"

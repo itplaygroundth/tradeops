@@ -19,6 +19,8 @@ class ShadowSignal:
     reason: str
     price: float | None
     timestamp: float
+    regime: str = "unknown"
+    guard_status: str = "allowed"
     order_execution: str = "disabled"
     execution_enabled: bool = False
 
@@ -30,10 +32,12 @@ def run_shadow_signals(
     *,
     deployments_path: str | Path = "strategy_lab/shadow/deployments.json",
     signals_path: str | Path = "strategy_lab/shadow/signals.jsonl",
+    guard_policy_path: str | Path = "strategy_lab/handoff/shadow_guard_policy.json",
     candles_by_symbol: Dict[str, List[Dict[str, Any]]] | None = None,
 ) -> Dict[str, Any]:
     deployments_file = Path(deployments_path)
     store = _read_json(deployments_file, {"version": 1, "deployments": []})
+    guard_policy = _read_json(Path(guard_policy_path), {"no_trade_regimes": [], "enforcement": {}})
     candles_by_symbol = candles_by_symbol or {}
     signals: List[Dict[str, Any]] = []
     skipped: List[Dict[str, Any]] = []
@@ -65,7 +69,7 @@ def run_shadow_signals(
                     "reason": "insufficient candles",
                 })
                 continue
-            signal = evaluate_shadow_signal(deployment, proposal_raw, symbol, candles)
+            signal = evaluate_shadow_signal(deployment, proposal_raw, symbol, candles, guard_policy=guard_policy)
             latest_signal = signal.to_dict()
             signals.append(latest_signal)
             _append_jsonl(signals_path, latest_signal)
@@ -88,10 +92,25 @@ def evaluate_shadow_signal(
     proposal_raw: Dict[str, Any],
     symbol: str,
     candles: List[Dict[str, Any]],
+    guard_policy: Dict[str, Any] | None = None,
 ) -> ShadowSignal:
     proposal = validate_strategy_proposal(proposal_raw)
     closes = [float(candle["close"]) for candle in candles]
     price = closes[-1] if closes else None
+    regime = _current_regime(deployment, candles)
+    blocked_regimes = _blocked_regimes(guard_policy or {})
+    if _normalise_regime(regime) in blocked_regimes:
+        return ShadowSignal(
+            deployment_id=str(deployment.get("id") or ""),
+            strategy_name=proposal.name,
+            symbol=symbol,
+            action="HOLD",
+            reason=f"shadow guard blocked new entries in regime={regime}",
+            price=price,
+            timestamp=time.time(),
+            regime=regime,
+            guard_status="blocked_no_trade_regime",
+        )
     entry = _entry_signal(proposal.strategy_type, closes, candles, proposal.parameters)
     exit_ = _exit_signal(proposal.strategy_type, closes, candles, proposal.parameters)
     if exit_:
@@ -111,7 +130,46 @@ def evaluate_shadow_signal(
         reason=reason,
         price=price,
         timestamp=time.time(),
+        regime=regime,
+        guard_status="allowed",
     )
+
+
+def _blocked_regimes(policy: Dict[str, Any]) -> set[str]:
+    raw = policy.get("no_trade_regimes") or policy.get("enforcement", {}).get("block_new_entries_when_regime_in") or []
+    return {_normalise_regime(item) for item in raw}
+
+
+def _current_regime(deployment: Dict[str, Any], candles: List[Dict[str, Any]]) -> str:
+    for key in ("current_regime", "regime", "market_regime"):
+        if deployment.get(key):
+            return str(deployment[key])
+    if len(candles) < 20:
+        return "unknown"
+    closes = [float(candle["close"]) for candle in candles if candle.get("close") is not None]
+    if len(closes) < 20:
+        return "unknown"
+    returns = [abs(closes[index] / closes[index - 1] - 1) for index in range(1, len(closes))]
+    avg_abs_return = sum(returns[-20:]) / min(20, len(returns))
+    if avg_abs_return >= 0.012:
+        return "high_volatility"
+    if abs(closes[-1] / closes[-20] - 1) <= 0.02:
+        return "sideways"
+    return "trend"
+
+
+def _normalise_regime(regime: Any) -> str:
+    value = str(regime or "unknown").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "high_vol": "high_volatility",
+        "highvol": "high_volatility",
+        "volatile": "high_volatility",
+        "volatility": "high_volatility",
+        "sideway": "sideways",
+        "range": "sideways",
+        "ranging": "sideways",
+    }
+    return aliases.get(value, value)
 
 
 def _is_signal_only_active(deployment: Dict[str, Any]) -> bool:
@@ -156,4 +214,3 @@ def _append_jsonl(path: str | Path, value: Dict[str, Any]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(value, sort_keys=True) + "\n")
-
