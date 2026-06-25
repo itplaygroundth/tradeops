@@ -166,7 +166,58 @@ def delete_by_ticket(ticket: int) -> int:
     return cnt
 
 
-def query_orders(offset: int = 0, limit: int = 100, symbol: Optional[str] = None, agent: Optional[str] = None, status: Optional[str] = None, q: Optional[str] = None) -> Dict[str, Any]:
+def _dedupe_display_items(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Hide synthetic close rows when a broker deal-backed close exists.
+
+    The live engine records a local close row as soon as it observes a managed
+    ticket disappear. The MT5 history backfill can then add the authoritative
+    exit deal for the same position ticket. Keeping both in dashboard/export
+    views double-counts losses and makes performance guards harsher than the
+    real account history.
+    """
+    deal_backed_closed = {
+        item.get("ticket")
+        for item in items
+        if item.get("ticket") not in (None, "")
+        and item.get("deal_ticket") not in (None, "")
+        and str(item.get("status") or "").lower() == "closed"
+    }
+    deal_backed_rows = [
+        item for item in items
+        if item.get("deal_ticket") not in (None, "")
+        and str(item.get("status") or "").lower() == "closed"
+    ]
+    result = []
+    for item in items:
+        is_synthetic_close = (
+            item.get("deal_ticket") in (None, "")
+            and str(item.get("status") or "").lower() == "closed"
+            and str(item.get("type") or "").lower() == "closed"
+            and (
+                item.get("ticket") in deal_backed_closed
+                or any(
+                    row.get("symbol") == item.get("symbol")
+                    and round(float(row.get("pnl") or 0.0), 2) == round(float(item.get("pnl") or 0.0), 2)
+                    and abs(float(row.get("timestamp") or 0.0) - float(item.get("timestamp") or 0.0)) <= 10.0
+                    for row in deal_backed_rows
+                )
+            )
+        )
+        if not is_synthetic_close:
+            result.append(item)
+    return result
+
+
+def query_orders(
+    offset: int = 0,
+    limit: int = 100,
+    symbol: Optional[str] = None,
+    agent: Optional[str] = None,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+    include_paper: bool = False,
+    dedupe_closed: bool = True,
+) -> Dict[str, Any]:
     init_db()
     conn = sqlite3.connect(str(DB_PATH))
     cur = conn.cursor()
@@ -187,17 +238,12 @@ def query_orders(offset: int = 0, limit: int = 100, symbol: Optional[str] = None
         params.extend([like, like, like])
 
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
-    total_q = f"SELECT COUNT(1) FROM orders {where_sql}"
-    cur.execute(total_q, params)
-    total = cur.fetchone()[0]
-
     sql = (
         "SELECT ts,agent,symbol,action,volume,price,sl,tp,type,status,ticket,pnl,comment,"
         f"deal_ticket,commission,swap,fees,deal_entry,deal_reason,exit_reason,magic FROM orders {where_sql} "
-        "ORDER BY ts DESC LIMIT ? OFFSET ?"
+        "ORDER BY ts DESC"
     )
-    params2 = list(params) + [limit, offset]
-    cur.execute(sql, params2)
+    cur.execute(sql, params)
     rows = cur.fetchall()
     items = []
     for r in rows:
@@ -225,7 +271,12 @@ def query_orders(offset: int = 0, limit: int = 100, symbol: Optional[str] = None
             "magic": r[20],
         })
     conn.close()
-    return {"total": total, "offset": offset, "limit": limit, "items": items}
+    if not include_paper:
+        items = [item for item in items if str(item.get("type") or "").lower() != "paper"]
+    if dedupe_closed:
+        items = _dedupe_display_items(items)
+    total = len(items)
+    return {"total": total, "offset": offset, "limit": limit, "items": items[offset:offset + limit]}
 
 
 def query_orders_for_export(
@@ -234,9 +285,20 @@ def query_orders_for_export(
     status: Optional[str] = None,
     q: Optional[str] = None,
     limit: int = 10000,
+    include_paper: bool = True,
+    dedupe_closed: bool = True,
 ) -> List[Dict[str, Any]]:
     """Return export-ready order rows in ascending time order."""
-    result = query_orders(offset=0, limit=limit, symbol=symbol, agent=agent, status=status, q=q)
+    result = query_orders(
+        offset=0,
+        limit=limit,
+        symbol=symbol,
+        agent=agent,
+        status=status,
+        q=q,
+        include_paper=include_paper,
+        dedupe_closed=dedupe_closed,
+    )
     return sorted(result.get("items", []), key=lambda item: float(item.get("timestamp") or 0))
 
 

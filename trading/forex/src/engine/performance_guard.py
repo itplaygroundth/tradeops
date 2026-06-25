@@ -83,7 +83,7 @@ class PerformanceGuard:
         try:
             from storage.history_db import query_orders_for_export
             from storage.trading_journal import build_institutional_journal
-            orders = query_orders_for_export(limit=self.lookback)
+            orders = query_orders_for_export(limit=self.lookback, include_paper=False, dedupe_closed=True)
             return build_institutional_journal(orders)
         except Exception:
             return []
@@ -94,6 +94,7 @@ class PerformanceGuard:
             row for row in rows
             if str(row.get("lifecycle_status") or "").upper() == "CLOSED"
             and row.get("net_pnl") not in (None, "")
+            and str(row.get("execution_source") or "").lower() != "paper"
         ]
 
     @staticmethod

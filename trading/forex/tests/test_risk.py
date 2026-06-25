@@ -6,6 +6,32 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from engine.risk_guardian import ForexRiskGuardian, AccountRiskMonitor
+
+
+def test_mads_caution_policy_scales_forex_risk():
+    guardian = ForexRiskGuardian()
+    guardian.set_external_policy("CAUTION", 0.5, 1)
+    result = guardian.validate(
+        symbol="EURUSDm", action="BUY", entry_price=1.1,
+        sl_pips=20, tp_pips=40,
+        account_balance=10000, account_equity=10000, current_day=1,
+        risk_multiplier=1.0,
+    )
+    assert result.allowed
+    assert result.lot_size > 0
+    assert guardian.external_policy()["risk_scale"] == 0.5
+
+
+def test_mads_hard_stop_blocks_forex_entries():
+    guardian = ForexRiskGuardian()
+    guardian.set_external_policy("HARD_STOP", 0, 0)
+    result = guardian.validate(
+        symbol="EURUSDm", action="BUY", entry_price=1.1,
+        sl_pips=20, tp_pips=40,
+        account_balance=10000, account_equity=10000, current_day=1,
+    )
+    assert not result.allowed
+    assert "MADS defensive policy HARD_STOP" in result.reason
 from engine.dynamic_risk import get_risk_params
 
 def test_risk_guardian_allow():

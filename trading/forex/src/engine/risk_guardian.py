@@ -230,6 +230,22 @@ class ForexRiskGuardian:
         self._daily_reset_day = -1
         self._is_paused = False
         self._open_positions = 0
+        self._external_risk_scale = 1.0
+        self._external_max_positions = MAX_CONCURRENT_POSITIONS
+        self._external_mode = "NORMAL"
+
+    def set_external_policy(self, mode: str, risk_scale: float, max_positions: int):
+        self._external_mode = str(mode or "NORMAL").upper()
+        self._external_risk_scale = max(0.0, min(1.0, float(risk_scale)))
+        self._external_max_positions = max(0, min(MAX_CONCURRENT_POSITIONS, int(max_positions)))
+        return self.external_policy()
+
+    def external_policy(self):
+        return {
+            "mode": self._external_mode,
+            "risk_scale": self._external_risk_scale,
+            "max_positions": self._external_max_positions,
+        }
 
     def validate(
         self,
@@ -270,8 +286,10 @@ class ForexRiskGuardian:
 
         # Max concurrent positions
         effective_open_positions = self._open_positions if open_positions is None else int(open_positions)
-        if effective_open_positions >= MAX_CONCURRENT_POSITIONS:
-            return RiskResult(False, reason=f"Max {MAX_CONCURRENT_POSITIONS} positions open")
+        if self._external_risk_scale <= 0 or self._external_max_positions <= 0:
+            return RiskResult(False, reason=f"MADS defensive policy {self._external_mode}: entries stopped")
+        if effective_open_positions >= self._external_max_positions:
+            return RiskResult(False, reason=f"Max {self._external_max_positions} positions open")
 
         # SL must be valid
         if sl_pips <= 0:
@@ -324,7 +342,10 @@ class ForexRiskGuardian:
                 f"[RiskGuardian] {symbol} target lot sizing: remaining=${target_profit_remaining:.2f} "
                 f"target_lot={target_lot_size:.2f} risk_lot={risk_lot_size:.2f} final_lot={lot_size:.2f}"
             )
-        risk_multiplier = max(0.0, min(1.0, float(risk_multiplier or 0.0)))
+        risk_multiplier = max(
+            0.0,
+            min(1.0, float(risk_multiplier or 0.0) * self._external_risk_scale),
+        )
         if risk_multiplier <= 0:
             return RiskResult(False, reason="Adaptive guard hard stop")
         if risk_multiplier < 1.0:

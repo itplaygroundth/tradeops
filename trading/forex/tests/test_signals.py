@@ -86,3 +86,26 @@ def test_macro_avoid_trading():
     mock_normal_time = datetime(2026, 6, 5, 13, 0, tzinfo=timezone.utc)
     avoid, reason = macro.should_avoid_trading("EURUSD", now_utc=mock_normal_time)
     assert avoid is False
+
+
+def _seed_prices(engine, symbol, prices):
+    base = time.time()
+    for i, price in enumerate(prices):
+        engine.record_tick(symbol, price, volume=1000, timestamp=base + i)
+
+
+def test_mean_reversion_long_short_and_trend_block():
+    long_engine = ForexSignalEngine()
+    _seed_prices(long_engine, "EURUSDm", [1.1000] * 35 + [1.0998,1.0995,1.0992,1.0989,1.0986,1.0983,1.0980,1.0977,1.0974,1.0971,1.0968,1.0965,1.0962,1.0959,1.0962,1.0964,1.0965,1.0966,1.0967,1.0968])
+    long_sig = long_engine.mean_reversion_signal("EURUSDm", regime="RANGING")
+    assert long_sig["action"] == "LONG"
+
+    short_engine = ForexSignalEngine()
+    _seed_prices(short_engine, "EURUSDm", [1.1000] * 35 + [1.1002,1.1005,1.1008,1.1011,1.1014,1.1017,1.1020,1.1023,1.1026,1.1029,1.1032,1.1035,1.1038,1.1041,1.1038,1.1036,1.1035,1.1034,1.1033,1.1032])
+    short_sig = short_engine.mean_reversion_signal("EURUSDm", regime="RANGING")
+    assert short_sig["action"] == "SHORT"
+
+    trend_engine = ForexSignalEngine()
+    _seed_prices(trend_engine, "EURUSDm", [1.1000 + i * 0.0005 for i in range(70)])
+    trend_sig = trend_engine.mean_reversion_signal("EURUSDm", regime="TREND_UP")
+    assert trend_sig["action"] == "HOLD"

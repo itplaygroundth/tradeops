@@ -49,8 +49,9 @@ def test_policy_selects_one_executor_per_symbol_by_default(monkeypatch):
     assert selection["executor_limit"] == 1
     assert len(selection["executors"]) == 1
     assert len(selection["observers"]) == 2
-    assert policy.permission_for(selection, agents[1]).allowed is True
-    assert policy.permission_for(selection, agents[0]).role == "observer"
+    assert policy.permission_for(selection, agents[0]).allowed is True
+    assert policy.permission_for(selection, agents[1]).role == "observer"
+    assert "allowlist" in selection["observers"][0]["reason"]
 
 
 def test_policy_prefers_symbol_timeframe_and_safer_strategy(monkeypatch):
@@ -62,9 +63,9 @@ def test_policy_prefers_symbol_timeframe_and_safer_strategy(monkeypatch):
 
     selection = policy.select("XAUUSDm", [wrong_tf, preferred_tf, martingale_like], max_agents=3)
 
-    assert selection["executors"][0]["name"] == preferred_tf.dna.name
-    assert policy.permission_for(selection, preferred_tf).allowed is True
-    assert policy.permission_for(selection, wrong_tf).allowed is False
+    assert selection["executors"][0]["name"] == wrong_tf.dna.name
+    assert policy.permission_for(selection, wrong_tf).allowed is True
+    assert policy.permission_for(selection, preferred_tf).allowed is False
     assert policy.permission_for(selection, martingale_like).allowed is False
 
 

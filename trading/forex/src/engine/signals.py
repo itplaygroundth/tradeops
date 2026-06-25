@@ -5,6 +5,7 @@ and LLM sentiment, adjusted for Forex trading sessions.
 import asyncio
 import json
 import logging
+import statistics
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -282,6 +283,44 @@ Confidence: 0-100"""
             reason = "CVD bullish divergence"
 
         return {"action": action, "confidence": confidence, "reason": reason}
+
+    def mean_reversion_signal(self, symbol: str, regime: str = None) -> dict:
+        """Conservative mean-reversion using Bollinger/VWAP deviation plus RSI."""
+        if regime not in (None, "RANGING", "SIDEWAYS"):
+            return {"action": "HOLD", "confidence": 0, "reason": f"MR skipped: regime={regime} (not ranging)"}
+        hist = self.get_history(symbol)
+        if hist.count < 55:
+            return {"action": "HOLD", "confidence": 0, "reason": "MR insufficient data"}
+        prices = list(hist.prices)
+        price = hist.current
+        if price is None:
+            return {"action": "HOLD", "confidence": 0, "reason": "MR no price"}
+        recent20 = prices[-20:]
+        mean20 = sum(recent20) / 20
+        std20 = statistics.pstdev(recent20)
+        sma50 = hist.sma(50) or mean20
+        rsi_val = hist.rsi(14) or 50.0
+        vwap_dev = hist.vwap_deviation()
+        if vwap_dev is None:
+            vwap_dev = ((price - mean20) / mean20) * 100 if mean20 else 0.0
+        mom20 = hist.momentum(20) or 0.0
+        atr_pct = hist.atr_percent(14) or 0.0
+        trend_slope_pct = abs((mean20 - sma50) / price * 100) if price else 0.0
+        if trend_slope_pct > 0.25 or abs(mom20) > 0.60:
+            return {"action": "HOLD", "confidence": 0, "reason": f"MR blocked strong trend slope={trend_slope_pct:.3f}% mom20={mom20:+.2f}%"}
+        lower = mean20 - 2.0 * std20
+        upper = mean20 + 2.0 * std20
+        min_extension = max(0.05, atr_pct * 0.35)
+        previous = prices[-2]
+        extended_down = price <= lower or vwap_dev <= -min_extension
+        extended_up = price >= upper or vwap_dev >= min_extension
+        if extended_down and rsi_val <= 38 and price > previous:
+            confidence = min(82, 58 + min(20, int(abs(vwap_dev) * 120)))
+            return {"action": "LONG", "confidence": confidence, "reason": f"MR LONG: below mean and reverting RSI={rsi_val:.0f} dev={vwap_dev:+.3f}%"}
+        if extended_up and rsi_val >= 62 and price < previous:
+            confidence = min(82, 58 + min(20, int(abs(vwap_dev) * 120)))
+            return {"action": "SHORT", "confidence": confidence, "reason": f"MR SHORT: above mean and reverting RSI={rsi_val:.0f} dev={vwap_dev:+.3f}%"}
+        return {"action": "HOLD", "confidence": 30, "reason": f"MR: price={price:.5f} mean={mean20:.5f} dev={vwap_dev:+.3f}% RSI={rsi_val:.0f}"}
 
     def breakout_atr_signal(self, symbol: str) -> dict:
         """Breakout filtered by ATR: confirm breakout then require ATR low to avoid false breakouts."""

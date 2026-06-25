@@ -72,17 +72,7 @@ class ForexAgent:
         if dominant == "momentum":
             return self.signal_engine.technical_signal(symbol)
         elif dominant == "mean_reversion":
-            if regime not in (None, "RANGING"):
-                return {"action": "HOLD", "confidence": 0,
-                        "reason": f"MR skipped: regime={regime} (not ranging)"}
-            tech = self.signal_engine.technical_signal(symbol)
-            if tech["action"] == "LONG":
-                tech["action"] = "SHORT"
-                tech["reason"] = "MR: " + tech["reason"]
-            elif tech["action"] == "SHORT":
-                tech["action"] = "LONG"
-                tech["reason"] = "MR: " + tech["reason"]
-            return tech
+            return self.signal_engine.mean_reversion_signal(symbol, regime=regime)
         elif dominant == "grid_scalp":
             return self._grid_signal(symbol, price)
         elif dominant == "order_flow":

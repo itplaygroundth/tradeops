@@ -97,3 +97,17 @@ def test_mtf_summary_tracks_policy_and_decision_metrics():
     assert summary["metrics"]["XAUUSDm"]["evaluations"] == 1
     assert summary["metrics"]["XAUUSDm"]["blocked"] == 1
     assert "MTF primary H1 is range" in summary["metrics"]["XAUUSDm"]["block_reasons"]
+
+
+def test_mtf_mean_reversion_allows_only_dual_range():
+ import asyncio
+ client = FakeMTFClient({"M15": candles(1.2, 0.0), "H1": candles(1.2, 0.0)})
+ filter_ = MultiTimeframeFilter(cache_seconds=60)
+ decision = asyncio.run(filter_.evaluate_mean_reversion(client, "EURUSDm", "M15"))
+ assert decision.allowed is True
+ assert "range confirmed" in decision.reason
+
+ trend_client = FakeMTFClient({"M15": candles(1.1, 0.001), "H1": candles(1.2, 0.0)})
+ blocked = asyncio.run(MultiTimeframeFilter(cache_seconds=60).evaluate_mean_reversion(trend_client, "EURUSDm", "M15"))
+ assert blocked.allowed is False
+ assert "requires range" in blocked.reason

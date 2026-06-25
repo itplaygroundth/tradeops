@@ -63,6 +63,12 @@ class AgentExecutionPolicy:
             for item in raw_preference.split(",")
             if item.strip()
         ] or list(DEFAULT_STRATEGY_PREFERENCE)
+        raw_allowlist = os.getenv("AGENT_EXECUTOR_STRATEGY_ALLOWLIST", "market_structure,momentum")
+        self.strategy_allowlist = {
+            item.strip()
+            for item in raw_allowlist.split(",")
+            if item.strip()
+        }
         self._last_by_symbol: Dict[str, Dict] = {}
 
     def select(self, symbol: str, agents: List, max_agents: int = 1) -> Dict:
@@ -82,7 +88,11 @@ class AgentExecutionPolicy:
         else:
             limit = min(max(1, int(max_agents or 1)), self.executors_per_symbol)
 
-        ranked = sorted(agents, key=lambda agent: self._score_tuple(agent), reverse=True)
+        ranked_all = sorted(agents, key=lambda agent: self._score_tuple(agent), reverse=True)
+        ranked = [
+            agent for agent in ranked_all
+            if not self.strategy_allowlist or self._dominant_strategy(agent) in self.strategy_allowlist
+        ]
         executors = ranked[:limit]
         executor_names = {agent.dna.name for agent in executors}
         permissions = {}
@@ -109,8 +119,13 @@ class AgentExecutionPolicy:
             "executor_limit": limit,
             "executors": [self.agent_summary(agent, permissions[agent.dna.name]) for agent in executors],
             "observers": [
-                self.agent_summary(agent, permissions[agent.dna.name])
-                for agent in ranked
+                self.agent_summary(agent, permissions.get(agent.dna.name, AgentPermission(
+                    False,
+                    "observer",
+                    "strategy outside execution allowlist",
+                    self.score(agent),
+                )))
+                for agent in ranked_all
                 if agent.dna.name not in executor_names
             ],
             "permissions": {name: perm.to_dict() for name, perm in permissions.items()},
@@ -173,5 +188,6 @@ class AgentExecutionPolicy:
             "enabled": self.enabled,
             "executors_per_symbol": self.executors_per_symbol,
             "strategy_preference": self.strategy_preference,
+            "strategy_allowlist": sorted(self.strategy_allowlist),
             "by_symbol": self._last_by_symbol,
         }

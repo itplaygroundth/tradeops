@@ -5,6 +5,7 @@ Exposes MT5 data and order execution via REST and WebSocket.
 import asyncio
 import json
 import logging
+import os
 import time
 from datetime import datetime
 from typing import Optional, List
@@ -115,6 +116,16 @@ def account():
         "profit": float(info.profit),
         "leverage": int(info.leverage),
         "currency": str(info.currency),
+        "server": str(info.server),
+        "company": str(info.company),
+        "trade_mode": {
+            getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0): "demo",
+            getattr(mt5, "ACCOUNT_TRADE_MODE_CONTEST", 1): "contest",
+            getattr(mt5, "ACCOUNT_TRADE_MODE_REAL", 2): "real",
+        }.get(int(info.trade_mode), "unknown"),
+        "is_demo": int(info.trade_mode) == getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0),
+        "trade_allowed": bool(info.trade_allowed),
+        "trade_expert": bool(info.trade_expert),
     }
 
 @app.get("/price/{symbol}")
@@ -185,6 +196,14 @@ class OrderRequest(BaseModel):
 
 @app.post("/order")
 def place_order(req: OrderRequest):
+    action = req.action.upper().strip()
+    if action not in ("BUY", "SELL"):
+        raise HTTPException(400, "action must be BUY or SELL")
+    info = mt5.account_info()
+    if info is None:
+        raise HTTPException(503, f"Failed to retrieve account info: {mt5.last_error()}")
+    if os.getenv("MT5_DEMO_ONLY", "true").lower() == "true" and int(info.trade_mode) != getattr(mt5, "ACCOUNT_TRADE_MODE_DEMO", 0):
+        raise HTTPException(403, "order blocked: MT5 bridge is configured for demo accounts only")
     # Ensure symbol is selected
     if not mt5.symbol_select(req.symbol, True):
         raise HTTPException(404, f"Symbol {req.symbol} select failed")
@@ -197,8 +216,8 @@ def place_order(req: OrderRequest):
     if tick is None:
         raise HTTPException(503, f"Cannot get tick data for {req.symbol}")
         
-    price = tick.ask if req.action == "BUY" else tick.bid
-    order_type = mt5.ORDER_TYPE_BUY if req.action == "BUY" else mt5.ORDER_TYPE_SELL
+    price = tick.ask if action == "BUY" else tick.bid
+    order_type = mt5.ORDER_TYPE_BUY if action == "BUY" else mt5.ORDER_TYPE_SELL
 
     # ── Stale-stop preflight ─────────────────────────────────────────
     # SL/TP are computed by the agent from the quote at decision time. If the
@@ -211,15 +230,15 @@ def place_order(req: OrderRequest):
     stops_level = float(getattr(symbol_info, "trade_stops_level", 0)) * point
     floor = max(stops_level, spread * 3, point * 50)
     # Broker fills the stop against the opposite side of entry.
-    stop_ref = tick.bid if req.action == "BUY" else tick.ask
+    stop_ref = tick.bid if action == "BUY" else tick.ask
     if req.sl and req.sl > 0:
-        sl_gap = (stop_ref - req.sl) if req.action == "BUY" else (req.sl - stop_ref)
+        sl_gap = (stop_ref - req.sl) if action == "BUY" else (req.sl - stop_ref)
         if sl_gap <= 0:
             raise HTTPException(400, f"Stale SL wrong side: sl={req.sl} ref={stop_ref:.5f} action={req.action}")
         if sl_gap < floor:
             raise HTTPException(400, f"Stale SL too close: gap={sl_gap:.5f} < floor={floor:.5f} (bid={tick.bid} ask={tick.ask})")
     if req.tp and req.tp > 0:
-        tp_gap = (req.tp - stop_ref) if req.action == "BUY" else (stop_ref - req.tp)
+        tp_gap = (req.tp - stop_ref) if action == "BUY" else (stop_ref - req.tp)
         if tp_gap <= 0:
             raise HTTPException(400, f"Stale TP wrong side: tp={req.tp} ref={stop_ref:.5f} action={req.action}")
         if tp_gap < floor:
@@ -254,7 +273,7 @@ def place_order(req: OrderRequest):
     return {
         "order_id": int(result.order),
         "symbol": req.symbol,
-        "action": req.action,
+        "action": action,
         "volume": float(result.volume),
         "price": float(result.price),
         "comment": str(result.comment),

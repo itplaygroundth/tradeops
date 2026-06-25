@@ -16,6 +16,12 @@ def closed(symbol, agent, pnl, ts):
     }
 
 
+def paper_closed(symbol, agent, pnl, ts):
+    row = closed(symbol, agent, pnl, ts)
+    row["execution_source"] = "paper"
+    return row
+
+
 def test_performance_guard_pauses_symbol_and_agent_on_recent_loss_streak(monkeypatch):
     guard = PerformanceGuard(symbol_loss_limit=3, agent_loss_limit=2, cooldown_seconds=3600)
     rows = [
@@ -173,3 +179,25 @@ def test_recent_symbol_guard_allows_after_cooldown(monkeypatch):
 
     assert decision.allowed is True
     assert guard.summary()["recent_blocked_symbols"] == {}
+
+
+
+def test_performance_guard_ignores_paper_closed_rows(monkeypatch):
+    import engine.performance_guard as perf_mod
+
+    monkeypatch.setattr(perf_mod, "RECENT_SYMBOL_GUARD_ENABLED", False)
+    monkeypatch.setattr(perf_mod, "EXPECTANCY_SYMBOL_GUARD_ENABLED", False)
+    monkeypatch.setattr(perf_mod, "MANUAL_PAUSED_SYMBOLS", set())
+
+    guard = PerformanceGuard(symbol_loss_limit=3, agent_loss_limit=2, cooldown_seconds=3600)
+    rows = [
+        paper_closed("EURUSDm", "FX-EUR-000", -9, 1),
+        paper_closed("EURUSDm", "FX-EUR-000", -9, 2),
+        paper_closed("EURUSDm", "FX-EUR-000", -9, 3),
+    ]
+    monkeypatch.setattr(guard, "_load_journal", lambda: rows)
+
+    decision = guard.evaluate("EURUSDm", "FX-EUR-000", now=1780359000)
+
+    assert decision.allowed is True
+    assert guard.summary()["symbol_stats"] == {}

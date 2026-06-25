@@ -1,6 +1,6 @@
 """
 MTAI — Main Entry Point
-รัน: python3 run.py [--mode paper|live]
+รัน: python3 run.py [--mode paper|demo|live]
 """
 import asyncio
 import argparse
@@ -26,6 +26,8 @@ import json
 
 # Global reference for the running agent manager so the dashboard can toggle mode
 AGENT_MANAGER = None
+RUNTIME_MODE = "paper"
+ACCOUNT_EVIDENCE = {}
 
 MT5_SERVER = os.getenv("MT5_SERVER", "http://192.168.1.107:8888")
 MT5_WS = os.getenv("MT5_WS", "ws://192.168.1.107:8888/ws/prices")
@@ -100,6 +102,8 @@ async def main(
     dashboard_dir: str | None = None,
 ):
     paper = mode == "paper"
+    if mode == "live" and os.getenv("ALLOW_LIVE_MODE", "").lower() != "true":
+        raise RuntimeError("live production mode is locked; complete readiness certification first")
     if dashboard_only:
         print("🚀 MTAI Dashboard only")
         if dashboard_dir is None:
@@ -126,10 +130,15 @@ async def main(
     # Init agent manager
     manager = ForexAgentManager(client, paper_mode=paper, agent_count=25)
     # expose manager for dashboard API toggles
-    global AGENT_MANAGER
+    global AGENT_MANAGER, RUNTIME_MODE, ACCOUNT_EVIDENCE
     AGENT_MANAGER = manager
-    # Enforce live-only mode to prevent unstable toggling
-    AGENT_MANAGER.paper_mode = False
+    RUNTIME_MODE = mode
+    if os.getenv("START_PAUSED", "true").lower() == "true":
+        AGENT_MANAGER.pause_entries("startup safety lock")
+    try:
+        ACCOUNT_EVIDENCE = await client.get_account()
+    except Exception as exc:
+        logger.warning("Could not load MT5 account evidence: %s", exc)
     try:
         loop = asyncio.get_event_loop()
         asyncio.run_coroutine_threadsafe(AGENT_MANAGER._update_account(), loop)
@@ -368,10 +377,32 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                     mode = "dashboard-only"
                     account = {}
                 else:
-                    # Dashboard enforces live-only mode
-                    mode = "live"
+                    mode = RUNTIME_MODE
                     account = {"balance": AGENT_MANAGER._account_balance, "equity": AGENT_MANAGER._account_equity}
-                self.wfile.write(json.dumps({"mode": mode, "account": account}).encode())
+                configured_demo_login = os.getenv("MT5_DEMO_LOGIN", "").strip()
+                bridge_verified_demo = bool(
+                    ACCOUNT_EVIDENCE.get("is_demo")
+                    or str(ACCOUNT_EVIDENCE.get("trade_mode", "")).lower() == "demo"
+                )
+                allowlist_verified_demo = bool(
+                    configured_demo_login
+                    and str(ACCOUNT_EVIDENCE.get("login", "")) == configured_demo_login
+                )
+                self.wfile.write(json.dumps({
+                    "mode": mode,
+                    "execution_environment": "simulated" if mode == "paper" else ("broker_demo" if mode == "demo" else "production"),
+                    "demo_account_verified": bridge_verified_demo or allowlist_verified_demo,
+                    "demo_verification_source": "bridge" if bridge_verified_demo else ("login_allowlist" if allowlist_verified_demo else "unverified"),
+                    "account_evidence": {
+                        "login": ACCOUNT_EVIDENCE.get("login"),
+                        "server": ACCOUNT_EVIDENCE.get("server"),
+                        "company": ACCOUNT_EVIDENCE.get("company"),
+                        "trade_mode": ACCOUNT_EVIDENCE.get("trade_mode"),
+                        "trade_allowed": ACCOUNT_EVIDENCE.get("trade_allowed"),
+                        "trade_expert": ACCOUNT_EVIDENCE.get("trade_expert"),
+                    },
+                    "account": account,
+                }).encode())
                 return
 
             if self.path.startswith("/api/trading_journal/summary"):
@@ -581,6 +612,30 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
             return super().do_GET()
 
         def do_POST(self):
+            global RUNTIME_MODE
+            if self.path.startswith("/api/control/risk-policy"):
+                if AGENT_MANAGER is None:
+                    self.send_response(503); self.end_headers(); return
+                content_len = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_len) if content_len else b""
+                try:
+                    data = json.loads(body.decode() or "{}")
+                    result = AGENT_MANAGER.set_risk_policy(
+                        data.get("mode", "NORMAL"),
+                        data.get("risk_scale", 1.0),
+                        data.get("max_positions", 3),
+                    )
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": True, "control": result}).encode())
+                except (TypeError, ValueError) as e:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": str(e)}).encode())
+                return
             if self.path.startswith("/api/control/pause") or self.path.startswith("/api/control/resume"):
                 if AGENT_MANAGER is None:
                     self.send_response(503); self.end_headers(); return
@@ -684,7 +739,7 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                     self.wfile.write(json.dumps({"error": error_text}).encode())
                 return
 
-            # Toggle mode: POST /api/mode {"mode": "paper"|"live"}
+            # Toggle mode. Production requires an explicit deployment lock and token.
             if self.path.startswith("/api/mode"):
                 content_len = int(self.headers.get("Content-Length", 0))
                 body = self.rfile.read(content_len) if content_len else b""
@@ -696,7 +751,7 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                     return
 
                 requested = data.get("mode")
-                if requested not in ("paper", "live"):
+                if requested not in ("paper", "demo", "live"):
                     self.send_response(400)
                     self.end_headers()
                     return
@@ -705,16 +760,35 @@ async def start_dashboard(host: str, port: int, dashboard_dir: str | None = None
                     self.send_response(503)
                     self.end_headers()
                     return
-                # Enforce live-only: reject attempts to set paper mode
-                if requested == "paper":
+                if requested == "live" and (
+                    os.getenv("ALLOW_LIVE_MODE", "").lower() != "true"
+                    or not os.getenv("LIVE_PROMOTION_TOKEN")
+                    or data.get("promotion_token") != os.getenv("LIVE_PROMOTION_TOKEN")
+                ):
                     self.send_response(403)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
-                    self.wfile.write(json.dumps({"error": "paper mode disabled on this deployment"}).encode())
+                    self.wfile.write(json.dumps({"error": "live production mode is locked by readiness policy"}).encode())
                     return
 
-                # For live requests, ensure manager is live and update account
-                AGENT_MANAGER.paper_mode = False
+                if requested != RUNTIME_MODE:
+                    try:
+                        positions = asyncio.run_coroutine_threadsafe(
+                            AGENT_MANAGER.mt5.get_positions(), _event_loop
+                        ).result(timeout=10)
+                    except Exception:
+                        positions = ["unknown"]
+                    if positions:
+                        self.send_response(409)
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"error": "cannot change mode while positions are open or unknown"}).encode())
+                        return
+
+                RUNTIME_MODE = requested
+                AGENT_MANAGER.paper_mode = requested == "paper"
+                for agent in getattr(AGENT_MANAGER, "agents", []):
+                    agent.paper_mode = AGENT_MANAGER.paper_mode
                 try:
                     loop = _event_loop
                     asyncio.run_coroutine_threadsafe(AGENT_MANAGER._update_account(), loop)
@@ -791,9 +865,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MTAI Forex AI Trading System")
     parser.add_argument(
         "--mode",
-        choices=["paper", "live"],
+        choices=["paper", "demo", "live"],
         default="paper",
-        help="Trading mode: paper (simulate) or live (real orders)",
+        help="Trading mode: paper (simulate), demo (broker demo), or live (production)",
     )
     parser.add_argument(
         "--dashboard-port",

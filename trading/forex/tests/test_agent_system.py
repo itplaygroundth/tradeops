@@ -101,6 +101,23 @@ def test_daily_profit_target_reached_uses_today_pnl():
     assert manager._daily_profit_target_reached(now) is True
 
 
+def test_daily_loss_stop_reached_uses_today_pnl():
+    client = MT5Client()
+    manager = ForexAgentManager(client, paper_mode=True, agent_count=8)
+    now = time.time()
+    today = time.strftime("%Y-%m-%d", time.localtime(now))
+    yesterday = time.strftime("%Y-%m-%d", time.localtime(now - 86400))
+
+    manager._daily_pnl = {yesterday: -100.0}
+    assert manager._daily_loss_stop_reached(now) is False
+
+    manager._daily_pnl[today] = -9.99
+    assert manager._daily_loss_stop_reached(now) is False
+
+    manager._daily_pnl[today] = -10.0
+    assert manager._daily_loss_stop_reached(now) is True
+
+
 def test_recent_history_backfills_daily_realized_pnl(monkeypatch):
     import asyncio
     asyncio.run(_async_recent_history_backfills_daily_realized_pnl(monkeypatch))
@@ -180,6 +197,10 @@ async def _async_paper_trading_test():
         
     client = MT5Client()
     manager = ForexAgentManager(client, paper_mode=True, agent_count=8)
+    manager.performance_guard.evaluate = lambda symbol, agent: type("Decision", (), {"allowed": True, "reason": "test bypass"})()
+    from storage import history_db
+    old_insert_order = history_db.insert_order
+    history_db.insert_order = lambda entry: None
     
     # Seed prices for all symbols
     for sym in FOREX_SYMBOLS:
@@ -240,6 +261,7 @@ async def _async_paper_trading_test():
         # Restore mocks
         manager.signal_engine.technical_signal = old_tech_signal
         engine.signals.is_good_session = old_is_good
+        history_db.insert_order = old_insert_order
         if STATE_FILE.exists():
             STATE_FILE.unlink()
 

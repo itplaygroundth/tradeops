@@ -109,6 +109,14 @@ class MultiTimeframeFilter:
             return dna_timeframe
         return SYMBOL_PRIMARY_TF.get(symbol_key, SYMBOL_PRIMARY_TF["DEFAULT"])
 
+    def invalidate(self, symbol: str = None):
+        if symbol is None:
+            self._cache.clear()
+            return
+        for key in list(self._cache.keys()):
+            if key and key[0] == symbol:
+                self._cache.pop(key, None)
+
     async def _candles(self, mt5: Any, symbol: str, timeframe: str, count: int = 80) -> List[Dict[str, Any]]:
         key = (symbol, timeframe, count)
         now = time.time()
@@ -171,6 +179,30 @@ class MultiTimeframeFilter:
             self._record_decision(symbol, decision)
             return decision
         decision = TimeframeDecision(False, f"MTF rejects {action} against {primary}:{primary_trend}", primary, higher, primary_trend, higher_trend)
+        self._record_decision(symbol, decision)
+        return decision
+
+    async def evaluate_mean_reversion(self, mt5: Any, symbol: str, dna_timeframe: str = "") -> TimeframeDecision:
+        if not self.enabled:
+            return TimeframeDecision(True, "MTF filter disabled")
+        primary = self.primary_timeframe(symbol, dna_timeframe)
+        higher = _higher_tf(primary)
+        try:
+            primary_candles = await self._candles(mt5, symbol, primary)
+            higher_candles = await self._candles(mt5, symbol, higher)
+        except Exception as e:
+            decision = TimeframeDecision(False, f"MTF MR data unavailable: {e}", primary, higher)
+            self._record_decision(symbol, decision)
+            return decision
+        primary_trend = _trend(primary_candles)
+        higher_trend = _trend(higher_candles)
+        self._last_summary[symbol] = {"primary_timeframe": primary, "higher_timeframe": higher, "primary_trend": primary_trend, "higher_trend": higher_trend, "updated_at": time.time()}
+        if primary_trend == "unknown" or higher_trend == "unknown":
+            decision = TimeframeDecision(False, "MTF MR insufficient candle data", primary, higher, primary_trend, higher_trend)
+        elif primary_trend == "range" and higher_trend == "range":
+            decision = TimeframeDecision(True, "MTF MR range confirmed", primary, higher, primary_trend, higher_trend, confidence_adjustment=3)
+        else:
+            decision = TimeframeDecision(False, f"MTF MR requires range, got {primary}:{primary_trend} {higher}:{higher_trend}", primary, higher, primary_trend, higher_trend)
         self._record_decision(symbol, decision)
         return decision
 
