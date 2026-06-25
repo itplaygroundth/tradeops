@@ -12,9 +12,11 @@ Contract (imported by the backend run.py):
 This module never writes files — run.py owns state persistence.
 """
 import asyncio
+import json
 import logging
 import os
 import time
+from pathlib import Path
 from typing import List, Dict, Optional
 
 from engine.dna import create_population, random_dna, CRYPTO_SYMBOLS, TIMEFRAMES
@@ -26,10 +28,16 @@ from engine.strategy_performance_guard import StrategyPerformanceGuard
 from engine.performance_guard import PairPerformanceGuard
 from engine.position_dedup_guard import PositionDedupGuard
 from engine.regime_service import RegimeService
+from storage.trade_event_outbox import TradeEventOutbox
 
 logger = logging.getLogger("agent_manager")
 
-DEFAULT_PAIRS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+def _env_pairs(name: str = "CRYPTO_PAIRS") -> list[str]:
+    raw = os.getenv(name, "BTCUSDT,ETHUSDT")
+    pairs = [item.strip().upper() for item in raw.split(",") if item.strip()]
+    return pairs or ["BTCUSDT", "ETHUSDT"]
+
+DEFAULT_PAIRS = _env_pairs()
 TREND_FOLLOW_STRATEGIES = {"momentum", "order_flow", "breakout_atr", "market_structure"}
 MAX_SIGNALS_PER_SYMBOL = 3
 ENTRY_STRATEGY_ALLOWLIST = {
@@ -70,13 +78,24 @@ SIGNAL_ONLY_EXECUTION_ENABLED = str(os.getenv("CRYPTO_SIGNAL_ONLY_EXECUTION_ENAB
     "yes",
     "on",
 )
+FORCE_SIGNAL_ONLY = str(os.getenv("CRYPTO_FORCE_SIGNAL_ONLY", "true")).lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 SIGNAL_ONLY_HISTORY_INTERVAL_SECONDS = int(os.getenv("CRYPTO_SIGNAL_ONLY_HISTORY_INTERVAL_SECONDS", "300"))
+DEFAULT_SHADOW_GUARD_POLICY_PATH = (
+    Path(__file__).resolve().parents[4] / "strategy_lab" / "handoff" / "shadow_guard_policy.json"
+)
 
 
 class CryptoAgentManager:
-    def __init__(self, router, paper_mode: bool = True, agent_count: int = 25, pairs: list = None):
+    def __init__(self, router, paper_mode: bool = True, agent_count: int = 25, pairs: list = None,
+                 runtime_mode: str = None):
         self.router = router
         self.paper_mode = paper_mode
+        self.runtime_mode = runtime_mode or ("paper" if paper_mode else "live")
         self._pairs: List[str] = list(pairs) if pairs else list(DEFAULT_PAIRS)
 
         self.signal_engine = CryptoSignalEngine()
@@ -85,6 +104,10 @@ class CryptoAgentManager:
         self.pair_performance_guard = PairPerformanceGuard()
         self.position_dedup_guard = PositionDedupGuard()
         self.regime_service = RegimeService(getattr(self.router, "get_ohlcv", None))
+        if "PYTEST_CURRENT_TEST" in os.environ and "CRYPTO_SHADOW_GUARD_POLICY" not in os.environ:
+            self._shadow_guard_policy_path = Path("__pytest_no_shadow_guard_policy__.json")
+        else:
+            self._shadow_guard_policy_path = Path(os.getenv("CRYPTO_SHADOW_GUARD_POLICY", str(DEFAULT_SHADOW_GUARD_POLICY_PATH)))
 
         dnas = create_population(agent_count, pairs=self._pairs)
         self.agents: List[CryptoAgent] = [
@@ -101,10 +124,19 @@ class CryptoAgentManager:
         self._initial_capital = 1000.0
         self._latest_prices: Dict[str, dict] = {}
         self._order_history: List[dict] = []
+        self._entry_audit: List[dict] = []
         self._manual_entries_paused = False
         self._manual_pause_reason = ""
         self._last_block_log: Dict[str, float] = {}
         self._last_signal_only_record: Dict[str, float] = {}
+        self._credential_verified = bool(self.paper_mode)
+        self._credential_error = ""
+        self.trade_event_outbox = None
+        if "PYTEST_CURRENT_TEST" not in os.environ:
+            self.trade_event_outbox = TradeEventOutbox(
+                "crypto-ai",
+                Path(__file__).resolve().parent.parent.parent / "data" / "trade_event_outbox.db",
+            )
 
         # exchange name for dashboard (duck-typed)
         self._exchange_name = getattr(router, "exchange_name", "binance")
@@ -162,6 +194,37 @@ class CryptoAgentManager:
                     )
                 seeded += len(bars)
         logger.info(f"[Warmup] seeded {seeded} candles across {len(self._pairs)} pairs x {len(TIMEFRAMES)} TFs")
+        if not self.paper_mode and bool(getattr(self.router, "live_trading_supported", False)):
+            try:
+                account = await self.router.get_account()
+                self._credential_verified = True
+                self._credential_error = ""
+                balances = account.get("balances", {})
+                usdt = balances.get("USDT", {}) if isinstance(balances, dict) else next(
+                    (item for item in balances if item.get("asset") == "USDT"),
+                    {},
+                )
+                balance = float(usdt.get("free", 0.0)) + float(usdt.get("locked", 0.0))
+                if balance > 0:
+                    self._account_balance = balance
+                    self._account_equity = balance
+                    realized_pnl = sum(agent.total_pnl for agent in self.agents)
+                    inferred_initial = balance - realized_pnl
+                    if (
+                        self._initial_capital <= 0
+                        or balance > self._initial_capital * 2
+                        or balance < self._initial_capital * 0.5
+                    ):
+                        self._initial_capital = max(inferred_initial, balance, 1.0)
+                logger.info(
+                    "[Account] %s balance=%.2f USDT",
+                    getattr(self.router, "network", "unknown"),
+                    self._account_balance,
+                )
+            except Exception as e:
+                self._credential_verified = False
+                self._credential_error = str(e)
+                logger.warning(f"[Account] balance sync failed: {e}")
 
     # ── tick loop ───────────────────────────────────────
     async def on_tick(self, symbol: str, price: float, volume: float,
@@ -172,6 +235,8 @@ class CryptoAgentManager:
 
         if self.paper_mode:
             self._check_paper_positions(symbol, price)
+        elif bool(getattr(self.router, "live_trading_supported", False)):
+            await self._check_live_managed_positions(symbol, price)
 
         # process agent signals every 10 ticks
         if self._tick_count % 10 == 0:
@@ -179,7 +244,11 @@ class CryptoAgentManager:
             await self._process_agents(symbol, price, regime=regime)
 
         # sync live positions every 30 ticks (run.py writes state separately)
-        if self._tick_count % 30 == 0 and not self.paper_mode:
+        if (
+            self._tick_count % 30 == 0
+            and not self.paper_mode
+            and bool(getattr(self.router, "uses_ticket_positions", False))
+        ):
             await self._sync_positions()
 
         # evolution cycle
@@ -220,16 +289,90 @@ class CryptoAgentManager:
             agent.record_trade_result(pnl, pnl_pct)
             self.strategy_performance_guard.record(strategy, pnl)
             self.risk_guardian.on_position_closed(agent.dna.symbol, pnl)
-            self._order_history.insert(0, {
+            closed_entry = {
                 "timestamp": time.time(),
                 "agent": agent.dna.name,
                 "symbol": symbol,
                 "action": "CLOSE",
+                "side": agent._open_side,
+                "entry_price": agent._open_entry,
                 "price": exit_price,
                 "pnl": round(pnl, 2),
-                "type": "paper",
+                "pnl_pct": round(pnl_pct, 4),
+                "strategy": strategy,
+                "timeframe": agent.dna.timeframe,
+                "ticket": agent._open_ticket,
+                "reason": "stop_loss" if sl_hit else "take_profit",
+                "type": self.runtime_mode,
                 "status": "closed",
-            })
+            }
+            self._order_history.insert(0, closed_entry)
+            self._emit_trade_closed(closed_entry)
+            self._trim_history()
+            self._reset_agent(agent)
+
+    async def _check_live_managed_positions(self, symbol: str, price: float):
+        """Close Binance Spot positions owned by this manager at local SL/TP."""
+        for agent in self.agents:
+            if agent.dna.symbol != symbol or not agent.is_in_trade:
+                continue
+            if agent._open_side != "BUY":
+                logger.error(
+                    "[Spot] unmanaged side %s for %s; refusing automatic close",
+                    agent._open_side,
+                    symbol,
+                )
+                continue
+
+            sl_hit = price <= agent._open_sl
+            tp_hit = price >= agent._open_tp
+            if not (sl_hit or tp_hit):
+                continue
+
+            try:
+                result = await self.router.place_order(
+                    symbol=symbol,
+                    side="SELL",
+                    qty=agent._open_qty,
+                    comment=f"CX-CLOSE-{agent.dna.name}",
+                )
+            except Exception as e:
+                logger.error(f"[Spot] close failed for {agent.dna.name}: {e}")
+                continue
+
+            exit_price = float(result.get("price") or price)
+            qty = float(result.get("qty") or agent._open_qty)
+            pnl = (exit_price - agent._open_entry) * qty
+            pnl_pct = (pnl / self._account_balance) * 100 if self._account_balance else 0.0
+            self._account_balance += pnl
+            self._account_equity = self._account_balance
+
+            strategy = self._agent_strategy(agent)
+            agent.record_trade_result(pnl, pnl_pct)
+            self.strategy_performance_guard.record(strategy, pnl)
+            self.risk_guardian.on_position_closed(symbol, pnl)
+            closed_entry = {
+                "timestamp": time.time(),
+                "agent": agent.dna.name,
+                "symbol": symbol,
+                "action": "CLOSE",
+                "side": agent._open_side,
+                "entry_price": agent._open_entry,
+                "qty": qty,
+                "volume": qty,
+                "price": exit_price,
+                "pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 4),
+                "type": self.runtime_mode,
+                "network": getattr(self.router, "network", "unknown"),
+                "status": "closed",
+                "ticket": result.get("ticket"),
+                "reason": "stop_loss" if sl_hit else "take_profit",
+                "strategy": strategy,
+                "timeframe": agent.dna.timeframe,
+            }
+            self._order_history.insert(0, closed_entry)
+            self._emit_trade_closed(closed_entry)
             self._trim_history()
             self._reset_agent(agent)
 
@@ -247,13 +390,58 @@ class CryptoAgentManager:
             if agent._open_ticket in active:
                 continue
             # closed externally — record flat (PnL unknown without deal history)
+            closed_entry = {
+                "timestamp": time.time(),
+                "agent": agent.dna.name,
+                "symbol": agent.dna.symbol,
+                "action": "CLOSE",
+                "side": agent._open_side,
+                "entry_price": agent._open_entry,
+                "price": self._latest_prices.get(agent.dna.symbol, {}).get("mid", 0.0),
+                "qty": agent._open_qty,
+                "volume": agent._open_qty,
+                "pnl": 0.0,
+                "pnl_pct": 0.0,
+                "type": self.runtime_mode,
+                "network": getattr(self.router, "network", "unknown"),
+                "status": "closed",
+                "ticket": agent._open_ticket,
+                "reason": "external_close_pnl_unavailable",
+                "strategy": self._agent_strategy(agent),
+                "timeframe": agent.dna.timeframe,
+            }
             agent.record_trade_result(0.0, 0.0)
             self.risk_guardian.on_position_closed(agent.dna.symbol, 0.0)
+            self._order_history.insert(0, closed_entry)
+            self._emit_trade_closed(closed_entry)
+            self._trim_history()
             self._reset_agent(agent)
 
     async def _process_agents(self, symbol: str, price: float, regime: str = None):
         if self._manual_entries_paused:
             logger.warning(f"[Control] {symbol} entries paused: {self._manual_pause_reason or 'manual pause'}")
+            self._audit_entry(
+                symbol=symbol,
+                stage="manual_pause",
+                reason=self._manual_pause_reason or "manual pause",
+            )
+            return
+        shadow_guard = self._shadow_guard_decision(symbol, regime)
+        if not shadow_guard["allowed"]:
+            self._log_blocked(
+                f"shadow_guard:{symbol}:{shadow_guard['regime']}",
+                f"[ShadowGuard] {symbol} entries blocked: {shadow_guard['reason']}",
+            )
+            self._audit_entry(
+                symbol=symbol,
+                stage="shadow_guard_policy",
+                reason=shadow_guard["reason"],
+                signal={
+                    "regime": shadow_guard["regime"],
+                    "source": shadow_guard["source"],
+                    "policy_path": str(self._shadow_guard_policy_path),
+                },
+            )
             return
         idle = [a for a in self.agents if a.dna.symbol == symbol and not a.is_in_trade]
         today = int(time.time() / 86400)
@@ -261,10 +449,12 @@ class CryptoAgentManager:
         guard_mode = self.strategy_performance_guard.guard_mode()
         if guard_mode == "HARD_STOP":
             logger.warning(f"[AdaptiveGuard] {symbol} entries blocked: HARD_STOP")
+            self._audit_entry(symbol=symbol, stage="adaptive_guard", reason="HARD_STOP")
             return
         perf = self.pair_performance_guard.evaluate(symbol, "", self._order_history)
         if not perf.allowed:
             self._log_blocked(f"pair_perf:{symbol}", f"[PairPerfGuard] {symbol} blocked: {perf.reason}")
+            self._audit_entry(symbol=symbol, stage="pair_performance", reason=perf.reason)
             return
         allowed_strategies = DEFENSE_STRATEGY_ALLOWLIST if guard_mode == "DEFENSE" else ENTRY_STRATEGY_ALLOWLIST
         for agent in idle:
@@ -275,6 +465,13 @@ class CryptoAgentManager:
                     f"[StrategyAllowlist] {symbol} {strategy} blocked; "
                     f"mode={guard_mode} allowed={sorted(allowed_strategies)}",
                 )
+                self._audit_entry(
+                    symbol=symbol,
+                    stage="strategy_allowlist",
+                    reason=f"{strategy} not in {guard_mode} allowlist",
+                    agent=agent,
+                    strategy=strategy,
+                )
                 continue
             guard = self.strategy_performance_guard.evaluate(strategy)
             if not guard.allowed:
@@ -283,9 +480,26 @@ class CryptoAgentManager:
                     f"[StrategyGuard] {symbol} {strategy} blocked: "
                     f"{guard.reason}; cooldown={guard.cooldown_remaining_seconds}s",
                 )
+                self._audit_entry(
+                    symbol=symbol,
+                    stage="strategy_performance",
+                    reason=guard.reason,
+                    agent=agent,
+                    strategy=strategy,
+                )
                 continue
             signal = self._signal_with_trend_context(agent, price, strategy, regime=regime)
             if signal["action"] == "HOLD" or signal["confidence"] < 50:
+                self._audit_entry(
+                    symbol=symbol,
+                    stage="signal_hold" if signal["action"] == "HOLD" else "signal_confidence",
+                    reason=signal.get("reason") or "signal below execution threshold",
+                    agent=agent,
+                    strategy=strategy,
+                    action=signal.get("action"),
+                    confidence=signal.get("confidence"),
+                    signal=signal,
+                )
                 continue
             candidates.append((signal["confidence"], agent, signal, strategy))
 
@@ -304,19 +518,127 @@ class CryptoAgentManager:
             )
             if not risk.allowed:
                 logger.debug(f"[{agent.dna.name}] blocked: {risk.reason}")
+                self._audit_entry(
+                    symbol=symbol,
+                    stage="risk_guardian",
+                    reason=risk.reason,
+                    agent=agent,
+                    strategy=strategy,
+                    action=signal.get("action"),
+                    confidence=signal.get("confidence"),
+                    signal=signal,
+                )
                 continue
             action = "BUY" if signal["action"] == "LONG" else "SELL"
+            if action == "SELL" and not bool(getattr(self.router, "supports_short", True)):
+                self._log_blocked(
+                    f"spot_short:{symbol}",
+                    f"[Spot] {symbol} SELL entry blocked: Binance Spot does not support short positions",
+                )
+                self._audit_entry(
+                    symbol=symbol,
+                    stage="spot_short_block",
+                    reason="spot exchange does not support short positions",
+                    agent=agent,
+                    strategy=strategy,
+                    action=signal.get("action"),
+                    confidence=signal.get("confidence"),
+                    signal=signal,
+                )
+                continue
             dedup = self.position_dedup_guard.evaluate(symbol, action, self.get_open_positions())
             if not dedup.allowed:
                 self._log_blocked(f"dedup:{symbol}:{action}", f"[PositionDedup] {agent.dna.name} {symbol} {action} blocked: {dedup.reason}")
+                self._audit_entry(
+                    symbol=symbol,
+                    stage="position_dedup",
+                    reason=dedup.reason,
+                    agent=agent,
+                    strategy=strategy,
+                    action=signal.get("action"),
+                    confidence=signal.get("confidence"),
+                    signal=signal,
+                )
                 continue
             if self.paper_mode:
                 self._paper_execute(agent, signal, price, risk, strategy, sl_pct, tp_pct)
             else:
                 if self._blocks_live_execution():
+                    self._audit_entry(
+                        symbol=symbol,
+                        stage="signal_only_execution",
+                        reason="live execution is locked by signal-only mode",
+                        agent=agent,
+                        strategy=strategy,
+                        action=signal.get("action"),
+                        confidence=signal.get("confidence"),
+                        signal=signal,
+                    )
                     self._record_signal_only_block(agent, signal, price, risk, strategy, sl_pct, tp_pct)
                     continue
                 await self._live_execute(agent, signal, price, risk, strategy, sl_pct, tp_pct)
+
+    def _shadow_guard_decision(self, symbol: str, regime: str = None) -> dict:
+        policy = self._load_shadow_guard_policy()
+        blocked = self._shadow_guard_blocked_regimes(policy)
+        if not blocked:
+            return {"allowed": True, "reason": "no shadow guard blocked regimes", "regime": regime or "unknown", "source": "none"}
+        candidates = []
+        if regime:
+            candidates.append(("runtime_regime", regime))
+        for timeframe in ("M15", "H1"):
+            try:
+                hist = self.signal_engine.get_history(symbol, timeframe)
+                if getattr(hist, "count", 0) >= 20:
+                    heuristic, _ = hist.market_regime()
+                    candidates.append((f"history_{timeframe}", heuristic))
+            except Exception:
+                logger.debug("shadow guard history regime failed for %s %s", symbol, timeframe, exc_info=True)
+        for source, candidate in candidates:
+            normalised = self._normalise_shadow_regime(candidate)
+            if normalised in blocked:
+                return {
+                    "allowed": False,
+                    "reason": f"regime {candidate} blocked by shadow guard policy",
+                    "regime": normalised,
+                    "source": source,
+                }
+        return {"allowed": True, "reason": "regime allowed by shadow guard policy", "regime": regime or "unknown", "source": "runtime_regime"}
+
+    def _load_shadow_guard_policy(self) -> dict:
+        try:
+            if not self._shadow_guard_policy_path.exists():
+                return {}
+            return json.loads(self._shadow_guard_policy_path.read_text())
+        except Exception:
+            logger.warning("Failed to load shadow guard policy: %s", self._shadow_guard_policy_path, exc_info=True)
+            return {}
+
+    @classmethod
+    def _shadow_guard_blocked_regimes(cls, policy: dict) -> set:
+        raw = policy.get("no_trade_regimes") or policy.get("enforcement", {}).get("block_new_entries_when_regime_in") or []
+        return {cls._normalise_shadow_regime(item) for item in raw}
+
+    @staticmethod
+    def _normalise_shadow_regime(regime) -> str:
+        value = str(regime or "unknown").strip().lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "high_vol": "high_volatility",
+            "highvol": "high_volatility",
+            "high_volatility": "high_volatility",
+            "highvolatility": "high_volatility",
+            "volatile": "high_volatility",
+            "volatility": "high_volatility",
+            "high": "high_volatility",
+            "sideway": "sideways",
+            "sideways": "sideways",
+            "range": "sideways",
+            "ranging": "sideways",
+            "trend_up": "trend",
+            "trend_down": "trend",
+            "trending": "trend",
+        }
+        return aliases.get(value, value)
 
     def _signal_with_trend_context(self, agent: CryptoAgent, price: float, strategy: str, regime: str = None) -> dict:
         signal = agent.generate_signal(price, markov_regime=regime)
@@ -380,7 +702,7 @@ class CryptoAgentManager:
             "tp_pct": tp_pct,
             "pnl": 0.0,
             "pnl_pct": 0.0,
-            "type": "paper",
+            "type": self.runtime_mode,
             "status": "open",
             "ticket": agent._open_ticket,
         })
@@ -434,23 +756,31 @@ class CryptoAgentManager:
             "tp_pct": tp_pct,
             "pnl": 0.0,
             "pnl_pct": 0.0,
-            "type": "live",
+            "type": self.runtime_mode,
+            "network": getattr(self.router, "network", "unknown"),
             "status": result.get("status", "placed"),
             "ticket": agent._open_ticket,
         })
         self._trim_history()
 
     def _blocks_live_execution(self) -> bool:
+        if self.paper_mode:
+            return False
+        if FORCE_SIGNAL_ONLY:
+            return True
         if not SIGNAL_ONLY_EXECUTION_ENABLED:
             return False
-        return not bool(getattr(self.router, "live_trading_supported", False))
+        return not (
+            bool(getattr(self.router, "live_trading_supported", False))
+            and self._credential_verified
+        )
 
     def _execution_mode(self) -> str:
         if self.paper_mode:
-            return "paper"
+            return self.runtime_mode
         if self._blocks_live_execution():
             return "signal_only"
-        return "live"
+        return "testnet" if self.runtime_mode == "demo" else "live"
 
     def _record_signal_only_block(
         self,
@@ -500,6 +830,9 @@ class CryptoAgentManager:
 
     def _run_evolution(self):
         logger.info("[Evolution] starting cycle")
+        if any(agent.is_in_trade for agent in self.agents):
+            logger.info("[Evolution] deferred while positions are open")
+            return
         # Release positions held by the outgoing agents so the risk guardian's
         # open-position counter does not leak. The new agent objects start flat,
         # so a stale counter would permanently block trading at the
@@ -512,13 +845,90 @@ class CryptoAgentManager:
         if released:
             logger.warning(f"[Evolution] released {released} open positions before rebuild")
         stats = [a.to_dict() for a in self.agents]
+        runtime_by_id = {a.dna.id: a.runtime_state() for a in self.agents}
         dnas = [a.dna for a in self.agents]
         new_dnas, self._next_agent_id = evolve(dnas, stats, self._next_agent_id, pairs=self._pairs)
         self.agents = [
             CryptoAgent(dna, self.signal_engine, self.risk_guardian, self.paper_mode)
             for dna in new_dnas
         ]
+        for agent in self.agents:
+            previous = runtime_by_id.get(agent.dna.id)
+            if previous:
+                agent.restore_runtime_state(previous)
         logger.info(f"[Evolution] done — {len(self.agents)} agents")
+
+    def runtime_state(self) -> dict:
+        return {
+            "version": 2,
+            "saved_at": time.time(),
+            "runtime_mode": self.runtime_mode,
+            "network": getattr(self.router, "network", "paper"),
+            "pairs": list(self._pairs),
+            "account": {
+                "balance": self._account_balance,
+                "equity": self._account_equity,
+                "initial_capital": self._initial_capital,
+            },
+            "next_agent_id": self._next_agent_id,
+            "agents": [agent.runtime_state() for agent in self.agents],
+            "order_history": self._order_history[:500],
+        }
+
+    def restore_runtime_state(self, state: dict) -> bool:
+        if not state or state.get("version") != 2:
+            return False
+        if state.get("runtime_mode") != self.runtime_mode:
+            return False
+        if state.get("network") != getattr(self.router, "network", "paper"):
+            return False
+        from engine.dna import CryptoAgentDNA
+
+        restored = []
+        for item in state.get("agents") or []:
+            raw = item.get("dna") or {}
+            try:
+                dna = CryptoAgentDNA(
+                    id=int(raw["id"]),
+                    name=str(raw["name"]),
+                    symbol=str(raw["symbol"]),
+                    strategy_weights=dict(raw["strategy_weights"]),
+                    sl_pct=float(raw["sl_pct"]),
+                    tp_pct=float(raw["tp_pct"]),
+                    risk_pct=float(raw.get("risk_pct", 0.01)),
+                    timeframe=str(raw.get("timeframe", "M15")),
+                    regime_bias=str(raw.get("regime_bias", "any")),
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            agent = CryptoAgent(dna, self.signal_engine, self.risk_guardian, self.paper_mode)
+            agent.restore_runtime_state(item)
+            restored.append(agent)
+        allowed_pairs = set(DEFAULT_PAIRS)
+        restored = [agent for agent in restored if agent.dna.symbol in allowed_pairs]
+        if not restored:
+            return False
+
+        self.agents = restored
+        state_pairs = [p for p in (state.get("pairs") or sorted({a.dna.symbol for a in restored})) if p in allowed_pairs]
+        self._pairs = state_pairs or list(DEFAULT_PAIRS)
+        account = state.get("account") or {}
+        self._account_balance = float(account.get("balance", 1000.0))
+        self._account_equity = float(account.get("equity", self._account_balance))
+        self._initial_capital = float(account.get("initial_capital", 1000.0))
+        self._next_agent_id = int(state.get("next_agent_id", max(a.dna.id for a in restored) + 1))
+        self._order_history = list(state.get("order_history") or [])[:500]
+        for agent in self.agents:
+            if agent.is_in_trade:
+                self.risk_guardian.on_position_opened(agent.dna.symbol)
+                self.position_dedup_guard.record_open(agent.dna.symbol)
+        logger.info(
+            "[State] restored %s agents, %s open positions, balance=%.2f",
+            len(self.agents),
+            sum(1 for agent in self.agents if agent.is_in_trade),
+            self._account_balance,
+        )
+        return True
 
     def get_open_positions(self) -> list[dict]:
         """Open paper positions, shaped for the dashboard order book.
@@ -555,9 +965,22 @@ class CryptoAgentManager:
             "execution_mode": self._execution_mode(),
             "live_trading_supported": bool(getattr(self.router, "live_trading_supported", False)),
             "signal_only_execution": self._blocks_live_execution(),
+            "network": getattr(self.router, "network", "paper"),
+            "credential_status": getattr(self.router, "credential_status", "not_supported"),
+            "credential_verified": self._credential_verified,
+            "credential_error": self._credential_error,
+            "supports_short": bool(getattr(self.router, "supports_short", True)),
             "open_positions": len(self.get_open_positions()),
             "guard_mode": self.strategy_performance_guard.guard_mode(),
+            "mads_defensive_policy": self.risk_guardian.external_policy(),
         }
+
+    def set_risk_policy(self, mode: str, risk_scale: float, max_positions: int) -> dict:
+        policy = self.risk_guardian.set_external_policy(mode, risk_scale, max_positions)
+        if policy["risk_scale"] <= 0 or policy["max_positions"] <= 0:
+            self.pause_entries(f"MADS {policy['mode']} defensive policy")
+        logger.warning(f"[Control] MADS defensive policy applied: {policy}")
+        return self.control_status()
 
     def pause_entries(self, reason: str = "manual control") -> dict:
         self._manual_entries_paused = True
@@ -588,19 +1011,25 @@ class CryptoAgentManager:
             agent.record_trade_result(pnl, pnl_pct)
             self.strategy_performance_guard.record(strategy, pnl)
             self.risk_guardian.on_position_closed(symbol, pnl)
-            self._order_history.insert(0, {
+            closed_entry = {
                 "timestamp": time.time(),
                 "agent": agent.dna.name,
                 "symbol": symbol,
                 "action": "CLOSE",
+                "side": agent._open_side,
+                "entry_price": agent._open_entry,
                 "price": current,
                 "pnl": round(pnl, 2),
                 "pnl_pct": round(pnl_pct, 4),
-                "type": "paper",
+                "type": self.runtime_mode,
                 "status": "closed",
                 "ticket": ticket,
                 "reason": reason,
-            })
+                "strategy": strategy,
+                "timeframe": agent.dna.timeframe,
+            }
+            self._order_history.insert(0, closed_entry)
+            self._emit_trade_closed(closed_entry)
             self._trim_history()
             self._reset_agent(agent)
             logger.warning(f"[Control] closed paper position ticket={ticket} pnl={pnl:.2f} reason={reason}")
@@ -621,12 +1050,66 @@ class CryptoAgentManager:
         if len(self._order_history) > 500:
             self._order_history = self._order_history[:500]
 
+    def _emit_trade_closed(self, trade: dict):
+        if self.trade_event_outbox is None:
+            return
+        try:
+            trade["canonical_trade_id"] = self._canonical_trade_id(trade)
+            trade["event_id"] = self.trade_event_outbox.emit("trade.closed", trade)
+        except Exception as error:
+            logger.warning("Failed to enqueue trade.closed event: %s", error)
+
+    @staticmethod
+    def _canonical_trade_id(trade: dict) -> str:
+        symbol = trade.get("symbol") or "UNKNOWN"
+        ticket = trade.get("ticket") or trade.get("order_id") or trade.get("position_id") or "no-ticket"
+        timestamp = float(trade.get("timestamp") or time.time())
+        timestamp = int(timestamp * 1000) / 1000
+        pnl = float(trade.get("pnl") or 0.0)
+        return f"{symbol}:{ticket}:{timestamp:.3f}:{pnl:.2f}"
+
     def _log_blocked(self, key: str, message: str):
         now = time.time()
         last = self._last_block_log.get(key, 0.0)
         if now - last >= BLOCK_LOG_INTERVAL_SECONDS:
             self._last_block_log[key] = now
             logger.warning(message)
+
+    def _audit_entry(
+        self,
+        *,
+        symbol: str,
+        stage: str,
+        reason: str,
+        agent: CryptoAgent = None,
+        strategy: str = "",
+        action: str = "",
+        confidence: float = None,
+        signal: dict = None,
+    ) -> None:
+        row = {
+            "timestamp": time.time(),
+            "symbol": symbol,
+            "block_stage": stage,
+            "reason": reason or "unknown",
+        }
+        if agent is not None:
+            row.update(
+                {
+                    "agent": agent.dna.name,
+                    "timeframe": agent.dna.timeframe,
+                    "strategy": strategy or self._agent_strategy(agent),
+                }
+            )
+        if action:
+            row["action"] = action
+        if confidence is not None:
+            row["confidence"] = confidence
+        if signal:
+            row["signal"] = dict(signal)
+        self._entry_audit.insert(0, row)
+        if len(self._entry_audit) > 1000:
+            self._entry_audit = self._entry_audit[:1000]
 
     def _record_price(self, symbol: str, price: float):
         prev = self._latest_prices.get(symbol, {}).get("mid")
@@ -667,6 +1150,63 @@ class CryptoAgentManager:
                 item.update(floating[item["ticket"]])
             out.append(item)
         return out
+
+    def _signal_quality_summary(self) -> Dict:
+        cutoff = time.time() - 86400
+        rows = [
+            dict(item)
+            for item in self._order_history
+            if str(item.get("type") or "").lower() == "signal_only"
+            and float(item.get("timestamp") or 0.0) >= cutoff
+        ]
+        by_symbol: Dict[str, int] = {}
+        by_strategy: Dict[str, int] = {}
+        by_action: Dict[str, int] = {}
+        by_reason: Dict[str, int] = {}
+        for row in rows:
+            symbol = str(row.get("symbol") or "UNKNOWN")
+            strategy = str(row.get("strategy") or "unknown")
+            action = str(row.get("action") or "unknown")
+            reason = str(row.get("reason") or "unknown")
+            by_symbol[symbol] = by_symbol.get(symbol, 0) + 1
+            by_strategy[strategy] = by_strategy.get(strategy, 0) + 1
+            by_action[action] = by_action.get(action, 0) + 1
+            by_reason[reason] = by_reason.get(reason, 0) + 1
+        audit_rows = [
+            dict(item)
+            for item in self._entry_audit
+            if float(item.get("timestamp") or 0.0) >= cutoff
+        ]
+        by_block_stage: Dict[str, int] = {}
+        audit_by_symbol: Dict[str, int] = {}
+        audit_by_strategy: Dict[str, int] = {}
+        for row in audit_rows:
+            stage = str(row.get("block_stage") or "unknown")
+            symbol = str(row.get("symbol") or "UNKNOWN")
+            strategy = str(row.get("strategy") or "unknown")
+            by_block_stage[stage] = by_block_stage.get(stage, 0) + 1
+            audit_by_symbol[symbol] = audit_by_symbol.get(symbol, 0) + 1
+            audit_by_strategy[strategy] = audit_by_strategy.get(strategy, 0) + 1
+        min_forward_samples = int(os.getenv("CRYPTO_SIGNAL_QUALITY_MIN_FORWARD_SAMPLES", "20"))
+        return {
+            "mode": "signal_only_forward_test",
+            "window_hours": 24,
+            "audit_events": len(audit_rows),
+            "signal_only_candidates": len(rows),
+            "by_block_stage": by_block_stage,
+            "by_symbol": by_symbol,
+            "by_strategy": by_strategy,
+            "by_action": by_action,
+            "by_reason": by_reason,
+            "audit_by_symbol": audit_by_symbol,
+            "audit_by_strategy": audit_by_strategy,
+            "min_forward_samples": min_forward_samples,
+            "ready_for_execution": False,
+            "reason": (
+                "execution locked until forward signal sample reaches "
+                f"{min_forward_samples} and expectancy review is positive"
+            ),
+        }
 
     @staticmethod
     def _agent_strategy(agent: CryptoAgent) -> str:
@@ -739,6 +1279,93 @@ class CryptoAgentManager:
         mult = STRATEGY_RISK_CAPS.get(strategy, {}).get("atr", 1.2)
         return max(MIN_EFFECTIVE_SL_PCT, (atr_pct / 100.0) * mult)
 
+    def _trade_recommendations(self) -> Dict:
+        min_confidence = int(os.getenv("CRYPTO_RECOMMENDATION_MIN_CONFIDENCE", "55"))
+        strategies = [
+            item for item in ("market_structure", "momentum", "breakout_atr")
+            if not ENTRY_STRATEGY_ALLOWLIST or item in ENTRY_STRATEGY_ALLOWLIST
+        ]
+        if not strategies:
+            strategies = ["market_structure", "momentum"]
+        signal_methods = {
+            "market_structure": self.signal_engine.market_structure_signal,
+            "momentum": self.signal_engine.technical_signal,
+            "breakout_atr": self.signal_engine.breakout_atr_signal,
+        }
+        symbols = []
+        all_candidates = []
+        for symbol in self._pairs:
+            trend_action, trend_reason = self._htf_trend_action(symbol)
+            symbol_candidates = []
+            scanned = 0
+            for timeframe in TIMEFRAMES:
+                hist = self.signal_engine.get_history(symbol, timeframe)
+                if hist.count < 20:
+                    continue
+                scanned += 1
+                for strategy in strategies:
+                    method = signal_methods.get(strategy)
+                    if method is None:
+                        continue
+                    signal = dict(method(symbol, timeframe))
+                    action = str(signal.get("action") or "HOLD")
+                    confidence = int(signal.get("confidence") or 0)
+                    reason = signal.get("reason") or "no reason"
+                    if action == "HOLD" or confidence < min_confidence:
+                        continue
+                    if trend_action and action != trend_action:
+                        continue
+                    executable = not (action == "SHORT" and not bool(getattr(self.router, "supports_short", True)))
+                    candidate = {
+                        "symbol": symbol,
+                        "action": "BUY" if action == "LONG" else "SELL",
+                        "signal_action": action,
+                        "timeframe": timeframe,
+                        "strategy": strategy,
+                        "confidence": confidence,
+                        "reason": reason,
+                        "higher_timeframe_filter": trend_reason or "HTF trend not confirmed",
+                        "execution_mode": self._execution_mode(),
+                        "executable": executable,
+                    }
+                    if not executable:
+                        candidate["execution_note"] = "spot exchange does not support short positions"
+                    symbol_candidates.append(candidate)
+                    all_candidates.append(candidate)
+            best = sorted(
+                symbol_candidates,
+                key=lambda item: (item.get("executable", False), item["confidence"]),
+                reverse=True,
+            )[:3]
+            symbols.append({
+                "symbol": symbol,
+                "scanned_timeframes": scanned,
+                "best": best[0] if best else None,
+                "alternatives": best[1:],
+                "status": "candidate_found" if best else "no_signal",
+                "message": (
+                    "candidate found; execution remains locked by signal-only mode"
+                    if best else "no signal found across available timeframes"
+                ),
+            })
+        best_overall = sorted(
+            all_candidates,
+            key=lambda item: (item.get("executable", False), item["confidence"]),
+            reverse=True,
+        )[:5]
+        return {
+            "mode": "advisory",
+            "min_confidence": min_confidence,
+            "ready_for_execution": False,
+            "best_overall": best_overall,
+            "symbols": symbols,
+            "message": (
+                "no signal found in any timeframe"
+                if not best_overall else
+                "recommendations are advisory; live execution is locked until forward review passes"
+            ),
+        }
+
     # ── state export ────────────────────────────────────
     def to_state_dict(self) -> dict:
         agent_entries = [a.to_dict() for a in self.agents]
@@ -747,7 +1374,7 @@ class CryptoAgentManager:
         losers = sum(a.losses for a in self.agents)
         open_positions = sum(1 for a in self.agents if a.is_in_trade)
         total_pnl = sum(a.total_pnl for a in self.agents)
-        total_pnl_pct = round((self._account_equity - self._initial_capital) / self._initial_capital * 100, 2)
+        total_pnl_pct = round(total_pnl / self._initial_capital * 100, 2) if self._initial_capital else 0.0
 
         summary = {
             "total_pnl_pct": total_pnl_pct,
@@ -759,13 +1386,19 @@ class CryptoAgentManager:
             "uptime_seconds": round(time.time() - self._start_time, 1),
             "open_positions": open_positions,
             "exchange": self._exchange_name,
-            "mode": "paper" if self.paper_mode else "live",
+            "mode": self.runtime_mode,
             "execution_mode": self._execution_mode(),
             "live_trading_supported": bool(getattr(self.router, "live_trading_supported", False)),
+            "network": getattr(self.router, "network", "paper"),
+            "credential_status": getattr(self.router, "credential_status", "not_supported"),
+            "credential_verified": self._credential_verified,
+            "supports_short": bool(getattr(self.router, "supports_short", True)),
             "total_agents": len(self.agents),
             "pairs": list(self._pairs),
             "strategy_performance_guard": self.strategy_performance_guard.summary(),
             "regime_service": self.regime_service.summary(),
+            "signal_quality": self._signal_quality_summary(),
+            "trade_recommendations": self._trade_recommendations(),
             "control": self.control_status(),
         }
 

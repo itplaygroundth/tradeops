@@ -1,4 +1,6 @@
 """Tests for CryptoAgentManager — integration hub."""
+import json
+
 import pytest
 
 import engine.agent_manager as manager_mod
@@ -9,6 +11,10 @@ class MockRouter:
     paper_mode = True
     exchange_name = "binance"
     live_trading_supported = False
+    network = "paper"
+    credential_status = "not_required"
+    supports_short = True
+    uses_ticket_positions = False
 
     def __init__(self):
         self.orders = []
@@ -38,9 +44,21 @@ def _seed_manager_trend(mgr, symbol="BTCUSDT", direction="down"):
         mgr.signal_engine.record_tick(symbol, price, 10.0, float((i + 1) * 14400))
 
 
+def _write_shadow_guard_policy(path):
+    path.write_text(json.dumps({
+        "version": 1,
+        "mode": "shadow_with_regime_no_trade_guard",
+        "no_trade_regimes": ["high_volatility"],
+        "enforcement": {
+            "pre_order_required": True,
+            "block_new_entries_when_regime_in": ["high_volatility"],
+        },
+    }))
+
+
 def test_default_pairs():
     mgr = CryptoAgentManager(MockRouter(), agent_count=10)
-    assert mgr.pairs == ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+    assert mgr.pairs == ['BTCUSDT', 'ETHUSDT']
 
 
 def test_custom_pairs():
@@ -53,6 +71,28 @@ def test_initial_balance_equity():
     mgr = _mgr()
     assert mgr._account_balance == 1000.0
     assert mgr._account_equity == 1000.0
+
+
+def test_demo_mode_reports_demo_execution():
+    mgr = CryptoAgentManager(MockRouter(), paper_mode=True, agent_count=2,
+                             pairs=["BTCUSDT"], runtime_mode="demo")
+    assert mgr.control_status()["execution_mode"] == "demo"
+    assert mgr.control_status()["signal_only_execution"] is False
+    assert mgr.to_state_dict()["summary"]["mode"] == "demo"
+
+
+def test_demo_without_testnet_credentials_reports_signal_only():
+    router = MockRouter()
+    router.paper_mode = False
+    router.network = "testnet"
+    router.credential_status = "missing"
+    router.supports_short = False
+    mgr = CryptoAgentManager(router, paper_mode=False, agent_count=2,
+                             pairs=["BTCUSDT"], runtime_mode="demo")
+    status = mgr.control_status()
+    assert status["execution_mode"] == "signal_only"
+    assert status["network"] == "testnet"
+    assert status["credential_status"] == "missing"
 
 
 @pytest.mark.asyncio
@@ -99,6 +139,57 @@ async def test_live_unsupported_runs_signal_only_without_router_order():
     assert mgr._order_history
     assert mgr._order_history[0]["type"] == "signal_only"
     assert mgr._order_history[0]["status"] == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_spot_short_entry_is_blocked(monkeypatch):
+    monkeypatch.setattr(manager_mod, "ENTRY_STRATEGY_ALLOWLIST", set())
+    router = MockRouter()
+    router.live_trading_supported = True
+    router.network = "testnet"
+    router.credential_status = "configured"
+    router.supports_short = False
+    mgr = CryptoAgentManager(router, paper_mode=False, agent_count=1,
+                             pairs=["BTCUSDT"], runtime_mode="demo")
+    agent = mgr.agents[0]
+    agent.dna.symbol = "BTCUSDT"
+    _force_strategy(agent, "momentum")
+    agent.generate_signal = lambda price, **kw: {
+        "action": "SHORT", "confidence": 90, "reason": "unit short"
+    }
+    _seed_manager_trend(mgr, "BTCUSDT", "down")
+
+    await mgr._process_agents("BTCUSDT", 100.0, regime="TREND_DOWN")
+
+    assert router.orders == []
+    assert not agent.is_in_trade
+
+
+@pytest.mark.asyncio
+async def test_spot_buy_position_closes_with_sell_at_tp():
+    router = MockRouter()
+    router.live_trading_supported = True
+    router.network = "testnet"
+    router.credential_status = "configured"
+    router.supports_short = False
+    mgr = CryptoAgentManager(router, paper_mode=False, agent_count=1,
+                             pairs=["BTCUSDT"], runtime_mode="demo")
+    agent = mgr.agents[0]
+    agent._open_ticket = 123
+    agent._open_entry = 100.0
+    agent._open_side = "BUY"
+    agent._open_sl = 95.0
+    agent._open_tp = 105.0
+    agent._open_qty = 2.0
+    agent._open_risk_amount = 10.0
+    mgr.risk_guardian.on_position_opened("BTCUSDT")
+
+    await mgr._check_live_managed_positions("BTCUSDT", 106.0)
+
+    assert router.orders[0][1]["side"] == "SELL"
+    assert not agent.is_in_trade
+    assert mgr._order_history[0]["status"] == "closed"
+    assert mgr._order_history[0]["network"] == "testnet"
 
 
 @pytest.mark.asyncio
@@ -216,6 +307,93 @@ async def test_strategy_guard_blocks_losing_strategy():
 
     assert not agent.is_in_trade
     assert mgr._order_history == []
+
+
+@pytest.mark.asyncio
+async def test_strategy_allowlist_block_is_audited(monkeypatch):
+    monkeypatch.setattr(manager_mod, "ENTRY_STRATEGY_ALLOWLIST", {"momentum"})
+    mgr = _mgr(pairs=["BTCUSDT"])
+    agent = mgr.agents[0]
+    agent.dna.symbol = "BTCUSDT"
+    _force_strategy(agent, "mean_reversion")
+    mgr.agents = [agent]
+
+    await mgr._process_agents("BTCUSDT", 100.0)
+
+    assert mgr._entry_audit
+    row = mgr._entry_audit[0]
+    assert row["symbol"] == "BTCUSDT"
+    assert row["strategy"] == "mean_reversion"
+    assert row["block_stage"] == "strategy_allowlist"
+
+
+@pytest.mark.asyncio
+async def test_shadow_guard_policy_blocks_high_volatility_entries(tmp_path, monkeypatch):
+    monkeypatch.setattr(manager_mod, "ENTRY_STRATEGY_ALLOWLIST", set())
+    guard = tmp_path / "shadow_guard_policy.json"
+    _write_shadow_guard_policy(guard)
+    mgr = _mgr(pairs=["BTCUSDT"])
+    mgr._shadow_guard_policy_path = guard
+    agent = mgr.agents[0]
+    agent.dna.symbol = "BTCUSDT"
+    _force_strategy(agent, "momentum")
+    agent.generate_signal = lambda price, **kw: {
+        "action": "LONG", "confidence": 90, "reason": "unit long"
+    }
+    mgr.agents = [agent]
+
+    await mgr._process_agents("BTCUSDT", 100.0, regime="high_volatility")
+
+    assert not agent.is_in_trade
+    assert mgr._order_history == []
+    assert mgr._entry_audit
+    assert mgr._entry_audit[0]["block_stage"] == "shadow_guard_policy"
+    assert "high_volatility" in mgr._entry_audit[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_shadow_guard_policy_allows_non_blocked_regime(tmp_path, monkeypatch):
+    monkeypatch.setattr(manager_mod, "ENTRY_STRATEGY_ALLOWLIST", set())
+    guard = tmp_path / "shadow_guard_policy.json"
+    _write_shadow_guard_policy(guard)
+    mgr = _mgr(pairs=["BTCUSDT"])
+    mgr._shadow_guard_policy_path = guard
+    agent = mgr.agents[0]
+    agent.dna.symbol = "BTCUSDT"
+    _force_strategy(agent, "momentum")
+    agent.generate_signal = lambda price, **kw: {
+        "action": "LONG", "confidence": 90, "reason": "unit long"
+    }
+    mgr.agents = [agent]
+
+    await mgr._process_agents("BTCUSDT", 100.0, regime="sideways")
+
+    assert agent.is_in_trade
+    assert mgr._order_history
+    assert mgr._order_history[0]["action"] == "BUY"
+
+
+def test_signal_quality_summary_includes_crypto_audit_events():
+    mgr = _mgr(pairs=["BTCUSDT"])
+    agent = mgr.agents[0]
+    agent.dna.symbol = "BTCUSDT"
+    _force_strategy(agent, "momentum")
+    mgr._audit_entry(
+        symbol="BTCUSDT",
+        stage="signal_confidence",
+        reason="unit low confidence",
+        agent=agent,
+        strategy="momentum",
+        action="LONG",
+        confidence=42,
+    )
+
+    summary = mgr.to_state_dict()["summary"]["signal_quality"]
+
+    assert summary["audit_events"] == 1
+    assert summary["by_block_stage"]["signal_confidence"] == 1
+    assert summary["audit_by_symbol"]["BTCUSDT"] == 1
+    assert summary["audit_by_strategy"]["momentum"] == 1
 
 
 def test_htf_aligned_signal_gets_confidence_boost():
@@ -370,10 +548,8 @@ async def test_process_agents_uses_selected_agent_strategy_for_risk_caps(monkeyp
     assert row["tp_pct"] == pytest.approx(0.012)
 
 
-def test_evolution_releases_open_positions_from_risk_guardian():
-    """Evolution rebuilds all agent objects. Agents holding positions must be
-    released from the risk guardian first, otherwise _open_positions leaks and
-    permanently blocks new trades at MAX_CONCURRENT_POSITIONS."""
+def test_evolution_keeps_open_positions_and_risk_guardian_state():
+    """Evolution must wait until positions close so runtime ownership is kept."""
     mgr = _mgr(pairs=["BTCUSDT"])
     # simulate 3 agents holding open positions
     for agent in mgr.agents[:3]:
@@ -384,9 +560,56 @@ def test_evolution_releases_open_positions_from_risk_guardian():
 
     mgr._run_evolution()
 
-    # new agents are fresh (no positions); risk guardian must be back to 0
-    assert all(not a.is_in_trade for a in mgr.agents)
-    assert sum(mgr.risk_guardian._open_positions.values()) == 0
+    assert sum(a.is_in_trade for a in mgr.agents) == 3
+    assert sum(mgr.risk_guardian._open_positions.values()) == 3
+
+
+def test_evolution_is_deferred_while_position_open():
+    mgr = _mgr(pairs=["BTCUSDT"])
+    original_ids = [agent.dna.id for agent in mgr.agents]
+    mgr.agents[0]._open_ticket = 99
+
+    mgr._run_evolution()
+
+    assert [agent.dna.id for agent in mgr.agents] == original_ids
+    assert mgr.agents[0]._open_ticket == 99
+
+
+def test_runtime_state_restores_stats_and_open_position():
+    mgr = CryptoAgentManager(MockRouter(), paper_mode=True, agent_count=2,
+                             pairs=["BTCUSDT"], runtime_mode="demo")
+    agent = mgr.agents[0]
+    agent.record_trade_result(12.5, 1.25)
+    agent._open_ticket = 123
+    agent._open_entry = 100.0
+    agent._open_side = "BUY"
+    agent._open_sl = 98.0
+    agent._open_tp = 104.0
+    agent._open_qty = 2.0
+    agent._open_risk_amount = 4.0
+    mgr._account_balance = 1012.5
+    state = mgr.runtime_state()
+
+    restored = CryptoAgentManager(MockRouter(), paper_mode=True, agent_count=1,
+                                  pairs=["ETHUSDT"], runtime_mode="demo")
+    assert restored.restore_runtime_state(state) is True
+    restored_agent = next(item for item in restored.agents if item.dna.id == agent.dna.id)
+    assert restored_agent.trades_count == 1
+    assert restored_agent.total_pnl == pytest.approx(12.5)
+    assert restored_agent._open_ticket == 123
+    assert restored._account_balance == pytest.approx(1012.5)
+    assert restored.control_status()["open_positions"] == 1
+
+
+def test_runtime_state_cannot_cross_networks():
+    paper = CryptoAgentManager(MockRouter(), paper_mode=True, agent_count=1,
+                               pairs=["BTCUSDT"], runtime_mode="paper")
+    state = paper.runtime_state()
+    router = MockRouter()
+    router.network = "testnet"
+    demo = CryptoAgentManager(router, paper_mode=False, agent_count=1,
+                              pairs=["BTCUSDT"], runtime_mode="demo")
+    assert demo.restore_runtime_state(state) is False
 
 
 @pytest.mark.asyncio
