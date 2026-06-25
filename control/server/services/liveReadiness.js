@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 const MIN_TRADES = Number(process.env.LIVE_MIN_CLOSED_TRADES || 30);
 const MIN_PROFIT_FACTOR = Number(process.env.LIVE_MIN_PROFIT_FACTOR || 1.05);
 const MIN_SOAK_HOURS = Number(process.env.LIVE_MIN_SOAK_HOURS || 24);
+const MAX_ROUND_TRIP_BASE_DUST = Number(process.env.LIVE_MAX_ROUND_TRIP_BASE_DUST || 1e-5);
 
 function check(id, status, observed, requirement) {
   return { id, status, observed, requirement };
@@ -161,6 +162,11 @@ export function evaluateEngine(engine, evidence, soak, roundTrip) {
   };
 }
 
+export function roundTripCleanupOk(payload) {
+  const delta = Number(payload?.baseDeltaAfterCleanup);
+  return Number.isFinite(delta) && Math.abs(delta) <= MAX_ROUND_TRIP_BASE_DUST;
+}
+
 export function installLiveReadinessRoutes(app, {
   db,
   getSettings,
@@ -246,8 +252,7 @@ export function installLiveReadinessRoutes(app, {
       && payload.orderTestPassed === true
       && payload.buy?.status === 'FILLED'
       && payload.sell?.status === 'FILLED'
-      && Number.isFinite(Number(payload.baseDeltaAfterCleanup))
-      && Math.abs(Number(payload.baseDeltaAfterCleanup)) < 1e-8;
+      && roundTripCleanupOk(payload);
     if (!valid) {
       return res.status(400).json({ error: 'round-trip evidence failed validation' });
     }

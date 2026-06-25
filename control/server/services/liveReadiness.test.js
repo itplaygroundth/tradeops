@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateEngine } from './liveReadiness.js';
+import { evaluateEngine, roundTripCleanupOk } from './liveReadiness.js';
 
 const profitable = {
   id: 'crypto-ai',
@@ -36,4 +36,10 @@ test('forex requires explicit MT5 demo evidence', () => {
     control: { entries_paused: true },
   }, null, null);
   assert.equal(result.testReady, false);
+});
+
+test('round-trip evidence accepts exchange lot-size dust after cleanup', () => {
+  assert.equal(roundTripCleanupOk({ baseDeltaAfterCleanup: 0.00001 }), true);
+  assert.equal(roundTripCleanupOk({ baseDeltaAfterCleanup: -0.00001 }), true);
+  assert.equal(roundTripCleanupOk({ baseDeltaAfterCleanup: 0.00002 }), false);
 });
