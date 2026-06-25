@@ -1,7 +1,7 @@
 import fetch from 'node-fetch';
 import { collectTradingOverview } from './tradingControl.js';
 
-const ANALYST_TIMEOUT_MS = Number(process.env.AI_ANALYST_TIMEOUT_MS || 20000);
+const ANALYST_TIMEOUT_MS = Number(process.env.AI_ANALYST_TIMEOUT_MS || 45000);
 let dailyReportTimer = null;
 let lastDailyReportKey = '';
 
