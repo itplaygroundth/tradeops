@@ -2,12 +2,23 @@
 # Usage: make forex | crypto | control | all | dashboards-build | stop | stop-orphans | test
 
 include config/services.env
+-include .env
+-include trading/crypto/.env
 export
 
+# Legacy root env keys are treated as Testnet credentials in demo mode only.
+BINANCE_TESTNET_API_KEY ?= $(BINANCE_API_KEY)
+BINANCE_TESTNET_API_SECRET ?= $(BINANCE_API_SECRET)
+
 FOREX_PY := /home/alfred/tradeops/trading/forex/.venv/bin/python
-FOREX_MODE ?= live
-CRYPTO_MODE ?= live
+FOREX_MODE ?= demo
+CRYPTO_MODE ?= demo
 CRYPTO_EXCHANGE ?= binance
+FOREX_START_PAUSED ?= true
+FOREX_DISABLE_ORDERS ?= true
+FOREX_RECENT_SYMBOL_GUARD_ENABLED ?= true
+CRYPTO_START_PAUSED ?= true
+CRYPTO_FORCE_SIGNAL_ONLY ?= true
 
 .PHONY: help forex crypto control all dashboards-build forex-dashboard-build crypto-dashboard-build stop stop-orphans test install
 
@@ -24,10 +35,10 @@ help:
 	@echo "  make install  - npm install for control server/client"
 
 forex:
-	cd trading/forex/src && RECENT_SYMBOL_GUARD_ENABLED=false $(FOREX_PY) run.py --mode $(FOREX_MODE) --dashboard-port $(FOREX_PORT)
+	cd trading/forex/src && START_PAUSED=$(FOREX_START_PAUSED) DISABLE_ORDERS=$(FOREX_DISABLE_ORDERS) RECENT_SYMBOL_GUARD_ENABLED=$(FOREX_RECENT_SYMBOL_GUARD_ENABLED) $(FOREX_PY) run.py --mode $(FOREX_MODE) --dashboard-port $(FOREX_PORT)
 
 crypto:
-	cd trading/crypto/src && DASHBOARD_PORT=$(CRYPTO_PORT) python3 run.py --mode $(CRYPTO_MODE) --exchange $(CRYPTO_EXCHANGE)
+	cd trading/crypto/src && START_PAUSED=$(CRYPTO_START_PAUSED) CRYPTO_FORCE_SIGNAL_ONLY=$(CRYPTO_FORCE_SIGNAL_ONLY) DASHBOARD_PORT=$(CRYPTO_PORT) python3 run.py --mode $(CRYPTO_MODE) --exchange $(CRYPTO_EXCHANGE)
 
 control:
 	cd control/server && node server.js
