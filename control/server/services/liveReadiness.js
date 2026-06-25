@@ -73,6 +73,20 @@ function latestPassedRoundTrip(db, engineId) {
   `).get(engineId);
 }
 
+export function supersedeRunningSoaks(db, engineId, startedAt = new Date().toISOString()) {
+  return db.prepare(`
+    UPDATE live_readiness_soaks
+    SET status = 'superseded',
+        result = ?
+    WHERE engine_id = ?
+      AND status = 'running'
+  `).run(JSON.stringify({
+    status: 'superseded',
+    superseded_at: startedAt,
+    reason: 'new soak started for engine',
+  }), engineId);
+}
+
 export function evaluateEngine(engine, evidence, soak, roundTrip) {
   const checks = [];
   const isForex = engine.id === 'mtai';
@@ -279,10 +293,12 @@ export function installLiveReadinessRoutes(app, {
     const engine = assessment.engines.find((item) => item.engineId === engineId);
     if (!engine?.testReady) return res.status(409).json({ error: 'test preflight has not passed', assessment });
     const hours = Math.max(MIN_SOAK_HOURS, Number(req.body?.hours || MIN_SOAK_HOURS));
+    const startedAt = new Date().toISOString();
+    supersedeRunningSoaks(db, engineId, startedAt);
     const result = db.prepare(`
       INSERT INTO live_readiness_soaks (engine_id, started_at, required_hours, status, baseline)
       VALUES (?, ?, ?, 'running', ?)
-    `).run(engineId, new Date().toISOString(), hours, JSON.stringify(engine));
+    `).run(engineId, startedAt, hours, JSON.stringify(engine));
     return res.json({ id: Number(result.lastInsertRowid), engineId, requiredHours: hours, status: 'running' });
   });
 
