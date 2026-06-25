@@ -57,15 +57,53 @@ function normalizeDailyPnl(dailyPnl = {}) {
   };
 }
 
-function analyzeEngine(engine) {
+function toIsoTimestamp(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const millis = numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+  return new Date(millis).toISOString();
+}
+
+function latestTimestamp(...values) {
+  const valid = values
+    .flat()
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  return valid.length ? toIsoTimestamp(Math.max(...valid)) : null;
+}
+
+function performanceMetrics(closed) {
+  const pnls = closed.map((trade) => safeNumber(trade.pnl ?? trade.profit));
+  const wins = pnls.filter((pnl) => pnl > 0);
+  const losses = pnls.filter((pnl) => pnl < 0).map(Math.abs);
+  const grossProfit = wins.reduce((sum, pnl) => sum + pnl, 0);
+  const grossLoss = losses.reduce((sum, pnl) => sum + pnl, 0);
+  const netPnl = grossProfit - grossLoss;
+  const avgWin = wins.length ? grossProfit / wins.length : 0;
+  const avgLoss = losses.length ? grossLoss / losses.length : 0;
+  return {
+    sampleSize: pnls.length,
+    wins: wins.length,
+    losses: losses.length,
+    winRate: pnls.length ? Number(((wins.length / pnls.length) * 100).toFixed(1)) : 0,
+    grossProfit: Number(grossProfit.toFixed(2)),
+    grossLoss: Number(grossLoss.toFixed(2)),
+    netPnl: Number(netPnl.toFixed(2)),
+    avgWin: Number(avgWin.toFixed(2)),
+    avgLoss: Number(avgLoss.toFixed(2)),
+    payoffRatio: avgLoss > 0 ? Number((avgWin / avgLoss).toFixed(2)) : null,
+    profitFactor: grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(2)) : null,
+    expectancy: pnls.length ? Number((netPnl / pnls.length).toFixed(2)) : 0,
+  };
+}
+
+export function analyzeEngine(engine) {
   const daily = normalizeDailyPnl(engine.dailyPnl);
   const openPositions = safeNumber(engine.openPositions);
   const floatingPnl = safeNumber(engine.floatingPnl);
   const guardMode = String(engine.guardMode || 'UNKNOWN').toUpperCase();
   const closed = engine.recentTrades.filter((trade) => String(trade.status || '').toLowerCase() === 'closed');
-  const wins = closed.filter((trade) => safeNumber(trade.pnl ?? trade.profit) > 0).length;
-  const losses = closed.filter((trade) => safeNumber(trade.pnl ?? trade.profit) < 0).length;
-  const netPnl = closed.reduce((sum, trade) => sum + safeNumber(trade.pnl ?? trade.profit), 0);
+  const performance = performanceMetrics(closed);
   const recommendations = [];
 
   if (guardMode === 'HARD_STOP') {
@@ -88,11 +126,14 @@ function analyzeEngine(engine) {
     });
   }
 
-  if (losses >= 2 && losses > wins) {
+  if (
+    performance.sampleSize >= 10
+    && (performance.expectancy < 0 || (performance.profitFactor != null && performance.profitFactor < 0.9))
+  ) {
     recommendations.push({
       severity: 'medium',
-      action: 'PAUSE_RECENT_LOSERS',
-      reason: `${engine.name} recent closed trades show ${losses} losses vs ${wins} wins.`,
+      action: 'REVIEW_NEGATIVE_EXPECTANCY',
+      reason: `${engine.name} recent expectancy=${performance.expectancy.toFixed(2)}, profit factor=${performance.profitFactor ?? 'n/a'} over ${performance.sampleSize} closed trades.`,
     });
   }
 
@@ -113,10 +154,11 @@ function analyzeEngine(engine) {
   return {
     ...engine,
     daily,
-    recentClosed: closed.length,
-    recentWins: wins,
-    recentLosses: losses,
-    recentNetPnl: Number(netPnl.toFixed(2)),
+    recentClosed: performance.sampleSize,
+    recentWins: performance.wins,
+    recentLosses: performance.losses,
+    recentNetPnl: performance.netPnl,
+    performance,
     floatingPnl,
     openPositions,
     recommendations,
@@ -136,11 +178,14 @@ function summarizePortfolio(engines) {
     { openPositions: 0, floatingPnl: 0, dailyPnl: 0, recentNetPnl: 0, recommendations: 0 },
   );
   const modes = engines.map((engine) => engine.guardMode);
+  const hasNegativeEdge = engines.some((engine) => engine.recommendations?.some(
+    (item) => item.action === 'REVIEW_NEGATIVE_EXPECTANCY',
+  ));
   const guardMode = modes.includes('HARD_STOP')
     ? 'HARD_STOP'
     : modes.includes('DEFENSE')
       ? 'DEFENSE'
-      : modes.includes('CAUTION')
+      : modes.includes('CAUTION') || hasNegativeEdge
         ? 'CAUTION'
         : 'NORMAL';
   return {
@@ -153,11 +198,15 @@ function summarizePortfolio(engines) {
   };
 }
 
-function normalizeMtaiState(state, history, positions) {
+export function normalizeMtaiState(state, history, positions, modeEvidence = {}) {
   const summary = state?.summary || {};
   const accountRisk = summary.account_risk || {};
   const adaptive = summary.adaptive_guard || {};
   const openPositions = positions?.positions || [];
+  const entryAudit = summary.entry_audit || [];
+  const recentTrades = history?.items || state?.order_history || [];
+  const weekend = summary.weekend_reopen_guard || {};
+  const weekendBlock = weekend.pre_close?.status === 'active';
   return {
     id: 'mtai',
     name: 'MTAI Forex',
@@ -165,6 +214,21 @@ function normalizeMtaiState(state, history, positions) {
     status: 'online',
     guardMode: adaptive.mode || accountRisk.mode || 'UNKNOWN',
     guardReason: adaptive.reason || accountRisk.reason || '',
+    runtimeMode: modeEvidence.mode || (state?.paper_mode ? 'paper' : 'unknown'),
+    executionMode: modeEvidence.execution_environment || (state?.paper_mode ? 'simulated' : 'unknown'),
+    network: modeEvidence.execution_environment || 'unknown',
+    credentialStatus: modeEvidence.demo_account_verified ? 'verified' : 'unverified',
+    lastActivityAt: latestTimestamp(
+      state?.timestamp,
+      entryAudit.map((item) => item.timestamp),
+      recentTrades.map((item) => item.timestamp ?? item.time),
+    ),
+    activityType: entryAudit[0]?.status ? `entry_${entryAudit[0].status}` : 'engine_update',
+    idleReason: weekendBlock
+      ? weekend.pre_close?.reason || 'weekend market guard active'
+      : openPositions.length === 0 ? 'waiting_for_qualified_signal' : '',
+    regimes: summary.regime_service || {},
+    marketRegime: summary.regime?.current_regime || 'UNKNOWN',
     account: {
       balance: safeNumber(accountRisk.balance ?? state?.account?.balance),
       equity: safeNumber(accountRisk.equity ?? state?.account?.equity),
@@ -182,13 +246,25 @@ function normalizeMtaiState(state, history, positions) {
     },
     control: summary.control || {},
     positions: openPositions,
-    recentTrades: history?.items || state?.order_history || [],
+    recentTrades,
   };
 }
 
-function normalizeCryptoState(state, positions) {
+export function normalizeCryptoState(state, positions) {
   const summary = state?.summary || {};
   const strategyGuard = summary.strategy_performance_guard || {};
+  const regimes = summary.regime_service || {};
+  const recentTrades = state?.order_history || [];
+  const latestSignal = recentTrades[0] || {};
+  const signalOnly = summary.execution_mode === 'signal_only';
+  const regimeAges = Object.values(regimes)
+    .map((item) => safeNumber(item?.age_s, Number.POSITIVE_INFINITY))
+    .filter(Number.isFinite);
+  const latestRegimeAt = regimeAges.length
+    ? Date.now() - Math.min(...regimeAges) * 1000
+    : 0;
+  const latestSignalAt = safeNumber(latestSignal.timestamp);
+  const marketDataIsNewest = latestRegimeAt > latestSignalAt * 1000;
   return {
     id: 'crypto-ai',
     name: 'Crypto AI',
@@ -196,6 +272,26 @@ function normalizeCryptoState(state, positions) {
     status: 'online',
     guardMode: strategyGuard.guard_mode || 'UNKNOWN',
     guardReason: '',
+    runtimeMode: summary.mode || 'unknown',
+    executionMode: summary.execution_mode || 'unknown',
+    network: summary.network || 'unknown',
+    credentialStatus: summary.control?.credential_verified
+      ? 'verified'
+      : summary.credential_status || 'unknown',
+    lastActivityAt: latestTimestamp(
+      latestSignal.timestamp,
+      latestRegimeAt,
+      state?.timestamp,
+      Date.now() - safeNumber(summary.uptime_seconds) * 1000,
+    ),
+    activityType: marketDataIsNewest
+      ? 'market_data_monitoring'
+      : latestSignal.type === 'signal_only' ? 'signal_blocked' : latestSignal.status || 'market_data',
+    idleReason: signalOnly
+      ? `signal_only on ${summary.network || 'exchange'}: ${summary.credential_status === 'missing' ? 'credentials missing; ' : ''}${latestSignal.reason || 'live execution unavailable'}`
+      : recentTrades.length === 0 ? 'waiting_for_qualified_signal' : '',
+    regimes,
+    marketRegime: 'MULTI_ASSET',
     account: {
       balance: safeNumber(summary.total_equity),
       equity: safeNumber(summary.total_equity),
@@ -209,7 +305,7 @@ function normalizeCryptoState(state, positions) {
     },
     control: summary.control || {},
     positions: positions?.positions || [],
-    recentTrades: state?.order_history || [],
+    recentTrades,
   };
 }
 
@@ -348,16 +444,22 @@ async function collectOverview(getSettings) {
   const mtaiUrl = trading.mtaiUrl || DEFAULT_MTAI_URL;
   const cryptoUrl = trading.cryptoUrl || DEFAULT_CRYPTO_URL;
 
-  const [mtaiState, mtaiHistory, mtaiPositions, cryptoState, cryptoPositions] = await Promise.all([
+  const [mtaiState, mtaiHistory, mtaiPositions, mtaiMode, cryptoState, cryptoPositions] = await Promise.all([
     fetchJson(`${mtaiUrl}/live_state.json`),
     fetchJson(`${mtaiUrl}/api/order_history?limit=200`),
     fetchJson(`${mtaiUrl}/api/mt5/positions`),
+    fetchJson(`${mtaiUrl}/api/mode`),
     fetchJson(`${cryptoUrl}/live_state.json`),
     fetchJson(`${cryptoUrl}/api/positions`),
   ]);
 
   const engines = [];
-  if (mtaiState.ok) engines.push(analyzeEngine(normalizeMtaiState(mtaiState.data, mtaiHistory.data, mtaiPositions.data)));
+  if (mtaiState.ok) engines.push(analyzeEngine(normalizeMtaiState(
+    mtaiState.data,
+    mtaiHistory.data,
+    mtaiPositions.data,
+    mtaiMode.data,
+  )));
   else engines.push({ id: 'mtai', name: 'MTAI Forex', type: 'forex', status: 'offline', error: mtaiState.error, recommendations: [] });
   if (cryptoState.ok) engines.push(analyzeEngine(normalizeCryptoState(cryptoState.data, cryptoPositions.data)));
   else engines.push({ id: 'crypto-ai', name: 'Crypto AI', type: 'crypto', status: 'offline', error: cryptoState.error, recommendations: [] });
@@ -388,6 +490,12 @@ export function recordControlAction(db, entry) {
   );
 }
 
+export const tradingControlInternals = {
+  latestTimestamp,
+  performanceMetrics,
+  summarizePortfolio,
+};
+
 export async function dispatchControlCommand(getSettings, command) {
   const settings = getSettings();
   const trading = settings.tradingControl || {};
@@ -398,7 +506,7 @@ export async function dispatchControlCommand(getSettings, command) {
   if (!['crypto-ai', 'mtai'].includes(engineId)) {
     return { ok: false, status: 400, error: 'engineId must be crypto-ai or mtai' };
   }
-  if (!['pause', 'resume', 'close-position'].includes(action)) {
+  if (!['pause', 'resume', 'close-position', 'set-risk-policy'].includes(action)) {
     return { ok: false, status: 400, error: 'unsupported action' };
   }
   if (action === 'close-position' && payload.confirm !== true) {
@@ -409,12 +517,14 @@ export async function dispatchControlCommand(getSettings, command) {
     const cryptoUrl = trading.cryptoUrl || DEFAULT_CRYPTO_URL;
     if (action === 'pause') return postJson(`${cryptoUrl}/api/control/pause`, payload);
     if (action === 'resume') return postJson(`${cryptoUrl}/api/control/resume`, payload);
+    if (action === 'set-risk-policy') return postJson(`${cryptoUrl}/api/control/risk-policy`, payload);
     return postJson(`${cryptoUrl}/api/control/close-position`, payload);
   }
 
   const mtaiUrl = trading.mtaiUrl || DEFAULT_MTAI_URL;
   if (action === 'pause') return postJson(`${mtaiUrl}/api/control/pause`, payload);
   if (action === 'resume') return postJson(`${mtaiUrl}/api/control/resume`, payload);
+  if (action === 'set-risk-policy') return postJson(`${mtaiUrl}/api/control/risk-policy`, payload);
   if (action === 'close-position') {
     return postJson(`${mtaiUrl}/api/mt5/position/close`, { ticket: payload.ticket });
   }

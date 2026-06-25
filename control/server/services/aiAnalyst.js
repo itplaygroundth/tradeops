@@ -300,7 +300,7 @@ function readRecentControlActions(db) {
   }
 }
 
-async function analyze({ db, getSettings }) {
+export async function analyze({ db, getSettings }) {
   const settings = getSettings();
   const overview = await collectTradingOverview(getSettings);
   const recentActions = readRecentControlActions(db);

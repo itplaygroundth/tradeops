@@ -1,3 +1,5 @@
 .claude-flow/
 /data/
 __pycache__/
+.env
+**/.env
