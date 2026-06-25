@@ -1,0 +1,18 @@
+{
+  "required_fields": [
+    "symbol",
+    "side",
+    "strategy",
+    "timeframe",
+    "higher_timeframe",
+    "regime",
+    "signal_score",
+    "spread",
+    "atr",
+    "risk_decision",
+    "expected_rr",
+    "entry_reason",
+    "reject_or_pass_reason"
+  ],
+  "note": "Every future trade/open/reject journal row should include these fields for post-trade analysis and backtest-live parity checks."
+}

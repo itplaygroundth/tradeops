@@ -1,0 +1,344 @@
+{
+  "approved_for_forward_test": false,
+  "expectancy_pct": -2.1977,
+  "gate_reasons": [
+    "expectancy is not positive",
+    "profit factor below 1.15",
+    "max drawdown above 8%"
+  ],
+  "max_drawdown_pct": 79.1172,
+  "profit_factor": 0.1929,
+  "sharpe": -10.8096,
+  "strategy_name": "generated_order_flow_liquidity_filter_v1",
+  "symbol": "BTCUSDT",
+  "timeframe": "M15",
+  "total_pnl_pct": -79.1172,
+  "trade_log": [
+    {
+      "entry_index": 33,
+      "entry_price": 73902.74267498808,
+      "exit_index": 37,
+      "exit_price": 68418.73173298313,
+      "pnl_pct": -7.660578375721074,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 67,
+      "entry_price": 67110.0064883487,
+      "exit_index": 71,
+      "exit_price": 64632.01684208338,
+      "pnl_pct": -3.9324294541612694,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 72,
+      "entry_price": 63991.55746536939,
+      "exit_index": 75,
+      "exit_price": 60916.854763668,
+      "pnl_pct": -5.0448568021888525,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 87,
+      "entry_price": 63515.872166516674,
+      "exit_index": 91,
+      "exit_price": 59705.84552708075,
+      "pnl_pct": -6.238542583887296,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 123,
+      "entry_price": 58203.36108452357,
+      "exit_index": 127,
+      "exit_price": 57406.151690671126,
+      "pnl_pct": -1.6096964900269675,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 132,
+      "entry_price": 57320.99273988669,
+      "exit_index": 136,
+      "exit_price": 60567.20458030964,
+      "pnl_pct": 5.423216363250592,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 147,
+      "entry_price": 61452.21934535174,
+      "exit_index": 151,
+      "exit_price": 58132.23587304466,
+      "pnl_pct": -5.6425444608424975,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 163,
+      "entry_price": 60388.40790346643,
+      "exit_index": 167,
+      "exit_price": 57794.519009912765,
+      "pnl_pct": -4.535342406940276,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 168,
+      "entry_price": 57481.33209518482,
+      "exit_index": 169,
+      "exit_price": 57401.05938004348,
+      "pnl_pct": -0.37965006066389734,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 178,
+      "entry_price": 63107.623554254984,
+      "exit_index": 182,
+      "exit_price": 62752.728393530415,
+      "pnl_pct": -0.8023649580457708,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 185,
+      "entry_price": 59101.12044605406,
+      "exit_index": 189,
+      "exit_price": 58889.8268194614,
+      "pnl_pct": -0.5975120488375938,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 198,
+      "entry_price": 63105.29377210715,
+      "exit_index": 202,
+      "exit_price": 60159.738046255225,
+      "pnl_pct": -4.907684040089004,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 203,
+      "entry_price": 59165.413861076355,
+      "exit_index": 206,
+      "exit_price": 56787.60649866022,
+      "pnl_pct": -4.258914442142425,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 240,
+      "entry_price": 50667.01843715044,
+      "exit_index": 244,
+      "exit_price": 49492.66611581987,
+      "pnl_pct": -2.557784542201323,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 245,
+      "entry_price": 49605.851578160844,
+      "exit_index": 246,
+      "exit_price": 49908.69526367373,
+      "pnl_pct": 0.3704999226466609,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 252,
+      "entry_price": 53524.68284506739,
+      "exit_index": 256,
+      "exit_price": 53539.34696276754,
+      "pnl_pct": -0.21260307409463666,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 259,
+      "entry_price": 49873.38904103437,
+      "exit_index": 263,
+      "exit_price": 47964.37506877482,
+      "pnl_pct": -4.067720571964475,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 276,
+      "entry_price": 49535.64762324593,
+      "exit_index": 280,
+      "exit_price": 47552.67692651824,
+      "pnl_pct": -4.243118545677663,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 281,
+      "entry_price": 47336.87010157312,
+      "exit_index": 282,
+      "exit_price": 47317.370528273146,
+      "pnl_pct": -0.28119320364471273,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 290,
+      "entry_price": 52415.812843782696,
+      "exit_index": 294,
+      "exit_price": 53520.51934324208,
+      "pnl_pct": 1.8675825013947425,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 297,
+      "entry_price": 50984.513041737126,
+      "exit_index": 301,
+      "exit_price": 50842.90816745794,
+      "pnl_pct": -0.5177409566769062,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 302,
+      "entry_price": 51225.69511245054,
+      "exit_index": 304,
+      "exit_price": 52505.14891596599,
+      "pnl_pct": 2.2576797302736313,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 307,
+      "entry_price": 55037.57168282511,
+      "exit_index": 311,
+      "exit_price": 56811.255962614305,
+      "pnl_pct": 2.98267902735739,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 316,
+      "entry_price": 54335.218144544524,
+      "exit_index": 320,
+      "exit_price": 52441.95972587099,
+      "pnl_pct": -3.724403823753902,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 353,
+      "entry_price": 49178.37168914902,
+      "exit_index": 357,
+      "exit_price": 47688.09446117666,
+      "pnl_pct": -3.2703508977325093,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 367,
+      "entry_price": 50727.17173773445,
+      "exit_index": 371,
+      "exit_price": 46929.0210060638,
+      "pnl_pct": -7.727408821661777,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 372,
+      "entry_price": 46153.74397265755,
+      "exit_index": 374,
+      "exit_price": 44697.78300178352,
+      "pnl_pct": -3.394589087586408,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 405,
+      "entry_price": 44199.958836511134,
+      "exit_index": 409,
+      "exit_price": 42226.978607748635,
+      "pnl_pct": -4.703760330773723,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 410,
+      "entry_price": 41955.10171937402,
+      "exit_index": 414,
+      "exit_price": 41650.35621516036,
+      "pnl_pct": -0.9663610186241827,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 430,
+      "entry_price": 44567.85070218976,
+      "exit_index": 434,
+      "exit_price": 43859.36919480008,
+      "pnl_pct": -1.829669450572972,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 443,
+      "entry_price": 46632.637252298795,
+      "exit_index": 447,
+      "exit_price": 43479.387299857095,
+      "pnl_pct": -7.0018949693570205,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 448,
+      "entry_price": 42984.65610906124,
+      "exit_index": 449,
+      "exit_price": 42555.86479392467,
+      "pnl_pct": -1.2375450636353347,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 469,
+      "entry_price": 45202.40325551032,
+      "exit_index": 473,
+      "exit_price": 45949.11954716171,
+      "pnl_pct": 1.4119393613443874,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 474,
+      "entry_price": 46486.10629989683,
+      "exit_index": 478,
+      "exit_price": 48736.56305166292,
+      "pnl_pct": 4.60113841939712,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 481,
+      "entry_price": 47240.79377008934,
+      "exit_index": 485,
+      "exit_price": 45014.30454502329,
+      "pnl_pct": -4.9530648056040025,
+      "reason": "exit_signal",
+      "side": "LONG"
+    },
+    {
+      "entry_index": 486,
+      "entry_price": 44297.125414668895,
+      "exit_index": 487,
+      "exit_price": 43635.93236316628,
+      "pnl_pct": -1.7326319604559832,
+      "reason": "exit_signal",
+      "side": "LONG"
+    }
+  ],
+  "trades": 36,
+  "win_rate": 0.1944
+}

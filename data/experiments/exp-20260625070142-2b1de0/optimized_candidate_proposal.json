@@ -1,0 +1,65 @@
+{
+  "entry_rules": [
+    {
+      "action": "LONG",
+      "when": "market_structure_break_with_liquidity_filter"
+    }
+  ],
+  "exit_rules": [
+    {
+      "action": "HOLD",
+      "when": "liquidity_imbalance_fades_or_time_stop"
+    }
+  ],
+  "market": "crypto",
+  "name": "generated_order_flow_liquidity_filter_v1_optimized_candidate",
+  "parameters": {
+    "fast_sma": 5,
+    "fee_bps": 10,
+    "imbalance_window": 10,
+    "max_entry_rsi": 72,
+    "max_hold_bars": 20,
+    "max_spread_bps": 3,
+    "min_depth_imbalance": 0.15,
+    "research_confidence": 0.2,
+    "slippage_bps": 2,
+    "slow_sma": 21,
+    "source_hypothesis_id": "hyp_04f301dbc0",
+    "source_paper_id": "2606.16269v1"
+  },
+  "risk_rules": {
+    "max_positions": 1,
+    "risk_pct": 0.0025
+  },
+  "status": "optimized_candidate",
+  "symbols": [
+    "BTCUSDT",
+    "ETHUSDT"
+  ],
+  "timeframes": {
+    "confirm": "H1",
+    "entry": "M15",
+    "regime": "H4"
+  },
+  "type": "market_structure",
+  "version": 2,
+  "signal_attribution": {
+    "version": 1,
+    "required_fields": [
+      "symbol",
+      "side",
+      "strategy",
+      "timeframe",
+      "higher_timeframe",
+      "regime",
+      "signal_score",
+      "spread",
+      "atr",
+      "risk_decision",
+      "expected_rr",
+      "entry_reason",
+      "reject_or_pass_reason"
+    ],
+    "policy": "write required fields for every open/close/reject audit row before promotion"
+  }
+}

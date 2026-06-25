@@ -1,0 +1,153 @@
+{
+  "status": "ready",
+  "generated_at": "2026-06-25T08:44:01.490Z",
+  "source": "skill-algotrader-adapted-qa",
+  "summary": {
+    "passed": 8,
+    "total": 8,
+    "failed": 0,
+    "warnings": 0,
+    "recommendation": "Ready for shadow review; still requires explicit approval before execution."
+  },
+  "checklist": [
+    {
+      "id": "signal_attribution",
+      "label": "Signal attribution fields defined before order permission",
+      "passed": true,
+      "severity": "pass",
+      "detail": "trade reports or proposal include required signal attribution fields"
+    },
+    {
+      "id": "backtest_live_parity",
+      "label": "Backtest-live parity evidence exists",
+      "passed": true,
+      "severity": "pass",
+      "detail": "exp-20260625083417-431564 has proposal, symbol, timeframe, and baseline report"
+    },
+    {
+      "id": "spread_slippage_costs",
+      "label": "Spread/slippage/fees modeled in strategy evidence",
+      "passed": true,
+      "severity": "pass",
+      "detail": "cost model hints found"
+    },
+    {
+      "id": "risk_gate",
+      "label": "Risk gate and sizing rules present",
+      "passed": true,
+      "severity": "pass",
+      "detail": "risk/SL/TP/sizing hints found in proposal"
+    },
+    {
+      "id": "regime_filter",
+      "label": "Market regime or MTF filter present",
+      "passed": true,
+      "severity": "pass",
+      "detail": "regime-aware hints found"
+    },
+    {
+      "id": "stress_tests",
+      "label": "Synthetic stress tests pass or failed regimes have no-trade guard",
+      "passed": true,
+      "severity": "pass",
+      "detail": "2/3 stress reports approved; no-trade guard for high_volatility"
+    },
+    {
+      "id": "promotion_gate",
+      "label": "Promotion requires PASS_FOR_SHADOW_REVIEW",
+      "passed": true,
+      "severity": "pass",
+      "detail": "latest verdict: PASS_FOR_SHADOW_REVIEW_WITH_GUARDS"
+    },
+    {
+      "id": "execution_guard",
+      "label": "Research dashboard cannot execute live orders",
+      "passed": true,
+      "severity": "pass",
+      "detail": "order_execution remains disabled_in_research_os; dispatch stays staged/demo-testnet only"
+    }
+  ],
+  "parity": {
+    "status": "READY_FOR_SHADOW_REVIEW",
+    "latest_experiment_id": "exp-20260625083417-431564",
+    "strategy": "generated_order_flow_liquidity_filter_v1",
+    "symbol": "BTCUSDT",
+    "timeframe": "M15",
+    "baseline": {
+      "source": "optimized_candidate_baseline",
+      "trades": 13,
+      "profit_factor": 7.4389,
+      "expectancy_pct": 3.4163,
+      "max_drawdown_pct": 1.2994,
+      "approved_for_forward_test": true
+    },
+    "stress_guard": {
+      "status": "PASS_WITH_REGIME_NO_TRADE_GUARD",
+      "allowed_regimes": [
+        "sideways",
+        "crash"
+      ],
+      "no_trade_regimes": [
+        {
+          "regime": "high_volatility",
+          "reasons": [
+            "expectancy is not positive",
+            "profit factor below 1.15",
+            "max drawdown above 8%"
+          ],
+          "max_drawdown_pct": 77.785,
+          "expectancy_pct": -3.4608,
+          "profit_factor": 0.1972
+        }
+      ],
+      "policy": "trade only in regimes that passed stress; block entries in failed regimes until retested"
+    },
+    "evidence": {
+      "proposal_keys": [
+        "entry_rules",
+        "exit_rules",
+        "market",
+        "name",
+        "parameters",
+        "risk_rules",
+        "status",
+        "symbols",
+        "timeframes",
+        "type",
+        "version"
+      ],
+      "has_timeframe": true,
+      "has_symbols": true,
+      "has_risk_model": true,
+      "has_cost_model": true,
+      "has_regime_filter": true,
+      "has_signal_attribution": true,
+      "trade_attribution_rows": 56,
+      "trade_attribution_complete": true
+    }
+  },
+  "attribution_schema": {
+    "required_fields": [
+      "symbol",
+      "side",
+      "strategy",
+      "timeframe",
+      "higher_timeframe",
+      "regime",
+      "signal_score",
+      "spread",
+      "atr",
+      "risk_decision",
+      "expected_rr",
+      "entry_reason",
+      "reject_or_pass_reason"
+    ],
+    "note": "Every future trade/open/reject journal row should include these fields for post-trade analysis and backtest-live parity checks."
+  },
+  "review_agent": {
+    "name": "AlgoTrader QA Review Agent",
+    "mode": "deterministic_checklist_first_llm_optional",
+    "safe_action": "shadow_only_with_regime_guard",
+    "next_steps": []
+  }
+}

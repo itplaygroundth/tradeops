@@ -4,28 +4,38 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Research OS Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body>
+  <body data-theme="trading-floor">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">R</div>
-        <div>
-          <div class="brand-title">Research OS</div>
-          <div class="brand-sub">Strategy Operations</div>
+        <div class="brand-lockup">
+          <div class="brand-mark">R</div>
+          <div class="brand-copy">
+            <div class="brand-title">Research OS</div>
+            <div class="brand-sub">Strategy Operations</div>
+          </div>
         </div>
+        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Collapse sidebar" title="Collapse sidebar">←</button>
+      </div>
+      <div class="theme-switch" aria-label="Dashboard theme">
+        <button id="themeBloomberg" class="theme-option" type="button" data-theme-choice="bloomberg">Bloomberg</button>
+        <button id="themeTradingFloor" class="theme-option active" type="button" data-theme-choice="trading-floor">Trd Floor</button>
       </div>
       <nav>
-        <button class="nav-item active" data-view="overview">Overview</button>
-        <button class="nav-item" data-view="agents">Agent Status</button>
-        <button class="nav-item" data-view="experiments">Experiment Runs</button>
-        <button class="nav-item" data-view="pipeline">Pipeline</button>
-        <button class="nav-item" data-view="approval">Approval Gate</button>
-        <button class="nav-item" data-view="settings">Settings & Alerts</button>
+        <button class="nav-item active" data-view="overview"><span class="nav-icon">▦</span><span class="nav-label">Overview</span></button>
+        <button class="nav-item" data-view="agents"><span class="nav-icon">◎</span><span class="nav-label">Agent Status</span></button>
+        <button class="nav-item" data-view="experiments"><span class="nav-icon">△</span><span class="nav-label">Experiment Runs</span></button>
+        <button class="nav-item" data-view="pipeline"><span class="nav-icon">→</span><span class="nav-label">Pipeline</span></button>
+        <button class="nav-item" data-view="approval"><span class="nav-icon">✓</span><span class="nav-label">Approval Gate</span></button>
+        <button class="nav-item" data-view="settings"><span class="nav-icon">⚙</span><span class="nav-label">Settings & Alerts</span></button>
       </nav>
       <div class="side-status">
         <span id="apiDot" class="dot muted"></span>
-        <span id="apiStatus">Connecting</span>
+        <span id="apiStatus" class="side-status-label">Connecting</span>
       </div>
     </aside>
 
@@ -123,6 +133,26 @@
             <div id="selectionState" class="stack small"></div>
           </section>
         </div>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>AlgoTrader QA Gate</h2>
+              <p>Backtest-live parity, signal attribution, risk evidence, and promotion readiness adapted from javajack/skill-algotrader.</p>
+            </div>
+            <div class="panel-actions">
+              <button id="exportQaGuardBtn" class="btn secondary" type="button">Export QA Guard</button>
+              <span id="algotraderQaStatus" class="pill muted">loading</span>
+            </div>
+          </div>
+          <div class="metrics" id="algotraderQaMetrics"></div>
+          <div class="grid two">
+            <div id="algotraderChecklist" class="qa-grid"></div>
+            <div class="stack small">
+              <div id="algotraderParity" class="review-box compact-box">Loading parity report...</div>
+              <div id="algotraderAttribution" class="review-box compact-box">Loading attribution schema...</div>
+            </div>
+          </div>
+        </section>
       </section>
 
       <section class="view hidden" data-view-panel="experiments">

@@ -5,7 +5,12 @@ const state = {
   proposals: [],
   experiments: [],
   agents: null,
+  algotraderQa: null,
   busy: false,
+  ui: {
+    theme: localStorage.getItem('researchOsTheme') || 'trading-floor',
+    sidebarCollapsed: localStorage.getItem('researchOsSidebarCollapsed') === 'true',
+  },
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -29,6 +34,32 @@ function setApiStatus(ok, label) {
   $('#apiStatus').textContent = label;
   const strip = $('#stripApi');
   if (strip) strip.textContent = ok ? 'online' : 'offline';
+}
+
+function applyUiPreferences() {
+  document.body.dataset.theme = state.ui.theme;
+  document.body.classList.toggle('sidebar-collapsed', state.ui.sidebarCollapsed);
+  $$('.theme-option').forEach((button) => {
+    button.classList.toggle('active', button.dataset.themeChoice === state.ui.theme);
+  });
+  const toggle = $('#sidebarToggle');
+  if (toggle) {
+    toggle.textContent = state.ui.sidebarCollapsed ? '→' : '←';
+    toggle.setAttribute('aria-label', state.ui.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    toggle.setAttribute('title', state.ui.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+  }
+}
+
+function setTheme(theme) {
+  state.ui.theme = theme;
+  localStorage.setItem('researchOsTheme', theme);
+  applyUiPreferences();
+}
+
+function toggleSidebar() {
+  state.ui.sidebarCollapsed = !state.ui.sidebarCollapsed;
+  localStorage.setItem('researchOsSidebarCollapsed', String(state.ui.sidebarCollapsed));
+  applyUiPreferences();
 }
 
 async function api(path, options = {}) {
@@ -296,7 +327,8 @@ function renderExperiments() {
   const rows = $('#experimentRows');
   if (!rows) return;
   rows.innerHTML = state.experiments.length ? state.experiments.map((item) => {
-    const baseline = item.results?.baseline?.report || {};
+    const baseline = item.results?.candidate_baseline?.report || item.results?.baseline?.report || {};
+    const baselineSource = item.results?.candidate_baseline ? 'candidate' : 'raw';
     const optimization = item.results?.optimization || {};
     const verdict = item.evaluation?.verdict || 'unknown';
     const verdictClass = verdictTextClass(verdict);
@@ -307,7 +339,7 @@ function renderExperiments() {
         <td>${new Date(item.created_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}</td>
         <td><strong>${text(item.proposal?.name)}</strong><br><span class="small">${text(item.proposal?.type)} · ${text(item.proposal?.timeframe)}</span></td>
         <td>${text(item.symbol)}</td>
-        <td>${baseline.approved_for_forward_test ? '<span class="good-text">PASS</span>' : '<span class="bad-text">BLOCK</span>'}<br><span class="small">PF <span class="${pfClass}">${text(baseline.profit_factor)}</span> · EXP <span class="${expClass}">${pct(baseline.expectancy_pct)}</span></span></td>
+        <td>${baseline.approved_for_forward_test ? '<span class="good-text">PASS</span>' : '<span class="bad-text">BLOCK</span>'}<br><span class="small">${baselineSource} · PF <span class="${pfClass}">${text(baseline.profit_factor)}</span> · EXP <span class="${expClass}">${pct(baseline.expectancy_pct)}</span></span></td>
         <td>${optimization.passed ? '<span class="good-text">PASS</span>' : '<span class="tune-text">TUNE</span>'}<br><span class="small">code ${text(optimization.step?.code)}</span></td>
         <td><span class="small">${stressSummary(item)}</span></td>
         <td><span class="${verdictClass}">${verdict}</span><br><span class="small">score ${text(item.evaluation?.score)}</span></td>
@@ -372,6 +404,50 @@ function renderAgents() {
   ].filter(Boolean).join('');
 }
 
+function renderAlgotraderQa() {
+  const qa = state.algotraderQa;
+  const status = $('#algotraderQaStatus');
+  if (!status) return;
+  if (!qa) {
+    status.textContent = 'loading';
+    status.className = 'pill muted';
+    return;
+  }
+  status.textContent = qa.status || 'unknown';
+  status.className = `pill ${semanticPill(qa.status || 'unknown')}`;
+  $('#algotraderQaMetrics').innerHTML = [
+    metric('QA Passed', `${qa.summary?.passed || 0}/${qa.summary?.total || 0}`, qa.summary?.failed ? 'bad-text' : qa.summary?.warnings ? 'warn-text' : 'good-text'),
+    metric('Warnings', qa.summary?.warnings || 0, qa.summary?.warnings ? 'warn-text' : 'good-text'),
+    metric('Failed Gates', qa.summary?.failed || 0, qa.summary?.failed ? 'bad-text' : 'good-text'),
+    metric('Safe Action', qa.review_agent?.safe_action || 'unknown', metricTone('Safe Action', qa.review_agent?.safe_action || 'unknown')),
+  ].join('');
+  $('#algotraderChecklist').innerHTML = (qa.checklist || []).map((item) => `
+    <div class="qa-card ${item.passed ? 'pass' : item.severity}">
+      <div class="qa-card-head">
+        <strong>${text(item.label)}</strong>
+        <span class="pill ${item.passed ? 'good' : semanticPill(item.severity)}">${item.passed ? 'PASS' : text(item.severity).toUpperCase()}</span>
+      </div>
+      <div class="small">${text(item.detail)}</div>
+    </div>
+  `).join('');
+  const parity = qa.parity || {};
+  $('#algotraderParity').innerHTML = [
+    `<strong>Backtest-Live Parity</strong>`,
+    `Status: <span class="${metricTone('parity', parity.status)}">${text(parity.status)}</span>`,
+    `Strategy: ${text(parity.strategy)} · Symbol: ${text(parity.symbol)} · TF: ${text(parity.timeframe)}`,
+    `Baseline: trades ${text(parity.baseline?.trades)} · PF ${text(parity.baseline?.profit_factor)} · EXP ${pct(parity.baseline?.expectancy_pct)} · DD ${pct(parity.baseline?.max_drawdown_pct)}`,
+    `Evidence: timeframe ${parity.evidence?.has_timeframe ? 'yes' : 'no'} · risk ${parity.evidence?.has_risk_model ? 'yes' : 'no'} · costs ${parity.evidence?.has_cost_model ? 'yes' : 'no'} · attribution ${parity.evidence?.has_signal_attribution ? 'yes' : 'no'}`,
+  ].join('<br>');
+  $('#algotraderAttribution').innerHTML = [
+    `<strong>Signal Attribution Schema</strong>`,
+    (qa.attribution_schema?.required_fields || []).map((field) => `<code>${field}</code>`).join(' '),
+    `<br><br><strong>Review Agent</strong>`,
+    `Mode: ${text(qa.review_agent?.mode)}`,
+    qa.parity?.stress_guard ? `Stress guard: ${text(qa.parity.stress_guard.status)} · allow ${text((qa.parity.stress_guard.allowed_regimes || []).join(', '), 'none')} · block ${text((qa.parity.stress_guard.no_trade_regimes || []).map((item) => item.regime).join(', '), 'none')}` : '',
+    `Next: ${(qa.review_agent?.next_steps || []).join('<br>') || text(qa.summary?.recommendation)}`,
+  ].filter(Boolean).join('<br>');
+}
+
 function renderSettings() {
   const settings = state.settings || {};
   $('#telegramBotToken').value = settings.telegramBotToken || '';
@@ -403,22 +479,26 @@ function renderAll() {
   renderApproval();
   renderExperiments();
   renderAgents();
+  renderAlgotraderQa();
   renderTradingFloor();
   renderSettings();
 }
 
 async function refreshExperiments(silent = false) {
   try {
-    const [proposals, experiments, agents] = await Promise.all([
+    const [proposals, experiments, agents, algotraderQa] = await Promise.all([
       api('/api/experiments/proposals'),
       api('/api/experiments'),
       api('/api/experiments/agents/status'),
+      api('/api/experiments/algotrader-qa'),
     ]);
     state.proposals = proposals.items || [];
     state.experiments = experiments.items || [];
     state.agents = agents;
+    state.algotraderQa = algotraderQa;
     renderExperiments();
     renderAgents();
+    renderAlgotraderQa();
     renderTradingFloor();
     if (!silent) setToast('Experiments refreshed');
   } catch (error) {
@@ -517,6 +597,11 @@ function settingsPayload() {
 }
 
 function bindEvents() {
+  applyUiPreferences();
+  $('#sidebarToggle')?.addEventListener('click', toggleSidebar);
+  $$('.theme-option').forEach((button) => {
+    button.addEventListener('click', () => setTheme(button.dataset.themeChoice));
+  });
   $$('.nav-item').forEach((item) => item.addEventListener('click', () => activeView(item.dataset.view)));
   $('#refreshBtn').addEventListener('click', () => refreshAll(false));
   $('#runPipelineBtn').addEventListener('click', () => postAction('/api/research-os/run', { mode: 'full', maxResults: 8 }, 'Research pipeline completed'));
@@ -530,6 +615,7 @@ function bindEvents() {
   $('#runPromotionBtn').addEventListener('click', () => postAction('/api/research-os/promotion/run', {}, 'Promotion gate completed'));
   $('#deployShadowBtn').addEventListener('click', () => postAction('/api/research-os/shadow/deploy', { mode: 'testnet_shadow', network: 'testnet' }, 'Shadow deployment updated'));
   $('#runReviewBtn').addEventListener('click', () => postAction('/api/research-os/mads/review', { fallback: true }, 'MADS review completed'));
+  $('#exportQaGuardBtn')?.addEventListener('click', () => postAction('/api/experiments/algotrader-qa/export', {}, 'AlgoTrader QA guard exported'));
   $('#buildHandoffBtn').addEventListener('click', () => postAction('/api/research-os/handoff/build', { targetMode: 'limited_live_review', maxStrategies: 3 }, 'Handoff manifest built', 'Handoff blocked'));
   $('#requestEnableBtn').addEventListener('click', () => postAction('/api/research-os/enable/request', { requestedBy: 'research-os-dashboard', reason: 'limited live review request' }, 'Manual enable request created', 'Manual enable request blocked'));
   $('#approveStageBtn').addEventListener('click', () => postAction('/api/research-os/enable/decision', { decision: 'approve', operator: 'research-os-dashboard', reason: 'approve staged dispatch' }, 'Approval recorded', 'Approval blocked'));
